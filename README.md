@@ -437,6 +437,8 @@ single-page-app redirect that makes links like `/song/…` and `/invite/…` wor
 - Recording is mono per channel (stereo input is blended).
 - Final mix has volume and mute per channel; EQ, reverb and delay are planned.
 - Clip editing is desktop-first (mouse / trackpad); touch dragging works but is untuned.
+- No designed error pages yet (404, etc.) — a bad route falls through to the sign-in screen
+  or a blank shell rather than a page explaining what happened. Nice to have, not urgent.
 
 ## Troubleshooting
 

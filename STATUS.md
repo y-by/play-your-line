@@ -4,8 +4,16 @@ Last updated: 2026-09-27
 
 This file is for picking the project back up in a future session. It covers
 what the app is, what's been built, how the backend is wired, and exactly
-where things stand right now (**right before pushing to GitHub and
-connecting Netlify**).
+where things stand right now.
+
+**Live:** [https://play-your-line.netlify.app](https://play-your-line.netlify.app) — deployed,
+sign-in confirmed working end to end by the owner (2026-09-27). Repo:
+[github.com/y-by/play-your-line](https://github.com/y-by/play-your-line) (public).
+
+## Nice to have (not urgent)
+
+- Design proper error pages (404, etc.) — right now a bad route or a dead link just falls
+  through to the sign-in screen or a blank app shell, not a page that explains what happened.
 
 ## Latest state (read this first)
 
