@@ -2253,8 +2253,21 @@
 
 .cb-main {
   position: relative;
-  justify-content: space-between;
+  justify-content: center;
   min-height: 48px;
+}
+
+.cb-panels {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cb-center {
+  display: flex;
+  align-items: center;
+  gap: 20px;
 }
 
 .cb-tools {
@@ -2408,10 +2421,6 @@
 /* The number display, centred in the bar */
 
 .lcd2 {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
   display: flex;
   align-items: stretch;
   background: #0e1b2e;
@@ -2484,13 +2493,19 @@
 
 /* Narrow windows: the display leaves the centre and flows with the rest */
 @media (max-width: 900px) {
-  .lcd2 {
+  /* Too narrow for a centred group with an absolutely-placed left button
+     cluster — go back to plain document flow, wrapping if needed. */
+  .cb-panels {
     position: static;
     transform: none;
   }
 
   .cb-main {
     justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .cb-center {
     flex-wrap: wrap;
   }
 }
@@ -2519,6 +2534,11 @@
   .cb-main {
     flex-wrap: nowrap;
     min-height: 44px;
+  }
+
+  .cb-center {
+    flex: 1;
+    min-width: 0;
   }
 
   .lcd2 {
@@ -2645,15 +2665,6 @@
 .add-channel-panel.people-panel {
   margin-top: 0;
   border-top: none;
-}
-
-/* transport sits right after the panel buttons; the mode buttons go to the far right */
-.cb-main {
-  justify-content: flex-start;
-}
-
-.cb-modes {
-  margin-left: auto;
 }
 
 /* Signal lights: microphone level on the armed channel */

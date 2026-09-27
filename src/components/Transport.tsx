@@ -129,56 +129,58 @@ export function Transport({ panel, onPanel }: Props) {
       <div className="cb-row cb-main">
         <PanelButtons panel={panel} onPanel={onPanel} className="hide-m cb-panels" />
 
-        <div className="lg cb-transport">
-          <button className="lb" onClick={() => seek(0)} disabled={busy} title="Back to start" aria-label="Back to start">
-            <BackToStartIcon />
-          </button>
-          <button
-            className={isPlaying ? "lb on" : "lb"}
-            onClick={() => (isPlaying ? pause() : play())}
-            disabled={busy}
-            title={isPlaying ? "Pause (Space)" : "Play (Space)"}
-            aria-label={isPlaying ? "Pause" : "Play"}
-          >
-            {isPlaying ? <PauseIcon /> : <PlayIcon />}
-          </button>
-          <button
-            className={recActive ? "lb rec on" : "lb rec"}
-            onClick={toggleRecord}
-            disabled={!armedId || (busy && !recActive)}
-            title={
-              recActive ? "Stop recording (R)" : armedName ? `Record on ${armedName} (R)` : "You have no channel to record on"
-            }
-            aria-label={recActive ? "Stop recording" : "Record"}
-          >
-            <span className="rec-dot" />
-          </button>
-        </div>
+        <div className="cb-center">
+          <div className="lg cb-transport">
+            <button className="lb" onClick={() => seek(0)} disabled={busy} title="Back to start" aria-label="Back to start">
+              <BackToStartIcon />
+            </button>
+            <button
+              className={isPlaying ? "lb on" : "lb"}
+              onClick={() => (isPlaying ? pause() : play())}
+              disabled={busy}
+              title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+              aria-label={isPlaying ? "Pause" : "Play"}
+            >
+              {isPlaying ? <PauseIcon /> : <PlayIcon />}
+            </button>
+            <button
+              className={recActive ? "lb rec on" : "lb rec"}
+              onClick={toggleRecord}
+              disabled={!armedId || (busy && !recActive)}
+              title={
+                recActive ? "Stop recording (R)" : armedName ? `Record on ${armedName} (R)` : "You have no channel to record on"
+              }
+              aria-label={recActive ? "Stop recording" : "Record"}
+            >
+              <span className="rec-dot" />
+            </button>
+          </div>
 
-        <div className="lcd2">
-          <div className="lcd-cell">
-            <span className="lcd-n">{bar}</span>
-            <span className="lcd-l">bar</span>
+          <div className="lcd2">
+            <div className="lcd-cell">
+              <span className="lcd-n">{bar}</span>
+              <span className="lcd-l">bar</span>
+            </div>
+            <div className="lcd-cell">
+              <span className="lcd-n">{beat}</span>
+              <span className="lcd-l">beat</span>
+            </div>
+            <div className="lcd-cell lcd-time">
+              <span className="lcd-n s">{formatTime(positionSec)}</span>
+              <span className="lcd-l">of {formatTime(durationSec)}</span>
+            </div>
+            <div className="lcd-cell">
+              <TempoControl />
+              <span className="lcd-l">bpm</span>
+            </div>
+            <div className="lcd-cell">
+              <span className="lcd-n s">{BEATS_PER_BAR}/4</span>
+              <span className="lcd-l">signature</span>
+            </div>
           </div>
-          <div className="lcd-cell">
-            <span className="lcd-n">{beat}</span>
-            <span className="lcd-l">beat</span>
-          </div>
-          <div className="lcd-cell lcd-time">
-            <span className="lcd-n s">{formatTime(positionSec)}</span>
-            <span className="lcd-l">of {formatTime(durationSec)}</span>
-          </div>
-          <div className="lcd-cell">
-            <TempoControl />
-            <span className="lcd-l">bpm</span>
-          </div>
-          <div className="lcd-cell">
-            <span className="lcd-n s">{BEATS_PER_BAR}/4</span>
-            <span className="lcd-l">signature</span>
-          </div>
-        </div>
 
-        <ModeButtons className="hide-m cb-modes" />
+          <ModeButtons className="hide-m cb-modes" />
+        </div>
       </div>
 
       <div className="cb-row cb-tools">
