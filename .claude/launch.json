@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "dev",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:http"],
+      "port": 5180
+    },
+    {
+      "name": "dev-preview",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev:http", "--", "--port", "5190", "--strictPort"],
+      "port": 5190
+    }
+  ]
+}

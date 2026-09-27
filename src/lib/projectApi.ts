@@ -1,0 +1,477 @@
+import { supabase } from "./supabaseClient";
+import type { Project, Track, Take, Clip } from "../types/project";
+import type { StoredFile } from "./orphans";
+
+function requireSupabase() {
+  if (!supabase) throw new Error("Supabase is not configured — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
+  return supabase;
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapProject(row: any, tracks: Track[], takes: Record<string, Take>): Project {
+  return {
+    id: row.id,
+    title: row.title,
+    bpm: row.bpm,
+    initiatorId: row.initiator_id,
+    mixerId: row.mixer_id ?? null,
+    mixerName: null,
+    listeners: [],
+    status: row.status,
+    createdAt: new Date(row.created_at).getTime(),
+    updatedAt: new Date(row.updated_at).getTime(),
+    publishedAt: row.published_at ? new Date(row.published_at).getTime() : null,
+    tracks,
+    takes,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function mapTake(row: any): Take {
+  return {
+    id: row.id,
+    trackId: row.track_id,
+    storagePath: row.storage_path,
+    blob: null,
+    durationSec: row.duration_sec,
+    createdBy: row.created_by,
+    createdAt: new Date(row.created_at).getTime(),
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function mapClip(row: any): Clip {
+  return {
+    id: row.id,
+    takeId: row.take_id,
+    startSec: row.start_sec,
+    sourceStartSec: row.source_start_sec,
+    durationSec: row.duration_sec,
+    z: row.z,
+  };
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function mapTrack(row: any, clips: Clip[], assignedPlayerName: string | null): Track {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    instrument: row.instrument,
+    color: row.color,
+    position: row.position ?? 0,
+    assignedUserId: row.assigned_user_id,
+    assignedPlayerName,
+    clips,
+    volume: row.volume,
+    muted: row.muted,
+  };
+}
+
+export async function getProject(id: string): Promise<Project> {
+  const client = requireSupabase();
+
+  const { data: projectRow, error: projectError } = await client.from("projects").select("*").eq("id", id).single();
+  if (projectError) throw projectError;
+
+  const { data: trackRows, error: tracksError } = await client
+    .from("tracks")
+    .select("*")
+    .eq("project_id", id)
+    .order("position", { ascending: true })
+    .order("created_at", { ascending: true });
+  if (tracksError) throw tracksError;
+
+  const trackIds = (trackRows ?? []).map((t) => t.id);
+  const { data: listenerRows, error: listenersError } = await client.from("project_listeners").select("user_id").eq("project_id", id);
+  if (listenersError) throw listenersError;
+  const listenerIds = (listenerRows ?? []).map((r) => r.user_id as string);
+  const assignedUserIds = [
+    ...new Set([
+      ...(trackRows ?? []).map((t) => t.assigned_user_id).filter((v): v is string => !!v),
+      ...listenerIds,
+      ...(projectRow.mixer_id ? [projectRow.mixer_id as string] : []),
+    ]),
+  ];
+
+  const clipsResult = trackIds.length
+    ? await client.from("clips").select("*").in("track_id", trackIds).order("z", { ascending: true })
+    : { data: [], error: null };
+  if (clipsResult.error) throw clipsResult.error;
+  const clipRows = clipsResult.data ?? [];
+
+  const takeIds = [...new Set(clipRows.map((c) => c.take_id as string))];
+  const [takesResult, profilesResult] = await Promise.all([
+    takeIds.length ? client.from("takes").select("*").in("id", takeIds) : Promise.resolve({ data: [], error: null }),
+    assignedUserIds.length
+      ? client.from("profiles").select("id, display_name").in("id", assignedUserIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (takesResult.error) throw takesResult.error;
+  if (profilesResult.error) throw profilesResult.error;
+
+  const takes: Record<string, Take> = {};
+  for (const row of takesResult.data ?? []) takes[row.id] = mapTake(row);
+  const namesById = new Map((profilesResult.data ?? []).map((p) => [p.id, p.display_name as string | null]));
+
+  const tracks = (trackRows ?? []).map((t) =>
+    mapTrack(
+      t,
+      clipRows.filter((c) => c.track_id === t.id).map(mapClip),
+      namesById.get(t.assigned_user_id ?? "") ?? null
+    )
+  );
+
+  const project = mapProject(projectRow, tracks, takes);
+  project.mixerName = project.mixerId ? (namesById.get(project.mixerId) ?? null) : null;
+  project.listeners = listenerIds.map((userId) => ({ userId, name: namesById.get(userId) ?? null }));
+  return project;
+}
+
+export async function listMyProjects(userId: string): Promise<Project[]> {
+  const client = requireSupabase();
+
+  const { data: initiated, error: e1 } = await client
+    .from("projects")
+    .select("*")
+    .or(`initiator_id.eq.${userId},mixer_id.eq.${userId}`);
+  if (e1) throw e1;
+
+  const { data: assignedTracks, error: e2 } = await client.from("tracks").select("project_id").eq("assigned_user_id", userId);
+  if (e2) throw e2;
+
+  const { data: listened, error: e4 } = await client.from("project_listeners").select("project_id").eq("user_id", userId);
+  if (e4) throw e4;
+
+  const assignedProjectIds = [...new Set([...(assignedTracks ?? []).map((t) => t.project_id), ...(listened ?? []).map((l) => l.project_id)])];
+  let assigned: typeof initiated = [];
+  if (assignedProjectIds.length) {
+    const { data, error: e3 } = await client.from("projects").select("*").in("id", assignedProjectIds);
+    if (e3) throw e3;
+    assigned = data ?? [];
+  }
+
+  const byId = new Map<string, (typeof initiated)[number]>();
+  for (const p of [...(initiated ?? []), ...assigned]) byId.set(p.id, p);
+
+  return [...byId.values()]
+    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
+    .map((row) => mapProject(row, [], {}));
+}
+
+export async function listPublishedProjects(): Promise<Project[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("projects")
+    .select("*")
+    .eq("status", "published")
+    .order("published_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map((row) => mapProject(row, [], {}));
+}
+
+export async function createProject(title: string, initiatorId: string): Promise<Project> {
+  const client = requireSupabase();
+  const id = crypto.randomUUID();
+  // Insert without chaining .select() — INSERT ... RETURNING evaluates the
+  // SELECT policy against the row while it's still being created, which
+  // hits an edge case with our participant-visibility policies. Inserting
+  // and then reading the row back as a separate statement (proven correct
+  // via direct testing) sidesteps that entirely.
+  const { error: insertError } = await client.from("projects").insert({ id, title, initiator_id: initiatorId });
+  if (insertError) throw insertError;
+  const { data, error } = await client.from("projects").select("*").eq("id", id).single();
+  if (error) throw error;
+  return mapProject(data, [], {});
+}
+
+export async function setTempo(projectId: string, bpm: number): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("projects").update({ bpm, updated_at: new Date().toISOString() }).eq("id", projectId);
+  if (error) throw error;
+}
+
+export async function renameProject(projectId: string, title: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("projects").update({ title, updated_at: new Date().toISOString() }).eq("id", projectId);
+  if (error) throw error;
+}
+
+/** Takes a song back to a draft: it leaves the Songs list and only its people can see it again. */
+export async function unpublishProject(projectId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("projects").update({ status: "draft", published_at: null }).eq("id", projectId);
+  if (error) throw error;
+}
+
+export async function publishProject(projectId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("projects")
+    .update({ status: "published", published_at: new Date().toISOString() })
+    .eq("id", projectId);
+  if (error) throw error;
+}
+
+export async function addTrack(projectId: string, instrument: string, color: string, position: number): Promise<Track> {
+  const client = requireSupabase();
+  const id = crypto.randomUUID();
+  const { error: insertError } = await client.from("tracks").insert({ id, project_id: projectId, instrument, color, position });
+  if (insertError) throw insertError;
+  const { data, error } = await client.from("tracks").select("*").eq("id", id).single();
+  if (error) throw error;
+  return mapTrack(data, [], null);
+}
+
+/** Saves the default channel order (initiator only): each channel's position becomes its place in the list. */
+export async function setTrackOrder(orderedIds: string[]): Promise<void> {
+  const client = requireSupabase();
+  const results = await Promise.all(orderedIds.map((id, position) => client.from("tracks").update({ position }).eq("id", id)));
+  const failed = results.find((r) => r.error);
+  if (failed?.error) throw failed.error;
+}
+
+export async function removeTrack(trackId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error, count } = await client.from("tracks").delete({ count: "exact" }).eq("id", trackId);
+  if (error) throw error;
+  // The database silently skips rows it won't let you delete, so check that one really went.
+  if (count === 0) throw new Error("The channel was not removed (it may still have recordings, or you're not the initiator).");
+}
+
+/** The saved final mix. Only the initiator may change it (enforced by the database). */
+export async function updateTrackMix(trackId: string, patch: Partial<{ volume: number; muted: boolean }>): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("tracks").update(patch).eq("id", trackId);
+  if (error) throw error;
+}
+
+/** The initiator takes an unassigned channel to play it themselves. */
+export async function claimOwnTrack(trackId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc("claim_own_track", { p_track_id: trackId });
+  if (error) throw error;
+}
+
+/** Uploads the audio and records it as a take. Nothing is placed on the timeline yet — that's a clip. */
+export async function createTake(params: {
+  projectId: string;
+  trackId: string;
+  blob: Blob;
+  durationSec: number;
+  userId: string;
+}): Promise<Take> {
+  const client = requireSupabase();
+  const takeId = crypto.randomUUID();
+  const storagePath = `${params.projectId}/${params.trackId}/${takeId}.wav`;
+
+  const { error: uploadError } = await client.storage
+    .from("takes")
+    .upload(storagePath, params.blob, { contentType: "audio/wav", upsert: false });
+  if (uploadError) throw uploadError;
+
+  const { error } = await client.from("takes").insert({
+    id: takeId,
+    track_id: params.trackId,
+    storage_path: storagePath,
+    duration_sec: params.durationSec,
+    created_by: params.userId,
+  });
+  if (error) throw error;
+
+  return {
+    id: takeId,
+    trackId: params.trackId,
+    storagePath,
+    blob: params.blob,
+    durationSec: params.durationSec,
+    createdBy: params.userId,
+    createdAt: Date.now(),
+  };
+}
+
+/** Insert or update clips of one channel (no read-back needed: ids are made client-side). */
+export async function upsertClips(trackId: string, clips: Clip[]): Promise<void> {
+  if (clips.length === 0) return;
+  const client = requireSupabase();
+  const rows = clips.map((c) => ({
+    id: c.id,
+    track_id: trackId,
+    take_id: c.takeId,
+    start_sec: c.startSec,
+    source_start_sec: c.sourceStartSec,
+    duration_sec: c.durationSec,
+    z: c.z,
+  }));
+  const { error } = await client.from("clips").upsert(rows, { onConflict: "id" });
+  if (error) throw error;
+}
+
+export async function deleteClips(clipIds: string[]): Promise<void> {
+  if (clipIds.length === 0) return;
+  const client = requireSupabase();
+  const { error } = await client.from("clips").delete().in("id", clipIds);
+  if (error) throw error;
+}
+
+export async function downloadTakeBlob(storagePath: string): Promise<Blob> {
+  const client = requireSupabase();
+  const { data, error } = await client.storage.from("takes").download(storagePath);
+  if (error) throw error;
+  return data;
+}
+
+/** Downloads the audio of every take used in the song (skipping ones already cached), in place. */
+export async function hydrateTakeBlobs(project: Project): Promise<void> {
+  await Promise.all(
+    Object.values(project.takes).map(async (take) => {
+      if (!take.blob) take.blob = await downloadTakeBlob(take.storagePath);
+    })
+  );
+}
+
+export async function createTrackInvite(trackId: string, userId: string): Promise<string> {
+  const client = requireSupabase();
+  const token = crypto.randomUUID();
+  // Known client-side, so no need to read the row back at all.
+  const { error } = await client.from("track_invites").insert({ track_id: trackId, created_by: userId, token });
+  if (error) throw error;
+  return token;
+}
+
+export interface InviteDetails {
+  trackId: string;
+  instrument: string;
+  status: string;
+  projectId: string;
+  projectTitle: string;
+}
+
+export async function getInviteDetails(token: string): Promise<InviteDetails | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("get_invite_details", { p_token: token });
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row) return null;
+  return {
+    trackId: row.track_id,
+    instrument: row.instrument,
+    status: row.invite_status,
+    projectId: row.project_id,
+    projectTitle: row.project_title,
+  };
+}
+
+/** Returns the claimed track's id. */
+export async function acceptTrackInvite(token: string): Promise<string> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("accept_track_invite", { p_token: token });
+  if (error) throw error;
+  return data as string;
+}
+
+/** One take's record (used when someone else's clip arrives live). */
+export async function fetchTake(takeId: string): Promise<Take> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("takes").select("*").eq("id", takeId).single();
+  if (error) throw error;
+  return mapTake(data);
+}
+
+export async function fetchDisplayName(userId: string): Promise<string | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("profiles").select("display_name").eq("id", userId).maybeSingle();
+  if (error) throw error;
+  return (data?.display_name as string | null) ?? null;
+}
+
+/** The initiator's saved channel colour (everyone sees it). */
+export async function updateTrackColor(trackId: string, color: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("tracks").update({ color }).eq("id", trackId);
+  if (error) throw error;
+}
+
+export async function listTrackFiles(projectId: string, trackId: string): Promise<StoredFile[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.storage.from("takes").list(`${projectId}/${trackId}`, { limit: 1000 });
+  if (error) throw error;
+  return (data ?? [])
+    .filter((f) => f.name.endsWith(".wav"))
+    .map((f) => ({ name: f.name, createdAtMs: f.created_at ? new Date(f.created_at).getTime() : Date.now() }));
+}
+
+export async function removeTakeFiles(projectId: string, trackId: string, fileNames: string[]): Promise<void> {
+  if (fileNames.length === 0) return;
+  const client = requireSupabase();
+  const { error } = await client.storage.from("takes").remove(fileNames.map((n) => `${projectId}/${trackId}/${n}`));
+  if (error) throw error;
+}
+
+/** Deletes take rows (their audio files are removed separately). Only takes no clip uses should be passed. */
+export async function deleteTakeRows(trackId: string, takeIds: string[]): Promise<void> {
+  if (takeIds.length === 0) return;
+  const client = requireSupabase();
+  const { error } = await client.from("takes").delete().eq("track_id", trackId).in("id", takeIds);
+  if (error) throw error;
+}
+
+// ---- Roles: mixer and listeners -------------------------------------------------
+
+export type InviteRole = "mixer" | "listener";
+
+export async function createProjectInvite(projectId: string, role: InviteRole, userId: string): Promise<string> {
+  const client = requireSupabase();
+  const token = crypto.randomUUID();
+  const { error } = await client.from("project_invites").insert({ project_id: projectId, role, token, created_by: userId });
+  if (error) throw error;
+  return token;
+}
+
+export interface ProjectInviteDetails {
+  projectId: string;
+  projectTitle: string;
+  role: InviteRole;
+  status: string;
+}
+
+export async function getProjectInviteDetails(token: string): Promise<ProjectInviteDetails | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("get_project_invite_details", { p_token: token });
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row) return null;
+  return { projectId: row.project_id, projectTitle: row.project_title, role: row.role, status: row.invite_status };
+}
+
+/** Returns the song's id. */
+export async function acceptProjectInvite(token: string): Promise<string> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("accept_project_invite", { p_token: token });
+  if (error) throw error;
+  return data as string;
+}
+
+/** Owner picks a participant as the mixer, or clears it with null. */
+export async function setMixer(projectId: string, userId: string | null): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc("set_mixer", { p_project_id: projectId, p_user_id: userId });
+  if (error) throw error;
+}
+
+export async function removeListener(projectId: string, userId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("project_listeners").delete().eq("project_id", projectId).eq("user_id", userId);
+  if (error) throw error;
+}
+
+export async function fetchListeners(projectId: string): Promise<{ userId: string; name: string | null }[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("project_listeners").select("user_id").eq("project_id", projectId);
+  if (error) throw error;
+  const ids = (data ?? []).map((r) => r.user_id as string);
+  if (ids.length === 0) return [];
+  const { data: profiles, error: pe } = await client.from("profiles").select("id, display_name").in("id", ids);
+  if (pe) throw pe;
+  const names = new Map((profiles ?? []).map((p) => [p.id as string, p.display_name as string | null]));
+  return ids.map((userId) => ({ userId, name: names.get(userId) ?? null }));
+}
