@@ -439,6 +439,7 @@ single-page-app redirect that makes links like `/song/…` and `/invite/…` wor
 - Clip editing is desktop-first (mouse / trackpad); touch dragging works but is untuned.
 - No designed error pages yet (404, etc.) — a bad route falls through to the sign-in screen
   or a blank shell rather than a page explaining what happened. Nice to have, not urgent.
+- Not a PWA yet (no install-to-home-screen, no app icon on a phone). Nice to have, not started.
 
 ## Troubleshooting
 

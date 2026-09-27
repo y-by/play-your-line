@@ -14,6 +14,9 @@ sign-in confirmed working end to end by the owner (2026-09-27). Repo:
 
 - Design proper error pages (404, etc.) — right now a bad route or a dead link just falls
   through to the sign-in screen or a blank app shell, not a page that explains what happened.
+- Make the project a PWA (installable on a phone's home screen, an app icon, works more like
+  a native app). Not started — needs a manifest, icons, and deciding what (if anything) works
+  offline, since the app is fundamentally online (Supabase, live updates).
 
 ## Latest state (read this first)
 
