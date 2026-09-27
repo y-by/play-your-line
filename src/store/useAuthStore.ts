@@ -58,27 +58,24 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     if (initialized) return;
     initialized = true;
 
-    supabase.auth.getSession().then(async ({ data }) => {
-      const user = data.session?.user;
-      if (user) {
-        const profileRow = await upsertProfileFromAuthUser(user.id, user.user_metadata ?? {});
-        set({
-          userId: user.id,
-          profile: profileRow
-            ? { id: profileRow.id, displayName: profileRow.display_name, avatarUrl: profileRow.avatar_url }
-            : { id: user.id, displayName: null, avatarUrl: null },
-        });
-      }
-      set({ loading: false });
-    });
-
+    // onAuthStateChange is the single source of truth: Supabase guarantees it
+    // fires once, right after it has finished figuring out the current
+    // session — including parsing a fresh OAuth redirect's #access_token=...
+    // hash. A separate getSession() call used to run in parallel with that
+    // parsing; on a slow dev server there was enough delay for it to
+    // accidentally work, but on a fast production build it could return
+    // before the redirect was processed, landing back on the sign-in screen
+    // with a valid, unused token still sitting in the URL.
     supabase.auth.onAuthStateChange(async (_event, session) => {
       const user = session?.user;
       if (!user) {
         set({ userId: null, profile: null, loading: false });
         return;
       }
-      if (get().userId === user.id) return; // avoid redundant profile upserts on token refresh
+      if (get().userId === user.id) {
+        set({ loading: false }); // token refresh etc. — profile is already up to date
+        return;
+      }
       const profileRow = await upsertProfileFromAuthUser(user.id, user.user_metadata ?? {});
       set({
         userId: user.id,
