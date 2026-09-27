@@ -17,6 +17,10 @@ dist-ssr
 !.env.example
 *.local
 
+# Internal dev-session log — verbose day-to-day history, not meant for a
+# public repo. Kept locally; see README.md for the public-facing docs.
+STATUS.md
+
 # Editor / OS
 .vscode/*
 !.vscode/extensions.json

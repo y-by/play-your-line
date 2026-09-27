@@ -248,7 +248,8 @@ Good to know:
 **You need:** Node 22+, and a Supabase project (see *Set up Supabase* below).
 
 ```bash
-cd "/Users/yanay/Desktop/Code/2026 Projects/PlayYourLine"
+git clone https://github.com/y-by/play-your-line.git
+cd play-your-line
 npm install
 cp .env.example .env.local     # then fill in your two Supabase values
 npm run dev
@@ -359,7 +360,7 @@ src/
                                JoinPage (mixer / listener links)
   components/
     arrangement/               Arrangement (ruler + lanes + playhead), ChannelLane,
-                               ChannelInfo, ClipView, Ruler, EditToolbar
+                               ChannelInfo, ChannelMeter, ClipView, Ruler, EditToolbar
     Transport (the one control bar), TempoControl, SettingsPanel,
     AddChannelPanel, PeoplePanel (mixer + listeners), PresenceDots, ErrorToast, ...
   store/
@@ -371,6 +372,8 @@ src/
     clips.ts                   clip rules: overlap, move, trim, split, duplicate (pure)
     grid.ts                    bars / beats / snapping (pure)
     mix.ts                     which mix a listener hears (pure)
+    dbFader.ts                 fader ↔ decibel conversion (pure)
+    loop.ts                    loop-region timing (pure)
     realtime.ts, remoteMerge.ts  live updates + who's here
     roles.ts                   Owner / Mixer / Player / Listener (pure)
     trackOrder.ts, trackColors.ts   channel order and colours (pure)
