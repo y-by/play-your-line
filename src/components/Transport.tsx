@@ -1,7 +1,7 @@
 import { useProjectStore } from "../store/useProjectStore";
 import { formatTime } from "../lib/format";
 import { barAndBeat, BEATS_PER_BAR } from "../lib/grid";
-import { BackToStartIcon, PlayIcon, PauseIcon, LoopIcon, MetronomeIcon, PlusCircleIcon, UserPlusIcon, SettingsSlidersIcon } from "./icons/Icons";
+import { BackToStartIcon, PlayIcon, PauseIcon, LoopIcon, MetronomeIcon, PlusCircleIcon, UserPlusIcon, GearIcon } from "./icons/Icons";
 import { TempoControl } from "./TempoControl";
 import { EditToolbar } from "./arrangement/EditToolbar";
 
@@ -19,7 +19,7 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
   return (
     <div className={`lg ${className}`}>
       <button className="lb" onClick={openSettings} title="Audio settings" aria-label="Audio settings">
-        <SettingsSlidersIcon />
+        <GearIcon size={16} />
       </button>
       {isInitiator && (
         <>
