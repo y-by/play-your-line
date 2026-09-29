@@ -631,6 +631,88 @@
   margin: 0;
 }
 
+.assign-panel {
+  flex-basis: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 9px;
+  background: var(--color-fill);
+}
+
+.assign-candidates {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.assign-candidate-btn {
+  display: inline-flex;
+  align-items: center;
+  background: var(--color-bg-elevated);
+  border: none;
+  color: var(--color-accent);
+  border-radius: 980px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 590;
+  cursor: pointer;
+}
+
+.assign-candidate-btn:active {
+  background: var(--color-fill-secondary);
+}
+
+.assign-candidate-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.assign-email-row {
+  display: flex;
+  gap: 8px;
+}
+
+.assign-email-row input {
+  flex: 1;
+  min-width: 0;
+  background: var(--color-bg-elevated);
+  border: none;
+  color: var(--color-label);
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+}
+
+.assign-email-row input:focus {
+  outline: 2px solid var(--color-accent);
+}
+
+.assign-email-row button {
+  flex: none;
+  background: var(--color-accent);
+  border: none;
+  color: white;
+  border-radius: 980px;
+  padding: 6px 14px;
+  font-size: 13px;
+  font-weight: 590;
+  cursor: pointer;
+}
+
+.assign-email-row button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.assign-error {
+  margin: 0;
+  color: var(--color-red);
+  font-size: 14px;
+  font-weight: 590;
+}
+
 /* Input source picker */
 
 .input-source {
@@ -2017,12 +2099,13 @@
   gap: 10px;
   width: max-content;
   max-width: min(92vw, 560px);
-  padding: 10px 12px 10px 14px;
+  padding: 12px 14px 12px 16px;
   border-radius: 10px;
   background: #3a1512;
   color: #ffd9d5;
   border: 1px solid rgba(255, 69, 58, 0.55);
-  font-size: 13px;
+  font-size: 15px;
+  font-weight: 560;
   box-shadow: 0 6px 24px rgba(0, 0, 0, 0.45);
 }
 
@@ -2718,3 +2801,254 @@
   outline-offset: -2px;
   background: color-mix(in srgb, var(--color-accent) 8%, var(--color-bg-tertiary));
 }
+
+/* Per-channel FX (EQ/Comp/Delay/Reverb) — Owner/Mixer only */
+
+.fx-toggle {
+  flex: none;
+  height: 20px;
+  padding: 0 6px;
+  border: none;
+  border-radius: 4px;
+  background: var(--color-fill-secondary);
+  color: var(--color-label-secondary);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+}
+
+.fx-toggle.on {
+  background: var(--color-accent);
+  color: #fff;
+}
+
+/* Positioned by its portal wrapper (fixed, at the FX button's own coordinates)
+   in ChannelInfo.tsx — this only needs to style the panel itself. A dark,
+   plugin-style unit: a real frequency-response curve and drag knobs, the same
+   visual language as a real EQ/compressor/reverb plugin. */
+.channel-fx-plugin {
+  position: fixed;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 260px;
+  max-width: 92vw;
+  padding: 0 14px 16px;
+  background: linear-gradient(180deg, #1b2027 0%, #12151a 100%);
+  border: 1px solid #333941;
+  border-radius: 10px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.55);
+  color: #d7dde3;
+}
+
+.fx-plugin-header {
+  cursor: move;
+  touch-action: none;
+  margin: 0 -14px;
+  padding: 10px 14px;
+  border-radius: 10px 10px 0 0;
+  background: rgba(255, 255, 255, 0.03);
+  border-bottom: 1px solid #2a2f36;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fx-plugin-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8fa3b8;
+}
+
+.fx-close {
+  border: none;
+  background: transparent;
+  color: #8fa3b8;
+  cursor: pointer;
+  padding: 2px;
+  border-radius: 4px;
+}
+
+.fx-close:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+/* Tool tabs: click FX, then pick which one — one shown at a time, like real plugin insert slots */
+
+.fx-tabs {
+  display: flex;
+  gap: 2px;
+  background: #0a0d11;
+  border-radius: 7px;
+  padding: 2px;
+}
+
+.fx-tab {
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: #6d7885;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  padding: 6px 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.fx-tab.on {
+  background: #21262e;
+  color: #52c7d6;
+}
+
+.fx-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: center;
+}
+
+.fx-hint {
+  margin: 0;
+  font-size: 10px;
+  line-height: 1.4;
+  color: #6d7885;
+  text-align: center;
+}
+
+/* A real, audio-reactive VU-style meter for the compressor */
+
+.vu-meter {
+  display: flex;
+  gap: 2px;
+  width: 100%;
+  height: 14px;
+}
+
+.vu-seg {
+  flex: 1;
+  border-radius: 1px;
+  background: #232830;
+}
+
+.vu-seg.on.green {
+  background: #3ecf6a;
+}
+
+.vu-seg.on.amber {
+  background: #ffb200;
+}
+
+.vu-seg.on.red {
+  background: #ff453a;
+}
+
+.fx-section-label {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #52c7d6;
+}
+
+.fx-knob-row {
+  display: flex;
+  justify-content: space-around;
+  gap: 6px;
+}
+
+/* The frequency-response curve */
+
+.eq-curve {
+  width: 100%;
+  height: auto;
+  border-radius: 6px;
+  background: #0a0d11;
+  border: 1px solid #232830;
+}
+
+.eq-grid-line {
+  stroke: #232830;
+  stroke-width: 1;
+}
+
+.eq-grid-zero {
+  stroke: #333941;
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+}
+
+.eq-curve-fill {
+  stroke: #52c7d6;
+  stroke-width: 2;
+  filter: drop-shadow(0 0 3px rgba(82, 199, 214, 0.6));
+}
+
+/* Rotary knobs — drag vertically (Shift for fine control), double-click to reset, scroll to nudge */
+
+.knob {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  user-select: none;
+}
+
+.knob-svg {
+  cursor: ns-resize;
+  touch-action: none;
+  overflow: visible;
+}
+
+.knob-svg.disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.knob-track {
+  stroke: #2a2f36;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.knob-fill {
+  stroke: #52c7d6;
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.knob-face {
+  fill: #1a1f26;
+  stroke: #333941;
+  stroke-width: 1;
+}
+
+.knob-pointer {
+  stroke: #d7dde3;
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.knob.dragging .knob-pointer {
+  stroke: #52c7d6;
+}
+
+.knob-value {
+  font-size: 10px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  color: #d7dde3;
+}
+
+.knob-label {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #6d7885;
+}
+

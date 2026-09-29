@@ -1,5 +1,6 @@
 import { supabase } from "./supabaseClient";
-import type { Project, Track, Take, Clip } from "../types/project";
+import type { Project, Track, Take, Clip, ChannelFx } from "../types/project";
+import { DEFAULT_CHANNEL_FX } from "../types/project";
 import type { StoredFile } from "./orphans";
 
 function requireSupabase() {
@@ -64,6 +65,15 @@ export function mapTrack(row: any, clips: Clip[], assignedPlayerName: string | n
     clips,
     volume: row.volume,
     muted: row.muted,
+    fx: {
+      eqLow: row.eq_low ?? DEFAULT_CHANNEL_FX.eqLow,
+      eqMid: row.eq_mid ?? DEFAULT_CHANNEL_FX.eqMid,
+      eqHigh: row.eq_high ?? DEFAULT_CHANNEL_FX.eqHigh,
+      compAmount: row.comp_amount ?? DEFAULT_CHANNEL_FX.compAmount,
+      delayTimeMs: row.delay_time_ms ?? DEFAULT_CHANNEL_FX.delayTimeMs,
+      delayMix: row.delay_mix ?? DEFAULT_CHANNEL_FX.delayMix,
+      reverbMix: row.reverb_mix ?? DEFAULT_CHANNEL_FX.reverbMix,
+    },
   };
 }
 
@@ -245,11 +255,48 @@ export async function updateTrackMix(trackId: string, patch: Partial<{ volume: n
   if (error) throw error;
 }
 
+/** The saved final mix's insert effects (EQ/Comp/Delay/Reverb). Owner/Mixer only, enforced by RLS. */
+export async function updateTrackFx(trackId: string, patch: Partial<ChannelFx>): Promise<void> {
+  const client = requireSupabase();
+  const row: Record<string, number> = {};
+  if (patch.eqLow !== undefined) row.eq_low = patch.eqLow;
+  if (patch.eqMid !== undefined) row.eq_mid = patch.eqMid;
+  if (patch.eqHigh !== undefined) row.eq_high = patch.eqHigh;
+  if (patch.compAmount !== undefined) row.comp_amount = patch.compAmount;
+  if (patch.delayTimeMs !== undefined) row.delay_time_ms = patch.delayTimeMs;
+  if (patch.delayMix !== undefined) row.delay_mix = patch.delayMix;
+  if (patch.reverbMix !== undefined) row.reverb_mix = patch.reverbMix;
+  const { error } = await client.from("tracks").update(row).eq("id", trackId);
+  if (error) throw error;
+}
+
 /** The initiator takes an unassigned channel to play it themselves. */
 export async function claimOwnTrack(trackId: string): Promise<void> {
   const client = requireSupabase();
   const { error } = await client.rpc("claim_own_track", { p_track_id: trackId });
   if (error) throw error;
+}
+
+/** Owner assigns an unclaimed channel straight to a known user id — no invite/accept step. */
+export async function assignTrackToUser(trackId: string, userId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc("assign_track_to_user", { p_track_id: trackId, p_user_id: userId });
+  if (error) throw error;
+}
+
+export interface ProfileMatch {
+  id: string;
+  displayName: string | null;
+}
+
+/** Narrow, single-purpose lookup by exact email — never a directory, never a full row. */
+export async function findProfileByEmail(email: string): Promise<ProfileMatch | null> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("find_profile_by_email", { p_email: email });
+  if (error) throw error;
+  const row = data?.[0];
+  if (!row) return null;
+  return { id: row.id as string, displayName: (row.display_name as string | null) ?? null };
 }
 
 /** Uploads the audio and records it as a take. Nothing is placed on the timeline yet — that's a clip. */

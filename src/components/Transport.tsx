@@ -1,7 +1,7 @@
 import { useProjectStore } from "../store/useProjectStore";
 import { formatTime } from "../lib/format";
 import { barAndBeat, BEATS_PER_BAR } from "../lib/grid";
-import { BackToStartIcon, PlayIcon, PauseIcon, LoopIcon, MetronomeIcon, PlusCircleIcon, UserPlusIcon, GearIcon } from "./icons/Icons";
+import { BackToStartIcon, PlayIcon, PauseIcon, StopIcon, LoopIcon, MetronomeIcon, PlusCircleIcon, UserPlusIcon, GearIcon } from "./icons/Icons";
 import { TempoControl } from "./TempoControl";
 import { EditToolbar } from "./arrangement/EditToolbar";
 
@@ -15,6 +15,7 @@ interface Props {
 /** Settings, people and add-channel buttons. */
 function PanelButtons({ panel, onPanel, className }: Props & { className: string }) {
   const isInitiator = useProjectStore((s) => s.isInitiator());
+  const isParticipant = useProjectStore((s) => s.isParticipant());
   const openSettings = useProjectStore((s) => s.openSettings);
   return (
     <div className={`lg ${className}`}>
@@ -22,24 +23,24 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
         <GearIcon size={16} />
       </button>
       {isInitiator && (
-        <>
-          <button
-            className={panel === "people" ? "lb on" : "lb"}
-            onClick={() => onPanel(panel === "people" ? null : "people")}
-            title="People: mixer and listeners"
-            aria-label="People"
-          >
-            <UserPlusIcon size={16} />
-          </button>
-          <button
-            className={panel === "add" ? "lb on" : "lb"}
-            onClick={() => onPanel(panel === "add" ? null : "add")}
-            title="Add a channel, invite players"
-            aria-label="Add a channel"
-          >
-            <PlusCircleIcon size={16} />
-          </button>
-        </>
+        <button
+          className={panel === "people" ? "lb on" : "lb"}
+          onClick={() => onPanel(panel === "people" ? null : "people")}
+          title="People: mixer and listeners"
+          aria-label="People"
+        >
+          <UserPlusIcon size={16} />
+        </button>
+      )}
+      {isParticipant && (
+        <button
+          className={panel === "add" ? "lb on" : "lb"}
+          onClick={() => onPanel(panel === "add" ? null : "add")}
+          title={isInitiator ? "Add a channel, invite players" : "Add a channel"}
+          aria-label="Add a channel"
+        >
+          <PlusCircleIcon size={16} />
+        </button>
       )}
     </div>
   );
@@ -119,10 +120,13 @@ export function Transport({ panel, onPanel }: Props) {
   const armedId = useProjectStore((s) => s.effectiveArmedId());
   const armedName = useProjectStore((s) => s.project?.tracks.find((t) => t.id === s.effectiveArmedId())?.instrument ?? null);
   const toggleRecord = useProjectStore((s) => s.toggleRecord);
+  const stopRecording = useProjectStore((s) => s.stopRecording);
 
   const { bar, beat } = barAndBeat(positionSec, bpm);
   const recActive = !!recordingTrackId && recordingPhase !== "uploading";
   const busy = !!recordingTrackId;
+  // Same action as the Space key: stop a recording if one's running, otherwise stop playback.
+  const stop = () => (recordingTrackId ? void stopRecording() : pause());
 
   return (
     <div className="cbar">
@@ -142,6 +146,15 @@ export function Transport({ panel, onPanel }: Props) {
               aria-label={isPlaying ? "Pause" : "Play"}
             >
               {isPlaying ? <PauseIcon /> : <PlayIcon />}
+            </button>
+            <button
+              className="lb"
+              onClick={stop}
+              disabled={!isPlaying && !recordingTrackId}
+              title="Stop (Space)"
+              aria-label="Stop"
+            >
+              <StopIcon size={13} />
             </button>
             <button
               className={recActive ? "lb rec on" : "lb rec"}

@@ -151,9 +151,17 @@ export function Arrangement() {
       const key = e.key.toLowerCase();
       if (key === " ") {
         e.preventDefault();
-        if (s.recordingTrackId) return;
+        if (s.recordingTrackId) {
+          void s.stopRecording();
+          return;
+        }
         if (s.isPlaying) s.pause();
         else s.play();
+      } else if (key === "enter") {
+        if (!s.recordingTrackId) {
+          e.preventDefault();
+          s.seek(0);
+        }
       } else if (!meta && key === "r") {
         s.toggleRecord();
       } else if (meta && key === "z") {

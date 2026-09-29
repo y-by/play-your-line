@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Track } from "../../types/project";
 import { TRACK_COLORS } from "../../lib/trackColors";
 import { gainToDb, dbToGain, MIN_DB, MAX_DB } from "../../lib/dbFader";
 import { ChannelMeter } from "./ChannelMeter";
+import { ChannelFx } from "./ChannelFx";
 import { useProjectStore } from "../../store/useProjectStore";
 import { XmarkCircleIcon, MicIcon } from "../icons/Icons";
 
@@ -21,6 +23,9 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
   const setTrackColor = useProjectStore((s) => s.setTrackColor);
   const online = useProjectStore((s) => !!track.assignedUserId && s.presentUsers.some((u) => u.userId === track.assignedUserId));
   const [pickingColor, setPickingColor] = useState(false);
+  const [fxAnchor, setFxAnchor] = useState<{ top: number; left: number } | null>(null);
+  const fxButtonRef = useRef<HTMLButtonElement>(null);
+  const canUseFx = useProjectStore((s) => s.canUseFx(track));
   const armTrack = useProjectStore((s) => s.armTrack);
   const armed = useProjectStore((s) => canEdit && s.effectiveArmedId() === track.id);
   // Subscribing to these makes the sliders follow the right mix (saved / monitor); effectiveMix does the choosing.
@@ -150,8 +155,31 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
             aria-label="Volume in decibels"
             title={`${Math.round(gainToDb(mix.volume))} dB — 0 dB is unity, resting near the top of the fader`}
           />
+          {canUseFx && (
+            <button
+              ref={fxButtonRef}
+              className={fxAnchor ? "fx-toggle on" : "fx-toggle"}
+              onClick={() => {
+                if (fxAnchor) {
+                  setFxAnchor(null);
+                  return;
+                }
+                // Rendered in a portal (see below) — the lanes scroll inside a
+                // container with overflow-y:hidden, which would otherwise clip
+                // a panel taller than one channel strip right off the screen.
+                const rect = fxButtonRef.current?.getBoundingClientRect();
+                if (rect) setFxAnchor({ top: rect.bottom + 4, left: rect.left });
+              }}
+              title="EQ, Compressor, Delay and Reverb"
+              aria-pressed={!!fxAnchor}
+              aria-label="Channel effects"
+            >
+              FX
+            </button>
+          )}
         </div>
         <ChannelMeter trackId={track.id} armed={armed} />
+        {fxAnchor && createPortal(<ChannelFx track={track} initialAnchor={fxAnchor} onClose={() => setFxAnchor(null)} />, document.body)}
       </div>
       )}
       {status && <div className="info-status">{status}</div>}

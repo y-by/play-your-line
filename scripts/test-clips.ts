@@ -10,6 +10,7 @@ import { findOrphanFiles, takeIdFromFileName, MIN_ORPHAN_AGE_MS } from "../src/l
 import { rolesOf, roleBadge, canMixFinal } from "../src/lib/roles.ts";
 import { loopApplies, positionWithLoop, nextLoopPass } from "../src/lib/loop.ts";
 import { gainToDb, dbToGain, MIN_DB, MAX_DB } from "../src/lib/dbFader.ts";
+import { compressorParamsFromAmount, clampFx } from "../src/lib/channelFx.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
 
 let fail = 0;
@@ -199,6 +200,15 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("the lowest position is effectively silent", dbToGain(MIN_DB) < 0.002);
   check("silence (gain 0) reads as the floor, not -Infinity", gainToDb(0) === MIN_DB);
   check("out-of-range dB is clamped", near(gainToDb(dbToGain(999)), MAX_DB, 1e-6));
+}
+
+// ---- channel FX
+{
+  check("compressor amount 0 is effectively off (0dB threshold, 1:1 ratio)", (() => { const p = compressorParamsFromAmount(0); return p.thresholdDb === 0 && p.ratio === 1; })());
+  check("compressor amount 1 is the strongest setting", (() => { const p = compressorParamsFromAmount(1); return p.thresholdDb === -30 && p.ratio === 12; })());
+  check("compressor amount is clamped to 0..1", (() => { const lo = compressorParamsFromAmount(-5), hi = compressorParamsFromAmount(5); return lo.thresholdDb === 0 && hi.thresholdDb === -30; })());
+  check("clampFx clamps each field to its own range", (() => { const c = clampFx({ eqLow: 99, compAmount: -5, delayTimeMs: 5000 }); return c.eqLow === 12 && c.compAmount === 0 && c.delayTimeMs === 1000; })());
+  check("clampFx leaves fields that weren't passed untouched (undefined)", clampFx({ eqLow: 3 }).eqMid === undefined);
 }
 
 process.exit(fail ? 1 : 0);

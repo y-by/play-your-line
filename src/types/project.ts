@@ -32,7 +32,29 @@ export interface Track {
   // Saved final mix — only the initiator changes these. (Solo is never saved.)
   volume: number; // 0..1
   muted: boolean;
+  fx: ChannelFx;
 }
+
+/** Per-channel insert effects on the saved final mix — Owner/Mixer only. */
+export interface ChannelFx {
+  eqLow: number; // dB, -12..+12
+  eqMid: number; // dB, -12..+12
+  eqHigh: number; // dB, -12..+12
+  compAmount: number; // 0..1 (0 = off)
+  delayTimeMs: number; // 0..1000
+  delayMix: number; // 0..1 (0 = off)
+  reverbMix: number; // 0..1 (0 = off)
+}
+
+export const DEFAULT_CHANNEL_FX: ChannelFx = {
+  eqLow: 0,
+  eqMid: 0,
+  eqHigh: 0,
+  compAmount: 0,
+  delayTimeMs: 300,
+  delayMix: 0,
+  reverbMix: 0,
+};
 
 export type ProjectStatus = "draft" | "published";
 

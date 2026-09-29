@@ -11,14 +11,17 @@ interface AuthState {
   init: () => void;
 }
 
-async function upsertProfileFromAuthUser(userId: string, meta: Record<string, unknown>) {
+async function upsertProfileFromAuthUser(userId: string, meta: Record<string, unknown>, email: string | null) {
   if (!supabase) return null;
   const displayName = (meta.full_name as string) ?? (meta.name as string) ?? null;
   const avatarUrl = (meta.avatar_url as string) ?? (meta.picture as string) ?? null;
+  // .select() below deliberately omits `email` — that column's SELECT grant
+  // is locked to the find_profile_by_email() RPC only (see 0019), so
+  // requesting it here (even for one's own row) would fail.
   const { data, error } = await supabase
     .from("profiles")
-    .upsert({ id: userId, display_name: displayName, avatar_url: avatarUrl }, { onConflict: "id" })
-    .select()
+    .upsert({ id: userId, display_name: displayName, avatar_url: avatarUrl, email }, { onConflict: "id" })
+    .select("id, display_name, avatar_url")
     .single();
   if (error) {
     console.error("Failed to create/update profile row:", error);
@@ -76,7 +79,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ loading: false }); // token refresh etc. — profile is already up to date
         return;
       }
-      const profileRow = await upsertProfileFromAuthUser(user.id, user.user_metadata ?? {});
+      const profileRow = await upsertProfileFromAuthUser(user.id, user.user_metadata ?? {}, user.email ?? null);
       set({
         userId: user.id,
         profile: profileRow

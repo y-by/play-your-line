@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { Project, Track, Clip } from "../types/project";
+import type { Project, Track, Clip, ChannelFx } from "../types/project";
 import { AudioEngine, type RecordingResult } from "../lib/audioEngine";
 import { useAuthStore } from "./useAuthStore";
 import * as api from "../lib/projectApi";
@@ -15,6 +15,7 @@ import { TRACK_COLORS } from "../lib/trackColors";
 import { findOrphanFiles, takeIdFromFileName } from "../lib/orphans";
 import { upsertClip, removeClip } from "../lib/remoteMerge";
 import { orderTracks, moveId } from "../lib/trackOrder";
+import { clampFx } from "../lib/channelFx";
 import { rolesOf, roleBadge, canMixFinal } from "../lib/roles";
 
 /** The useful part of a Supabase / network error, for showing to the person. */
@@ -43,10 +44,14 @@ interface ProjectState {
   engine: AudioEngine;
 
   isInitiator: () => boolean;
+  /** Owner, Mixer, an assigned player, or an invited Listener — anyone this song is shared with. */
+  isParticipant: () => boolean;
   /** True for a channel's assigned player only. The initiator can NOT edit a player's clips or record on their channel. */
   canEditClips: (track: Track) => boolean;
   /** The Owner and the Mixer set the saved final mix. */
   canMix: () => boolean;
+  /** The Owner, the Mixer, or a channel's own assigned player may use that channel's FX. */
+  canUseFx: (track: Track) => boolean;
   /** Small badge text for this person: "Owner", "Mixer", "Player", "Listener"… */
   roleLabel: () => string | null;
   /** Owner only: a link that makes someone the song's Mixer or a Listener. */
@@ -123,6 +128,10 @@ interface ProjectState {
 
   /** The initiator takes an unassigned channel to play it themselves. */
   claimChannel: (trackId: string) => Promise<void>;
+  /** Owner assigns an unclaimed channel straight to a known participant — no invite/accept step. */
+  assignTrackToUser: (trackId: string, userId: string) => Promise<void>;
+  /** Same, but looks the person up by email first. Throws if nobody's signed up with that email yet. */
+  assignTrackByEmail: (trackId: string, email: string) => Promise<void>;
 
   // Mixing. The initiator's levels are the saved FINAL mix. Everyone else
   // hears through a personal "monitor" mix that is never saved to the song.
@@ -135,6 +144,11 @@ interface ProjectState {
   setChannelVolume: (trackId: string, volume: number) => void;
   toggleChannelMute: (trackId: string) => void;
   toggleChannelSolo: (trackId: string) => void;
+  /** Owner/Mixer only: EQ, Compressor, Delay and Reverb on the saved final mix. */
+  setChannelFx: (trackId: string, patch: Partial<ChannelFx>) => void;
+  /** Adjusts one FX field by `delta`, reading the current value fresh from the store — safe
+   *  to call several times in a row (e.g. rapid stepper clicks) without losing an update. */
+  nudgeChannelFx: (trackId: string, field: keyof ChannelFx, delta: number) => void;
 
   // Clip editing
   // Loop: a highlighted part of the song that repeats while playing. Personal
@@ -291,6 +305,7 @@ interface HistoryEntry {
 let undoStack: HistoryEntry[] = [];
 let redoStack: HistoryEntry[] = [];
 const pendingMixSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; patch: Partial<{ volume: number; muted: boolean }> }>();
+const pendingFxSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; patch: Partial<ChannelFx> }>();
 let countInTimer: ReturnType<typeof setTimeout> | null = null;
 
 function clearCountInTimer() {
@@ -401,6 +416,23 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     pendingMixSaves.set(trackId, { timer, patch: merged });
   };
 
+  // Same pattern for EQ/Compressor/Delay/Reverb: apply instantly, save once the knob settles.
+  const scheduleFxSave = (trackId: string, patch: Partial<ChannelFx>) => {
+    const existing = pendingFxSaves.get(trackId);
+    if (existing) clearTimeout(existing.timer);
+    const merged = { ...(existing?.patch ?? {}), ...patch };
+    const timer = setTimeout(async () => {
+      pendingFxSaves.delete(trackId);
+      try {
+        await api.updateTrackFx(trackId, merged);
+      } catch (err) {
+        console.error("Failed to save the effect:", err);
+        set({ editError: "Couldn't save that effect change." });
+      }
+    }, 250);
+    pendingFxSaves.set(trackId, { timer, patch: merged });
+  };
+
   // ---- Live changes from other people -------------------------------------
   // Their clips and channels appear without a refresh. Nothing here restarts
   // playback: an added or moved clip is heard from the next Play.
@@ -476,8 +508,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({ project: { ...latest, tracks: [...latest.tracks, track] } });
     } else {
       const ownsOrder = get().isInitiator();
-      // While one of my own mix changes is still being saved, its echo must not fight the slider.
+      // While one of my own mix/FX changes is still being saved, its echo must not fight the control.
       const savingMix = pendingMixSaves.has(id);
+      const savingFx = pendingFxSaves.has(id);
       const updated: Track = {
         ...found,
         instrument: row.instrument as string,
@@ -485,9 +518,23 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         assignedUserId,
         assignedPlayerName: name,
         ...(savingMix ? {} : { volume: row.volume as number, muted: row.muted as boolean }),
+        ...(savingFx
+          ? {}
+          : {
+              fx: {
+                eqLow: (row.eq_low as number) ?? found.fx.eqLow,
+                eqMid: (row.eq_mid as number) ?? found.fx.eqMid,
+                eqHigh: (row.eq_high as number) ?? found.fx.eqHigh,
+                compAmount: (row.comp_amount as number) ?? found.fx.compAmount,
+                delayTimeMs: (row.delay_time_ms as number) ?? found.fx.delayTimeMs,
+                delayMix: (row.delay_mix as number) ?? found.fx.delayMix,
+                reverbMix: (row.reverb_mix as number) ?? found.fx.reverbMix,
+              },
+            }),
         // The Owner's own order is what they just dragged; everyone else follows the saved default.
         ...(ownsOrder ? {} : { position: (row.position as number) ?? found.position }),
       };
+      if (!savingFx) engine.updateTrackFx(id, updated.fx);
       set({ project: { ...latest, tracks: latest.tracks.map((t) => (t.id === id ? updated : t)) } });
     }
     syncMixToEngine();
@@ -626,6 +673,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const uid = currentUserId();
       return !!project && !!uid && project.initiatorId === uid;
     },
+    isParticipant: () => {
+      const { project } = get();
+      const uid = currentUserId();
+      if (!project || !uid) return false;
+      return (
+        project.initiatorId === uid ||
+        project.mixerId === uid ||
+        project.tracks.some((t) => t.assignedUserId === uid) ||
+        project.listeners.some((l) => l.userId === uid)
+      );
+    },
     canEditClips: (track) => {
       const uid = currentUserId();
       return !!uid && track.assignedUserId === uid;
@@ -636,6 +694,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const { project } = get();
       return !!project && canMixFinal(project, currentUserId());
     },
+    canUseFx: (track) => get().canMix() || get().canEditClips(track),
 
     roleLabel: () => {
       const { project } = get();
@@ -700,7 +759,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         for (const take of Object.values(project.takes)) {
           if (take.blob) await engine.loadTake(take.id, take.blob);
         }
-        for (const track of project.tracks) engine.setTrackClips(track.id, track.clips);
+        for (const track of project.tracks) {
+          engine.setTrackClips(track.id, track.clips);
+          engine.updateTrackFx(track.id, track.fx);
+        }
         engine.setBpm(project.bpm);
         undoStack = [];
         redoStack = [];
@@ -912,15 +974,22 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
     addTrack: async (instrument) => {
       const { project } = get();
-      if (!project || !get().isInitiator()) return;
+      // Anyone already in the song may add a new channel; only the Owner invites a
+      // player to it (see createInvite).
+      if (!project || !get().isParticipant()) return;
       const color = TRACK_COLORS[project.tracks.length % TRACK_COLORS.length];
       const position = project.tracks.reduce((max, t) => Math.max(max, t.position), -1) + 1;
-      const track = await api.addTrack(project.id, instrument, color, position);
-      // Read the song again: a live change may have arrived while we were saving.
-      const latest = get().project;
-      if (!latest || latest.tracks.some((t) => t.id === track.id)) return;
-      set({ project: { ...latest, tracks: [...latest.tracks, track] } });
-      syncMixToEngine();
+      try {
+        const track = await api.addTrack(project.id, instrument, color, position);
+        // Read the song again: a live change may have arrived while we were saving.
+        const latest = get().project;
+        if (!latest || latest.tracks.some((t) => t.id === track.id)) return;
+        set({ project: { ...latest, tracks: [...latest.tracks, track] } });
+        syncMixToEngine();
+      } catch (err) {
+        console.error("Failed to add channel:", err);
+        set({ editError: `Couldn't add that channel${errorDetail(err)}` });
+      }
     },
 
     removeTrack: async (trackId) => {
@@ -1028,6 +1097,27 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           tracks: current.tracks.map((t) => (t.id === trackId ? { ...t, assignedUserId: uid, assignedPlayerName: name } : t)),
         },
       });
+    },
+
+    assignTrackToUser: async (trackId, userId) => {
+      const { project } = get();
+      const track = project?.tracks.find((t) => t.id === trackId);
+      if (!project || !track || track.assignedUserId || !get().isInitiator()) return;
+      await api.assignTrackToUser(trackId, userId);
+      // Re-read so the assigned player's name comes back joined, like setMixer does.
+      const fresh = await api.getProject(project.id);
+      const current = get().project;
+      if (current) set({ project: { ...current, tracks: fresh.tracks } });
+    },
+
+    assignTrackByEmail: async (trackId, email) => {
+      const trimmed = email.trim();
+      if (!trimmed) return;
+      const match = await api.findProfileByEmail(trimmed);
+      if (!match) {
+        throw new Error("No account yet for that email — they need to sign in once first, or use the invite link instead.");
+      }
+      await get().assignTrackToUser(trackId, match.id);
     },
 
     // ---- Mixing -------------------------------------------------------------
@@ -1160,6 +1250,27 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     toggleChannelSolo: (trackId) => {
       set({ localSolo: { ...get().localSolo, [trackId]: !get().localSolo[trackId] } });
       syncMixToEngine();
+    },
+
+    // Owner/Mixer only — EQ, Compressor, Delay and Reverb on the saved final mix.
+    setChannelFx: (trackId, patch) => {
+      const { project } = get();
+      if (!project) return;
+      const track = project.tracks.find((t) => t.id === trackId);
+      if (!track) return;
+      if (!get().canMix() && !get().canEditClips(track)) return;
+      const nextFx = { ...track.fx, ...patch };
+      set({ project: { ...project, tracks: project.tracks.map((t) => (t.id === trackId ? { ...t, fx: nextFx } : t)) } });
+      engine.updateTrackFx(trackId, patch);
+      scheduleFxSave(trackId, patch);
+    },
+
+    nudgeChannelFx: (trackId, field, delta) => {
+      const { project } = get();
+      const track = project?.tracks.find((t) => t.id === trackId);
+      if (!track) return;
+      const patch = clampFx({ [field]: track.fx[field] + delta } as Partial<ChannelFx>);
+      get().setChannelFx(trackId, patch);
     },
 
     // ---- Clip editing ---------------------------------------------------------

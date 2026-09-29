@@ -23,12 +23,15 @@ There are four roles. **One person owns the song; each channel belongs to one pl
 | | Owner | Mixer | Player | Listener |
 | --- | :---: | :---: | :---: | :---: |
 | Who | The person who created the song (the "initiator") | One optional person the Owner picks | Whoever is assigned to a channel | Invited to hear the draft |
-| Rename song, add channels, invite people | ✅ | – | – | – |
+| Rename song, invite people | ✅ | – | – | – |
+| **Add a new (empty) channel** | ✅ | ✅ | ✅ | ✅ |
+| Invite a player to a channel | ✅ | – | – | – |
 | Choose the Mixer, remove a Listener | ✅ | – | – | – |
 | Set the tempo (until something is recorded) | ✅ | – | – | – |
 | Default channel order and colours (saved for all) | ✅ | – | – | – |
 | Remove a channel (only while it is empty) | ✅ | – | – | – |
 | **Set the final mix** (volume, mute per channel) | ✅ | ✅ | – | – |
+| **Channel FX** (EQ / Compressor / Delay / Reverb) | ✅ any channel | ✅ any channel | ✅ their own channel | – |
 | Record and edit **clips** | only their **own** channel | only their own channel | ✅ their channel | – |
 | Personal monitor mix, own order and colours (this device) | – | – | ✅ | ✅ |
 | **Publish** / **Unpublish** the song (Unpublish takes it back to a draft and off the Songs list) | ✅ | – | – | – |
@@ -196,7 +199,7 @@ Good to know:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│ [⚙][👤+][⊕]  [⏮][▶][●]      ┌ 2 │ 3 │ 0:03.9 │ − 90 + │ 4/4 ┐    [⟲][1234][♩][S] │
+│ [⚙][👤+][⊕]  [⏮][▶][■][●]   ┌ 2 │ 3 │ 0:03.9 │ − 90 + │ 4/4 ┐    [⟲][1234][♩][S] │
 │  settings / people / add     │  bar beat  time    bpm   sig  │     loop count-in click clear-solo │
 │                              └──── number display, centred ──┘                    │
 ├────────────────────────────────────────────────────────────────────────────┤
@@ -204,14 +207,15 @@ Good to know:
 └────────────────────────────────────────────────────────────────────────────┘
 ```
 
-- **Control bar** (grey, Logic style): panel buttons on the left (audio settings, **People**,
-  **Add channel** — the last two only for the Owner), then transport (back to start, play,
-  **record**), the dark number display in the middle (bar, beat, time, tempo, signature), and
-  on the right loop, **1234** count-in (blue when on), click on/off with its volume, and **S**
-  which turns off every solo. Editing tools sit on a slim second row.
+- **Control bar** (Logic style): panel buttons on the left — audio settings and **Add channel**
+  (anyone in the song), **People** (Mixer/Listener invites, Owner only) — then transport (back to
+  start, play, **stop**, **record**), the dark number display in the middle (bar, beat, time,
+  tempo, signature), and on the right loop, **1234** count-in (blue when on), click on/off with
+  its volume, and **S** which turns off every solo. Editing tools sit on a slim second row.
 - **Record** is the red button in the bar (or the **R** key). It records on your **armed**
   channel: on each of your channels a small dot button (next to M and S) arms it — filled red
-  means Record goes there. There is no separate record button per channel any more.
+  means Record goes there, locked while that channel is already recording. **Stop** (or **Space**)
+  stops a recording if one's running, otherwise stops playback.
 - **Your role** (Owner, Mixer, Player, Listener) is a small badge in the song header next to the title.
 - **Loop:** drag on the thin strip *under the bar numbers* to highlight a part; it turns the loop
   on. Drag the highlight to move it, its edges to resize it (snaps to the grid, hold Alt to
@@ -221,9 +225,19 @@ Good to know:
   Every pass is scheduled on the same audio clock as the click, so nothing drifts. The loop is
   personal and temporary (never saved) and is ignored while recording and in exports.
 - **Channels use the full screen width**, edge to edge, each as one strip: colour/number
-  tab · instrument · player name · (on your own channel) an arm dot · M (mute) S (solo) · fader.
-  The fader runs 0–2×: the halfway mark is unity (0 dB) and the top half is boost, like a
-  real mixer's headroom above 0.
+  tab · instrument · player name · (on your own channel) an arm dot · M (mute) S (solo) · fader ·
+  **FX** (Owner/Mixer, or the channel's own player). The fader is a real dB scale (−60..+6): 0 dB
+  (unity, the default) rests near the top, like a real console — most of the travel is fine
+  control right around unity, with a little headroom above and a steep drop toward silence below.
+  Underneath the fader, a row of 5 signal lights shows the microphone level while that channel is
+  armed, or the channel's own live output level the rest of the time.
+- **Channel FX** (EQ / Compressor / Delay / Reverb): click **FX** to open a small, draggable
+  plugin-style window — drag it by its title bar anywhere on screen. Pick one tool at a time from
+  the tabs at the top. Every knob is drag-to-turn (vertical drag, hold Shift to fine-tune, scroll
+  to nudge, double-click to reset). The EQ shows its real frequency-response curve, read straight
+  off the actual filter — not a decoration, it's exactly what the channel sounds like. The
+  Compressor has a live level meter. Volume and mute stay Owner/Mixer-only (the saved final mix);
+  FX is different — a channel's own player can shape their own channel's sound too.
 - **On a phone** (tested at 375 px wide, iPhone 13 mini): the bar sticks to the top while you
   scroll (the song header scrolls away). Row 1 is transport plus the number display; row 2
   is a sideways-sliding strip with everything else. Each channel strip is three short lines in
@@ -234,7 +248,8 @@ Good to know:
 
 | Key | Action |
 | --- | --- |
-| `Space` | Play / pause |
+| `Space` | Play / pause, or **stop an active recording** if one's running |
+| `Enter` | Playhead back to the start |
 | `R` | Record on your armed channel (press again to stop) |
 | `S` | Split the selected clip at the playhead |
 | `⌘/Ctrl + D` | Duplicate the selected clip (placed right after it) |
@@ -304,8 +319,12 @@ warning. Recording needs the `https://` address.
    | `0012_track_order.sql` | Default channel order |
    | `0013_storage_cleanup.sql` | Lets the app delete unused recording files |
    | `0014_roles.sql` | Owner / Mixer / Player / Listener |
+   | `0015_anyone_adds_channels.sql` | Anyone in the song may add a channel (inviting a player stays Owner-only) |
+   | `0016_channel_fx.sql` | Adds the EQ/Compressor/Delay/Reverb columns |
+   | `0017_no_default_assignee.sql` | Makes sure a new channel always starts unclaimed |
+   | `0018_players_use_channel_fx.sql` | A channel's own player may also use its FX (not just Owner/Mixer) |
 
-   `0010`–`0014` are safe to run more than once. `0004` and `0006` are debugging
+   `0010`–`0018` are safe to run more than once. `0004` and `0006` are debugging
    helpers and `0007`/`0008` cancel each other out — skip those four.
 5. **Storage:** create a **private** bucket named exactly `takes`.
 6. **Project Settings → API:** copy the *Project URL* and the *publishable*
@@ -360,7 +379,8 @@ src/
                                JoinPage (mixer / listener links)
   components/
     arrangement/               Arrangement (ruler + lanes + playhead), ChannelLane,
-                               ChannelInfo, ChannelMeter, ClipView, Ruler, EditToolbar
+                               ChannelInfo, ChannelMeter, ChannelFx (EQ/Comp/Delay/Reverb),
+                               Knob, EqCurve, ClipView, Ruler, EditToolbar
     Transport (the one control bar), TempoControl, SettingsPanel,
     AddChannelPanel, PeoplePanel (mixer + listeners), PresenceDots, ErrorToast, ...
   store/
@@ -374,6 +394,7 @@ src/
     mix.ts                     which mix a listener hears (pure)
     dbFader.ts                 fader ↔ decibel conversion (pure)
     loop.ts                    loop-region timing (pure)
+    channelFx.ts               EQ/Comp/Delay/Reverb math: compressor curve, reverb impulse (pure where possible)
     realtime.ts, remoteMerge.ts  live updates + who's here
     roles.ts                   Owner / Mixer / Player / Listener (pure)
     trackOrder.ts, trackColors.ts   channel order and colours (pure)
@@ -385,7 +406,7 @@ src/
   worklets/pcm-recorder-processor.js   lossless capture on the audio thread
 supabase/migrations/           database schema, permissions, invite functions
 scripts/test-timing.ts         checks for the latency math
-scripts/test-clips.ts          checks for clips, overlap, grid, mix, order, roles, cleanup rules   (npm test runs both)
+scripts/test-clips.ts          checks for clips, overlap, grid, mix, order, roles, cleanup, FX rules   (npm test runs both)
 ```
 
 ## Audio timing principles
