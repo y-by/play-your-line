@@ -19,8 +19,11 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
   const recordingPhase = useProjectStore((s) => s.recordingPhase);
   const canEdit = useProjectStore((s) => s.canEditClips(track));
   const isInitiator = useProjectStore((s) => s.isInitiator());
+  const isParticipant = useProjectStore((s) => s.isParticipant());
   const canAdjustMix = useProjectStore((s) => s.canAdjustMix());
   const setTrackColor = useProjectStore((s) => s.setTrackColor);
+  const renameTrack = useProjectStore((s) => s.renameTrack);
+  const [editingInstrument, setEditingInstrument] = useState(false);
   const online = useProjectStore((s) => !!track.assignedUserId && s.presentUsers.some((u) => u.userId === track.assignedUserId));
   const [pickingColor, setPickingColor] = useState(false);
   const [fxAnchor, setFxAnchor] = useState<{ top: number; left: number } | null>(null);
@@ -85,7 +88,27 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
       ) : (
       <div className="info-main">
         <div className="info-top">
-          <span className="info-instrument">{track.instrument}</span>
+          {editingInstrument ? (
+            <input
+              autoFocus
+              className="info-instrument-input"
+              defaultValue={track.instrument}
+              onBlur={(e) => {
+                void renameTrack(track.id, e.target.value);
+                setEditingInstrument(false);
+              }}
+              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <button
+              className={isParticipant ? "info-instrument" : "info-instrument readonly"}
+              onClick={() => isParticipant && setEditingInstrument(true)}
+              title={isParticipant ? "Rename this channel" : undefined}
+            >
+              {track.instrument}
+            </button>
+          )}
           <span className={track.assignedUserId ? "info-name" : "info-name unclaimed"}>
             {online && <span className="online-dot" title={`${playerName} is here`} />}
             {playerName}

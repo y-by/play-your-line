@@ -122,6 +122,8 @@ interface ProjectState {
   /** Channel colours: the initiator's choice is saved for everyone; anyone else recolours only for themselves. */
   personalColors: Record<string, string>;
   setTrackColor: (trackId: string, color: string) => Promise<void>;
+  /** Any participant may rename a channel's instrument label. */
+  renameTrack: (trackId: string, instrument: string) => Promise<void>;
   personalOrder: string[] | null;
   moveTrack: (trackId: string, toIndex: number) => Promise<void>;
   resetOrder: () => void;
@@ -1040,6 +1042,21 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         console.error("Failed to save the colour:", err);
         const current = get().project;
         if (current) set({ project: { ...current, tracks: before }, editError: `Couldn't save the colour${errorDetail(err)}` });
+      }
+    },
+
+    renameTrack: async (trackId, instrument) => {
+      const { project } = get();
+      const trimmed = instrument.trim();
+      if (!project || !trimmed || !get().isParticipant()) return;
+      const before = project.tracks;
+      set({ project: { ...project, tracks: before.map((t) => (t.id === trackId ? { ...t, instrument: trimmed } : t)) } });
+      try {
+        await api.updateTrackInstrument(trackId, trimmed);
+      } catch (err) {
+        console.error("Failed to rename the channel:", err);
+        const current = get().project;
+        if (current) set({ project: { ...current, tracks: before }, editError: `Couldn't rename that channel${errorDetail(err)}` });
       }
     },
 

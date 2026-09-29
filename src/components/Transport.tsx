@@ -131,8 +131,6 @@ export function Transport({ panel, onPanel }: Props) {
   return (
     <div className="cbar">
       <div className="cb-row cb-main">
-        <PanelButtons panel={panel} onPanel={onPanel} className="hide-m cb-panels" />
-
         <div className="cb-center">
           <div className="lg cb-transport">
             <button className="lb" onClick={() => seek(0)} disabled={busy} title="Back to start" aria-label="Back to start">
@@ -198,7 +196,7 @@ export function Transport({ panel, onPanel }: Props) {
 
       <div className="cb-row cb-tools">
         <div className="tools-scroll">
-          <PanelButtons panel={panel} onPanel={onPanel} className="only-m" />
+          <PanelButtons panel={panel} onPanel={onPanel} className="" />
           <ModeButtons className="only-m" />
           {hasChannels && <EditToolbar />}
         </div>

@@ -1318,11 +1318,41 @@
 }
 
 .info-instrument {
+  font: inherit;
   font-size: 12px;
   color: var(--color-label-secondary);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  background: none;
+  border: none;
+  padding: 0;
+  margin: 0;
+  text-align: left;
+  cursor: pointer;
+  border-radius: 4px;
+  max-width: 100%;
+}
+
+.info-instrument:not(.readonly):hover {
+  background: var(--color-fill);
+}
+
+.info-instrument.readonly {
+  cursor: default;
+}
+
+.info-instrument-input {
+  font: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  background: var(--color-fill);
+  border: none;
+  color: var(--color-label);
+  border-radius: 4px;
+  padding: 0 2px;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .info-controls {
@@ -2340,13 +2370,6 @@
   min-height: 48px;
 }
 
-.cb-panels {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-}
-
 .cb-center {
   display: flex;
   align-items: center;
@@ -2576,13 +2599,6 @@
 
 /* Narrow windows: the display leaves the centre and flows with the rest */
 @media (max-width: 900px) {
-  /* Too narrow for a centred group with an absolutely-placed left button
-     cluster — go back to plain document flow, wrapping if needed. */
-  .cb-panels {
-    position: static;
-    transform: none;
-  }
-
   .cb-main {
     justify-content: flex-start;
     flex-wrap: wrap;

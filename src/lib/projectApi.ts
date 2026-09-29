@@ -438,6 +438,12 @@ export async function updateTrackColor(trackId: string, color: string): Promise<
   if (error) throw error;
 }
 
+export async function updateTrackInstrument(trackId: string, instrument: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("tracks").update({ instrument }).eq("id", trackId);
+  if (error) throw error;
+}
+
 export async function listTrackFiles(projectId: string, trackId: string): Promise<StoredFile[]> {
   const client = requireSupabase();
   const { data, error } = await client.storage.from("takes").list(`${projectId}/${trackId}`, { limit: 1000 });
