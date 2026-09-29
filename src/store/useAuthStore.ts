@@ -32,6 +32,14 @@ async function upsertProfileFromAuthUser(userId: string, meta: Record<string, un
 
 let initialized = false;
 
+// Google's redirect always lands back on the bare origin (that's the only URL
+// registered in Supabase's Redirect URLs, so a deep link like /invite/<token>
+// isn't safe to pass as `redirectTo` directly — Supabase would reject it and
+// fall back to the site's default anyway). Instead, remember where the user
+// was before sending them off, and hop back there ourselves once signed in —
+// e.g. so accepting an invite doesn't strand them on the home page instead.
+const POST_SIGNIN_REDIRECT_KEY = "pyl_post_signin_redirect";
+
 export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   userId: null,
@@ -39,6 +47,11 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
   signInWithGoogle: async () => {
     if (!supabase) return;
+    try {
+      sessionStorage.setItem(POST_SIGNIN_REDIRECT_KEY, window.location.pathname + window.location.search);
+    } catch {
+      // Worst case (private browsing etc.) they land on the home page instead — sign-in still works.
+    }
     await supabase.auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: window.location.origin },
@@ -87,6 +100,18 @@ export const useAuthStore = create<AuthState>((set, get) => ({
           : { id: user.id, displayName: null, avatarUrl: null },
         loading: false,
       });
+
+      try {
+        const dest = sessionStorage.getItem(POST_SIGNIN_REDIRECT_KEY);
+        if (dest) {
+          sessionStorage.removeItem(POST_SIGNIN_REDIRECT_KEY);
+          if (dest !== window.location.pathname + window.location.search) {
+            window.location.replace(dest);
+          }
+        }
+      } catch {
+        // Same fallback as above — sign-in already succeeded either way.
+      }
     });
   },
 }));

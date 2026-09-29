@@ -4,6 +4,13 @@ import { useAuthStore } from "../store/useAuthStore";
 import { getInviteDetails, acceptTrackInvite, type InviteDetails } from "../lib/projectApi";
 import { GoogleIcon, WaveformIcon, CheckIcon } from "../components/icons/Icons";
 
+/** Supabase errors are plain objects with a `.message`, not `instanceof Error` — this catches both. */
+function errorMessage(err: unknown, fallback: string): string {
+  if (err instanceof Error) return err.message;
+  if (err && typeof err === "object" && "message" in err) return String((err as { message: unknown }).message);
+  return fallback;
+}
+
 export function InvitePage() {
   const { token } = useParams<{ token: string }>();
   const navigate = useNavigate();
@@ -21,7 +28,7 @@ export function InvitePage() {
       .then(setDetails)
       .catch((err) => {
         console.error("Failed to load invite:", err);
-        setError("This invite link doesn't look valid.");
+        setError(errorMessage(err, "This invite link doesn't look valid."));
       });
   }, [token]);
 
@@ -34,7 +41,7 @@ export function InvitePage() {
       navigate(details ? `/song/${details.projectId}` : "/");
     } catch (err) {
       console.error("Failed to accept invite:", err);
-      setError(err instanceof Error ? err.message : "Couldn't accept this invite.");
+      setError(errorMessage(err, "Couldn't accept this invite."));
     } finally {
       setAccepting(false);
     }
