@@ -3399,10 +3399,10 @@
 
 .shell-new {
   justify-content: center;
+  margin-top: auto;
 }
 
 .shell-user {
-  margin-top: auto;
   display: flex;
   align-items: center;
   justify-content: space-between;
