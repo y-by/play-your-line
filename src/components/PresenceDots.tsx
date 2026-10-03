@@ -9,7 +9,7 @@ function initials(name: string): string {
   return (parts[0][0] + (parts.length > 1 ? parts[parts.length - 1][0] : "")).toUpperCase();
 }
 
-/** Small circles for everyone who has this song open right now. */
+/** Small circles for everyone who has this project open right now. */
 export function PresenceDots() {
   const users = useProjectStore((s) => s.presentUsers);
   const me = useAuthStore((s) => s.userId);

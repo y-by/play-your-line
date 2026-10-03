@@ -1103,6 +1103,22 @@
   }
 }
 
+.song-list-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.song-list-people {
+  font-size: 12px;
+  color: var(--color-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .song-list-item .song-list-title {
   flex: 1;
   min-width: 0;
@@ -3068,3 +3084,42 @@
   color: #6d7885;
 }
 
+
+.name-prompt {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-width: 420px;
+}
+
+.danger-zone {
+  border-top: 1px solid var(--color-separator);
+  margin-top: 8px;
+  padding-top: 12px;
+}
+
+.danger-zone h3 {
+  color: var(--color-red);
+}
+
+.danger-btn {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px solid var(--color-red);
+  color: var(--color-red);
+  border-radius: 980px;
+  padding: 8px 16px;
+  font-size: 14px;
+  font-weight: 590;
+  cursor: pointer;
+}
+
+.danger-btn:hover:not(:disabled) {
+  background: var(--color-red);
+  color: white;
+}
+
+.danger-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

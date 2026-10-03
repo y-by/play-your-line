@@ -53,7 +53,7 @@ export function SongPage() {
   };
 
   const handlePublish = async () => {
-    if (!confirm("Publish this song? Everyone signed in will be able to find and listen to it in Songs.")) return;
+    if (!confirm("Publish this project? Everyone signed in will be able to find and listen to it in Published Projects.")) return;
     setPublishing(true);
     try {
       await publish();
@@ -63,7 +63,7 @@ export function SongPage() {
   };
 
   const handleUnpublish = async () => {
-    if (!confirm("Unpublish this song? It will disappear from the Songs list and only the people in it will see it.")) return;
+    if (!confirm("Unpublish this project? It will disappear from the Published Projects list and only the people in it will see it.")) return;
     setPublishing(true);
     try {
       await unpublish();
@@ -75,7 +75,7 @@ export function SongPage() {
   if (projectLoading) {
     return (
       <div className="app">
-        <p className="settings-note">Loading song…</p>
+        <p className="settings-note">Loading project…</p>
       </div>
     );
   }
@@ -83,9 +83,9 @@ export function SongPage() {
   if (projectError || !project) {
     return (
       <div className="app">
-        <p className="settings-note">{projectError ?? "This song couldn't be found, or you don't have access to it."}</p>
+        <p className="settings-note">{projectError ?? "This project couldn't be found, or you don't have access to it."}</p>
         <Link to="/" className="link-btn">
-          Back to your songs
+          Back to your projects
         </Link>
       </div>
     );
@@ -96,7 +96,7 @@ export function SongPage() {
   return (
     <div className="app">
       <header className="app-header">
-        <Link to="/" className="icon-btn" title="Back to your songs" aria-label="Back to your songs">
+        <Link to="/" className="icon-btn" title="Back to your projects" aria-label="Back to your projects">
           <BackArrowIcon size={16} />
         </Link>
         <h1>
@@ -118,7 +118,7 @@ export function SongPage() {
             <button
               className={isInitiator ? "title-edit-trigger" : "title-edit-trigger readonly"}
               onClick={() => isInitiator && setEditingTitle(true)}
-              title={isInitiator ? "Rename song" : undefined}
+              title={isInitiator ? "Rename project" : undefined}
             >
               {project.title}
             </button>
@@ -141,7 +141,7 @@ export function SongPage() {
           </span>
           <PresenceDots />
           {roleLabel && (
-            <span className="role-badge" title={`Your role in this song: ${roleLabel}`}>
+            <span className="role-badge" title={`Your role in this project: ${roleLabel}`}>
               {roleLabel}
             </span>
           )}

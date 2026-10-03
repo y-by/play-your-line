@@ -88,6 +88,18 @@ export function Arrangement() {
     if (x > visibleEnd - 40 || x < visibleStart) el.scrollLeft = Math.max(0, x - 40);
   }, [positionSec, isPlaying, pxPerSec]);
 
+  // When the playhead jumps back to the left of the view (Back to start, a loop
+  // wrapping, a click on the ruler), bring the view with it — even when stopped.
+  const pxPerSecRef = useRef(pxPerSec);
+  useEffect(() => {
+    pxPerSecRef.current = pxPerSec;
+  }, [pxPerSec]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    if (positionSec * pxPerSecRef.current < el.scrollLeft) el.scrollLeft = Math.max(0, positionSec * pxPerSecRef.current - 40);
+  }, [positionSec]);
+
   // Pinch to zoom on a trackpad (and Ctrl + scroll wheel). The moment under
   // your fingers stays put while the timeline stretches around it.
   useEffect(() => {

@@ -8,26 +8,51 @@ interface AuthState {
   profile: Profile | null;
   signInWithGoogle: () => Promise<void>;
   signOut: () => Promise<void>;
+  /** Saves the name (stage name) other people see. Throws if it couldn't be saved. */
+  setDisplayName: (name: string) => Promise<void>;
+  /** True right after a brand-new account is created, until the person confirms their name. */
+  needsName: boolean;
+  confirmName: (name: string) => Promise<void>;
   init: () => void;
 }
 
-async function upsertProfileFromAuthUser(userId: string, meta: Record<string, unknown>, email: string | null) {
+// Survives the page reload that follows a first sign-in from an invite link.
+const NAME_PROMPT_KEY = "pyl_name_prompt_pending";
+function readNamePending(): boolean {
+  try {
+    return localStorage.getItem(NAME_PROMPT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+function writeNamePending(pending: boolean) {
+  try {
+    if (pending) localStorage.setItem(NAME_PROMPT_KEY, "1");
+    else localStorage.removeItem(NAME_PROMPT_KEY);
+  } catch {
+    // Without storage the prompt is simply skipped.
+  }
+}
+
+async function upsertProfileFromAuthUser(meta: Record<string, unknown>, email: string | null) {
   if (!supabase) return null;
   const displayName = (meta.full_name as string) ?? (meta.name as string) ?? null;
   const avatarUrl = (meta.avatar_url as string) ?? (meta.picture as string) ?? null;
-  // .select() below deliberately omits `email` — that column's SELECT grant
-  // is locked to the find_profile_by_email() RPC only (see 0019), so
-  // requesting it here (even for one's own row) would fail.
-  const { data, error } = await supabase
-    .from("profiles")
-    .upsert({ id: userId, display_name: displayName, avatar_url: avatarUrl, email }, { onConflict: "id" })
-    .select("id, display_name, avatar_url")
-    .single();
-  if (error) {
+  // Saved through a database function (see 0025): `email` can't be read by the
+  // client, which a plain upsert needs, and the function also keeps a chosen
+  // name from being overwritten by Google's.
+  const { data, error } = await supabase.rpc("upsert_own_profile", {
+    p_display_name: displayName,
+    p_avatar_url: avatarUrl,
+    p_email: email,
+  });
+  const row = data?.[0];
+  if (error || !row) {
     console.error("Failed to create/update profile row:", error);
     return null;
   }
-  return data;
+  if (row.is_new) writeNamePending(true);
+  return { id: row.id as string, display_name: row.display_name as string | null, avatar_url: row.avatar_url as string | null };
 }
 
 let initialized = false;
@@ -44,6 +69,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   loading: true,
   userId: null,
   profile: null,
+  needsName: readNamePending(),
 
   signInWithGoogle: async () => {
     if (!supabase) return;
@@ -56,6 +82,21 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       provider: "google",
       options: { redirectTo: window.location.origin },
     });
+  },
+
+  setDisplayName: async (name) => {
+    const trimmed = name.trim();
+    const { userId, profile } = get();
+    if (!supabase || !userId || !trimmed || trimmed === profile?.displayName) return;
+    const { error } = await supabase.from("profiles").update({ display_name: trimmed }).eq("id", userId);
+    if (error) throw error;
+    set({ profile: profile ? { ...profile, displayName: trimmed } : { id: userId, displayName: trimmed, avatarUrl: null } });
+  },
+
+  confirmName: async (name) => {
+    await get().setDisplayName(name);
+    writeNamePending(false);
+    set({ needsName: false });
   },
 
   signOut: async () => {
@@ -92,12 +133,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
         set({ loading: false }); // token refresh etc. — profile is already up to date
         return;
       }
-      const profileRow = await upsertProfileFromAuthUser(user.id, user.user_metadata ?? {}, user.email ?? null);
+      const profileRow = await upsertProfileFromAuthUser(user.user_metadata ?? {}, user.email ?? null);
       set({
         userId: user.id,
         profile: profileRow
           ? { id: profileRow.id, displayName: profileRow.display_name, avatarUrl: profileRow.avatar_url }
           : { id: user.id, displayName: null, avatarUrl: null },
+        needsName: readNamePending(),
         loading: false,
       });
 

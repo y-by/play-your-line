@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { SignInGate } from "../components/SignInGate";
-import { listPublishedProjects, getProject, hydrateTakeBlobs } from "../lib/projectApi";
+import { listPublishedProjects, getProject, hydrateTakeBlobs, fetchParticipantNames } from "../lib/projectApi";
 import { mixdownProject } from "../lib/mixdown";
 import type { Project } from "../types/project";
 import { WaveformIcon, BackArrowIcon, PlayIcon, PauseIcon, SpinnerIcon } from "../components/icons/Icons";
 
 type PlayState = "idle" | "loading" | "playing" | "paused";
 
-function SongListItem({ project }: { project: Project }) {
+function SongListItem({ project, people }: { project: Project; people: string[] }) {
   const [state, setState] = useState<PlayState>("idle");
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const objectUrlRef = useRef<string | null>(null);
@@ -57,7 +57,10 @@ function SongListItem({ project }: { project: Project }) {
         {state === "loading" && <SpinnerIcon size={16} />}
         {state !== "loading" && (state === "playing" ? <PauseIcon size={15} /> : <PlayIcon size={15} />)}
       </button>
-      <span className="song-list-title">{project.title}</span>
+      <span className="song-list-main">
+        <span className="song-list-title">{project.title}</span>
+        {people.length > 0 && <span className="song-list-people">{people.join(" · ")}</span>}
+      </span>
       <Link to={`/song/${project.id}`} className="song-list-open" title="Open in editor">
         Open
       </Link>
@@ -67,11 +70,15 @@ function SongListItem({ project }: { project: Project }) {
 
 function SongsListContent() {
   const [projects, setProjects] = useState<Project[] | null>(null);
+  const [people, setPeople] = useState<Record<string, string[]>>({});
 
   useEffect(() => {
     listPublishedProjects()
-      .then(setProjects)
-      .catch((err) => console.error("Failed to load published songs:", err));
+      .then((list) => {
+        setProjects(list);
+        fetchParticipantNames(list).then(setPeople).catch((err) => console.error("Failed to load participant names:", err));
+      })
+      .catch((err) => console.error("Failed to load published projects:", err));
   }, []);
 
   return (
@@ -84,15 +91,15 @@ function SongsListContent() {
           <span className="header-icon">
             <WaveformIcon size={22} />
           </span>
-          Published Songs
+          Published Projects
         </h1>
       </header>
 
       <main className="track-list">
         {projects === null && <div className="empty-state">Loading…</div>}
-        {projects?.length === 0 && <div className="empty-state">No songs have been published yet.</div>}
+        {projects?.length === 0 && <div className="empty-state">No projects have been published yet.</div>}
         {projects?.map((p) => (
-          <SongListItem key={p.id} project={p} />
+          <SongListItem key={p.id} project={p} people={people[p.id] ?? []} />
         ))}
       </main>
     </div>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useProjectStore } from "../store/useProjectStore";
+import { errorMessage } from "../lib/errorMessage";
 import type { Project } from "../types/project";
 import { PlusCircleIcon, UserPlusIcon, MicIcon, XmarkCircleIcon } from "./icons/Icons";
 
@@ -21,6 +22,7 @@ export function AddChannelPanel() {
   const claimChannel = useProjectStore((s) => s.claimChannel);
   const assignTrackToUser = useProjectStore((s) => s.assignTrackToUser);
   const assignTrackByEmail = useProjectStore((s) => s.assignTrackByEmail);
+  const reassignTrack = useProjectStore((s) => s.reassignTrack);
   const removeTrack = useProjectStore((s) => s.removeTrack);
   const isInitiator = useProjectStore((s) => s.isInitiator());
   const isParticipant = useProjectStore((s) => s.isParticipant());
@@ -64,7 +66,7 @@ export function AddChannelPanel() {
       setAssigningTrackId(null);
     } catch (err) {
       console.error("Failed to assign the channel:", err);
-      setAssignErrors((prev) => ({ ...prev, [trackId]: "Couldn't assign that channel." }));
+      setAssignErrors((prev) => ({ ...prev, [trackId]: errorMessage(err, "Couldn't assign that channel.") }));
     } finally {
       setAssigningBusy(null);
     }
@@ -80,10 +82,57 @@ export function AddChannelPanel() {
       setAssigningTrackId(null);
       setEmailInputs((prev) => ({ ...prev, [trackId]: "" }));
     } catch (err) {
-      setAssignErrors((prev) => ({ ...prev, [trackId]: err instanceof Error ? err.message : "Couldn't assign that channel." }));
+      setAssignErrors((prev) => ({ ...prev, [trackId]: errorMessage(err, "Couldn't assign that channel.") }));
     } finally {
       setAssigningBusy(null);
     }
+  };
+
+  const handleUnclaim = async (trackId: string) => {
+    if (!confirm("Make this channel unclaimed? Its current player will no longer be able to record on it.")) return;
+    setAssignErrors((prev) => ({ ...prev, [trackId]: "" }));
+    setAssigningBusy(trackId);
+    try {
+      await reassignTrack(trackId, null);
+      setAssigningTrackId(null);
+    } catch (err) {
+      console.error("Failed to unclaim the channel:", err);
+      setAssignErrors((prev) => ({ ...prev, [trackId]: errorMessage(err, "Couldn't make that channel unclaimed.") }));
+    } finally {
+      setAssigningBusy(null);
+    }
+  };
+
+  const claimed = project.tracks.filter((t) => !!t.assignedUserId);
+
+  const renderAssignPanel = (t: (typeof project.tracks)[number]) => {
+    const candidates = participantCandidates(project, t.id).filter((p) => p.id !== t.assignedUserId);
+    return (
+      <div className="assign-panel">
+        {candidates.length > 0 && (
+          <div className="assign-candidates">
+            {candidates.map((p) => (
+              <button key={p.id} className="assign-candidate-btn" disabled={assigningBusy === t.id} onClick={() => handleAssignToUser(t.id, p.id)}>
+                {p.name ?? "Unnamed player"}
+              </button>
+            ))}
+          </div>
+        )}
+        <div className="assign-email-row">
+          <input
+            type="email"
+            placeholder="their@email.com"
+            value={emailInputs[t.id] ?? ""}
+            onChange={(e) => setEmailInputs((prev) => ({ ...prev, [t.id]: e.target.value }))}
+            onKeyDown={(e) => e.key === "Enter" && handleAssignByEmail(t.id)}
+          />
+          <button disabled={assigningBusy === t.id} onClick={() => handleAssignByEmail(t.id)}>
+            Assign
+          </button>
+        </div>
+        {assignErrors[t.id] && <p className="assign-error">{assignErrors[t.id]}</p>}
+      </div>
+    );
   };
 
   return (
@@ -145,37 +194,35 @@ export function AddChannelPanel() {
                   </button>
                 </div>
               )}
-              {isInitiator && assigningTrackId === t.id && (
-                <div className="assign-panel">
-                  {participantCandidates(project, t.id).length > 0 && (
-                    <div className="assign-candidates">
-                      {participantCandidates(project, t.id).map((p) => (
-                        <button
-                          key={p.id}
-                          className="assign-candidate-btn"
-                          disabled={assigningBusy === t.id}
-                          onClick={() => handleAssignToUser(t.id, p.id)}
-                        >
-                          {p.name ?? "Unnamed player"}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  <div className="assign-email-row">
-                    <input
-                      type="email"
-                      placeholder="their@email.com"
-                      value={emailInputs[t.id] ?? ""}
-                      onChange={(e) => setEmailInputs((prev) => ({ ...prev, [t.id]: e.target.value }))}
-                      onKeyDown={(e) => e.key === "Enter" && handleAssignByEmail(t.id)}
-                    />
-                    <button disabled={assigningBusy === t.id} onClick={() => handleAssignByEmail(t.id)}>
-                      Assign
-                    </button>
-                  </div>
-                  {assignErrors[t.id] && <p className="assign-error">{assignErrors[t.id]}</p>}
+              {isInitiator && assigningTrackId === t.id && renderAssignPanel(t)}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {isInitiator && claimed.length > 0 && (
+        <div className="unclaimed-list">
+          <h3>Players on channels</h3>
+          <p className="settings-note">Move a channel to someone else, or make it unclaimed. Only possible while the channel has no recordings.</p>
+          {claimed.map((t) => (
+            <div key={t.id} className="unclaimed-row">
+              <span className="unclaimed-row-instrument">
+                {t.instrument} <span className="settings-note">· {t.assignedPlayerName ?? "Player"}</span>
+              </span>
+              {t.clips.length > 0 ? (
+                <span className="settings-note">Has recordings</span>
+              ) : (
+                <div className="unclaimed-actions">
+                  <button className="unclaimed-invite-btn" onClick={() => setAssigningTrackId(assigningTrackId === t.id ? null : t.id)}>
+                    <UserPlusIcon size={13} />
+                    Reassign
+                  </button>
+                  <button className="unclaimed-invite-btn" disabled={assigningBusy === t.id} onClick={() => handleUnclaim(t.id)}>
+                    Make unclaimed
+                  </button>
                 </div>
               )}
+              {assigningTrackId === t.id && t.clips.length === 0 && renderAssignPanel(t)}
             </div>
           ))}
         </div>

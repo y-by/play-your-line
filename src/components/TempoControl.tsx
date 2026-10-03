@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { useProjectStore } from "../store/useProjectStore";
 import { LockIcon } from "./icons/Icons";
 
@@ -9,7 +10,18 @@ export function TempoControl() {
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const tempoLocked = useProjectStore((s) => s.tempoLocked());
 
+  // Typing is held as text and only applied on Enter/blur — applying (and clamping to 20)
+  // on every keystroke made it impossible to type a number like 95.
+  const [typed, setTyped] = useState<{ forBpm: number | undefined; text: string } | null>(null);
+  const draft = typed && typed.forBpm === project?.bpm ? typed.text : null; // a tempo change from elsewhere drops the draft
+  const setDraft = (text: string | null) => setTyped(text === null ? null : { forBpm: project?.bpm, text });
+
   if (!project) return null;
+  const commit = () => {
+    const n = Number(draft);
+    setDraft(null);
+    if (draft !== null && draft.trim() !== "" && Number.isFinite(n)) setTempo(n);
+  };
 
   const disabled = !isInitiator || !!recordingTrackId || tempoLocked;
 
@@ -32,9 +44,11 @@ export function TempoControl() {
         type="number"
         min={20}
         max={300}
-        value={project.bpm}
+        value={draft ?? project.bpm}
         disabled={disabled}
-        onChange={(e) => setTempo(Number(e.target.value))}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
         aria-label="Tempo in beats per minute"
       />
       <button className="tempo-step" disabled={disabled} onClick={() => setTempo(project.bpm + 1)} aria-label="Increase tempo">

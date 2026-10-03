@@ -179,6 +179,32 @@ export async function listPublishedProjects(): Promise<Project[]> {
   return (data ?? []).map((row) => mapProject(row, [], {}));
 }
 
+/** Who is in each project, for the cards: the Owner first, then the Mixer, then each channel's player. */
+export async function fetchParticipantNames(projects: Project[]): Promise<Record<string, string[]>> {
+  if (projects.length === 0) return {};
+  const client = requireSupabase();
+  const { data: tracks, error } = await client
+    .from("tracks")
+    .select("project_id, assigned_user_id")
+    .in("project_id", projects.map((p) => p.id));
+  if (error) throw error;
+
+  const idsByProject: Record<string, string[]> = {};
+  for (const p of projects) idsByProject[p.id] = [p.initiatorId, ...(p.mixerId ? [p.mixerId] : [])];
+  for (const t of tracks ?? []) if (t.assigned_user_id) idsByProject[t.project_id]?.push(t.assigned_user_id as string);
+
+  const allIds = [...new Set(Object.values(idsByProject).flat())];
+  const { data: profiles, error: pe } = await client.from("profiles").select("id, display_name").in("id", allIds);
+  if (pe) throw pe;
+  const nameOf = new Map((profiles ?? []).map((r) => [r.id as string, (r.display_name as string | null) ?? null]));
+
+  const result: Record<string, string[]> = {};
+  for (const [projectId, ids] of Object.entries(idsByProject)) {
+    result[projectId] = [...new Set(ids)].map((id) => nameOf.get(id)).filter((n): n is string => !!n);
+  }
+  return result;
+}
+
 export async function createProject(title: string, initiatorId: string): Promise<Project> {
   const client = requireSupabase();
   const id = crypto.randomUUID();
@@ -197,6 +223,21 @@ export async function createProject(title: string, initiatorId: string): Promise
 export async function setTempo(projectId: string, bpm: number): Promise<void> {
   const client = requireSupabase();
   const { error } = await client.from("projects").update({ bpm, updated_at: new Date().toISOString() }).eq("id", projectId);
+  if (error) throw error;
+}
+
+/**
+ * Owner only, irreversible. Removes every recording file first (while the
+ * channel rows still exist for the storage policy to check), then the project
+ * row — which cascades to channels, takes, clips, invites and listeners.
+ */
+export async function deleteProject(projectId: string, trackIds: string[]): Promise<void> {
+  const client = requireSupabase();
+  for (const trackId of trackIds) {
+    const files = await listTrackFiles(projectId, trackId);
+    await removeTakeFiles(projectId, trackId, files.map((f) => f.name));
+  }
+  const { error } = await client.from("projects").delete().eq("id", projectId);
   if (error) throw error;
 }
 
@@ -222,14 +263,23 @@ export async function publishProject(projectId: string): Promise<void> {
   if (error) throw error;
 }
 
-export async function addTrack(projectId: string, instrument: string, color: string, position: number): Promise<Track> {
+export async function addTrack(
+  projectId: string,
+  instrument: string,
+  color: string,
+  position: number,
+  assignedUserId: string | null = null,
+  assignedName: string | null = null
+): Promise<Track> {
   const client = requireSupabase();
   const id = crypto.randomUUID();
-  const { error: insertError } = await client.from("tracks").insert({ id, project_id: projectId, instrument, color, position });
+  const { error: insertError } = await client
+    .from("tracks")
+    .insert({ id, project_id: projectId, instrument, color, position, ...(assignedUserId ? { assigned_user_id: assignedUserId } : {}) });
   if (insertError) throw insertError;
   const { data, error } = await client.from("tracks").select("*").eq("id", id).single();
   if (error) throw error;
-  return mapTrack(data, [], null);
+  return mapTrack(data, [], assignedUserId ? assignedName : null);
 }
 
 /** Saves the default channel order (initiator only): each channel's position becomes its place in the list. */
@@ -281,6 +331,13 @@ export async function claimOwnTrack(trackId: string): Promise<void> {
 export async function assignTrackToUser(trackId: string, userId: string): Promise<void> {
   const client = requireSupabase();
   const { error } = await client.rpc("assign_track_to_user", { p_track_id: trackId, p_user_id: userId });
+  if (error) throw error;
+}
+
+/** Owner hands a claimed channel to someone else (or null = unclaimed). The database refuses if it has clips. */
+export async function reassignTrack(trackId: string, userId: string | null): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc("reassign_track", { p_track_id: trackId, p_user_id: userId });
   if (error) throw error;
 }
 

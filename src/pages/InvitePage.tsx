@@ -2,14 +2,8 @@ import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
 import { getInviteDetails, acceptTrackInvite, type InviteDetails } from "../lib/projectApi";
+import { errorMessage } from "../lib/errorMessage";
 import { GoogleIcon, WaveformIcon, CheckIcon } from "../components/icons/Icons";
-
-/** Supabase errors are plain objects with a `.message`, not `instanceof Error` — this catches both. */
-function errorMessage(err: unknown, fallback: string): string {
-  if (err instanceof Error) return err.message;
-  if (err && typeof err === "object" && "message" in err) return String((err as { message: unknown }).message);
-  return fallback;
-}
 
 export function InvitePage() {
   const { token } = useParams<{ token: string }>();
@@ -61,7 +55,7 @@ export function InvitePage() {
           <>
             <h1>{details.projectTitle}</h1>
             <p>
-              You're invited to play <strong>{details.instrument}</strong> on this song.
+              You're invited to play <strong>{details.instrument}</strong> on this project.
             </p>
 
             {details.status !== "pending" && <p className="settings-note">This invite has already been used.</p>}

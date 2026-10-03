@@ -70,6 +70,7 @@ interface ProjectState {
   toggleMetronome: () => void;
   metronomeVolume: number;
   setMetronomeVolume: (volume: number) => void;
+  testMetronomeClick: () => void;
   countInEnabled: boolean;
   setCountInEnabled: (enabled: boolean) => void;
   isPlaying: boolean;
@@ -132,6 +133,8 @@ interface ProjectState {
   claimChannel: (trackId: string) => Promise<void>;
   /** Owner assigns an unclaimed channel straight to a known participant — no invite/accept step. */
   assignTrackToUser: (trackId: string, userId: string) => Promise<void>;
+  /** Owner moves a claimed channel to someone else, or null to make it unclaimed. Only while it has no clips. */
+  reassignTrack: (trackId: string, userId: string | null) => Promise<void>;
   /** Same, but looks the person up by email first. Throws if nobody's signed up with that email yet. */
   assignTrackByEmail: (trackId: string, email: string) => Promise<void>;
 
@@ -214,6 +217,8 @@ interface ProjectState {
   publish: () => Promise<void>;
   /** Owner only: take a published song back to a draft. */
   unpublish: () => Promise<void>;
+  /** Owner only, irreversible: deletes the project and all its recordings. Throws if it couldn't. */
+  deleteProject: () => Promise<void>;
 }
 
 const LATENCY_STORAGE_KEY = "pyl.latencyMs";
@@ -834,6 +839,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({ metronomeVolume: clamped });
       engine.setMetronomeVolume(clamped);
     },
+    testMetronomeClick: () => void engine.playTestClick(),
     countInEnabled: readStoredCountIn(),
     setCountInEnabled: (enabled) => {
       set({ countInEnabled: enabled });
@@ -981,8 +987,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       if (!project || !get().isParticipant()) return;
       const color = TRACK_COLORS[project.tracks.length % TRACK_COLORS.length];
       const position = project.tracks.reduce((max, t) => Math.max(max, t.position), -1) + 1;
+      // Everyone except the Owner plays the channel they add (the Owner often sets channels up for others).
+      const uid = currentUserId();
+      const mine = !get().isInitiator() && uid ? uid : null;
+      const myName = useAuthStore.getState().profile?.displayName ?? null;
       try {
-        const track = await api.addTrack(project.id, instrument, color, position);
+        const track = await api.addTrack(project.id, instrument, color, position, mine, myName);
         // Read the song again: a live change may have arrived while we were saving.
         const latest = get().project;
         if (!latest || latest.tracks.some((t) => t.id === track.id)) return;
@@ -1116,10 +1126,21 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       });
     },
 
+    reassignTrack: async (trackId, userId) => {
+      const { project } = get();
+      const track = project?.tracks.find((t) => t.id === trackId);
+      if (!project || !track || track.clips.length > 0 || !get().isInitiator()) return;
+      await api.reassignTrack(trackId, userId);
+      const fresh = await api.getProject(project.id);
+      const current = get().project;
+      if (current) set({ project: { ...current, tracks: fresh.tracks } });
+    },
+
     assignTrackToUser: async (trackId, userId) => {
       const { project } = get();
       const track = project?.tracks.find((t) => t.id === trackId);
-      if (!project || !track || track.assignedUserId || !get().isInitiator()) return;
+      if (!project || !track || !get().isInitiator()) return;
+      if (track.assignedUserId) return get().reassignTrack(trackId, userId);
       await api.assignTrackToUser(trackId, userId);
       // Re-read so the assigned player's name comes back joined, like setMixer does.
       const fresh = await api.getProject(project.id);
@@ -1646,6 +1667,16 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       if (!project || !get().isInitiator()) return;
       await api.publishProject(project.id);
       set({ project: { ...project, status: "published", publishedAt: Date.now() } });
+    },
+
+    deleteProject: async () => {
+      const { project } = get();
+      if (!project || !get().isInitiator()) throw new Error("Only the owner can delete a project.");
+      engine.pause();
+      await api.deleteProject(
+        project.id,
+        project.tracks.map((t) => t.id)
+      );
     },
 
     unpublish: async () => {

@@ -1,5 +1,7 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useProjectStore } from "../store/useProjectStore";
+import { useAuthStore } from "../store/useAuthStore";
 import { CloseIcon } from "./icons/Icons";
 import { InputSourceSelector } from "./InputSourceSelector";
 import { DEFAULT_DEVICE_ID } from "../lib/inputDevices";
@@ -20,6 +22,7 @@ export function SettingsPanel() {
   const toggleMetronome = useProjectStore((s) => s.toggleMetronome);
   const metronomeVolume = useProjectStore((s) => s.metronomeVolume);
   const setMetronomeVolume = useProjectStore((s) => s.setMetronomeVolume);
+  const testMetronomeClick = useProjectStore((s) => s.testMetronomeClick);
   const countInEnabled = useProjectStore((s) => s.countInEnabled);
   const setCountInEnabled = useProjectStore((s) => s.setCountInEnabled);
   const latencyCompMs = useProjectStore((s) => s.latencyCompMs);
@@ -30,6 +33,48 @@ export function SettingsPanel() {
   const refreshEstimatedLatency = useProjectStore((s) => s.refreshEstimatedLatency);
   const calibrateLatency = useProjectStore((s) => s.calibrateLatency);
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
+  const displayName = useAuthStore((s) => s.profile?.displayName ?? "");
+  const setDisplayName = useAuthStore((s) => s.setDisplayName);
+  const navigate = useNavigate();
+  const projectTitle = useProjectStore((s) => s.project?.title ?? null);
+  const isOwner = useProjectStore((s) => s.isInitiator());
+  const deleteProject = useProjectStore((s) => s.deleteProject);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
+  const handleDelete = async () => {
+    if (
+      !confirm(
+        `DELETE "${projectTitle}" FOREVER?\n\nThis permanently deletes the project, every channel, and every recording in it — including the recordings other people made. Everyone loses access immediately.\n\nThis cannot be undone.`
+      )
+    )
+      return;
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await deleteProject();
+      closeSettings();
+      navigate("/");
+    } catch (err) {
+      console.error("Failed to delete the project:", err);
+      const detail = err && typeof err === "object" && "message" in err ? ` (${String((err as { message: unknown }).message)})` : "";
+      setDeleteError(`Couldn't finish deleting the project${detail}. Try again — some recordings may already be gone.`);
+      setDeleting(false);
+    }
+  };
+  const [nameDraft, setNameDraft] = useState<string | null>(null);
+  const [nameError, setNameError] = useState<string | null>(null);
+  const saveName = async () => {
+    const draft = nameDraft;
+    setNameDraft(null);
+    if (draft === null || !draft.trim()) return;
+    try {
+      await setDisplayName(draft);
+      setNameError(null);
+    } catch (err) {
+      console.error("Failed to save the name:", err);
+      setNameError("Couldn't save your name — try again.");
+    }
+  };
 
   useEffect(() => {
     if (open) {
@@ -58,6 +103,27 @@ export function SettingsPanel() {
             <CloseIcon />
           </button>
         </div>
+
+        <section className="settings-section">
+          <h3>Your name</h3>
+          <div className="settings-row">
+            <input
+              className="settings-select"
+              value={nameDraft ?? displayName}
+              placeholder="Name or stage name"
+              maxLength={40}
+              onChange={(e) => setNameDraft(e.target.value)}
+              onBlur={saveName}
+              onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+              aria-label="Your display name"
+            />
+          </div>
+          {nameError && <p className="assign-error">{nameError}</p>}
+          <p className="settings-note">
+            What other people see on your channels and on project cards. Starts as your Google name; change it to a stage
+            name if you like. Others see the change next time they open the project.
+          </p>
+        </section>
 
         <section className="settings-section">
           <h3>Input</h3>
@@ -161,7 +227,7 @@ export function SettingsPanel() {
             </button>
           </div>
           <p className="settings-note">
-            Before recording starts, plays 4 clicks at the song tempo — even if the click track is off. Uses the click
+            Before recording starts, plays 4 clicks at the project tempo — even if the click track is off. Uses the click
             volume below.
           </p>
           <div className="settings-row">
@@ -174,6 +240,9 @@ export function SettingsPanel() {
               value={metronomeVolume}
               onChange={(e) => setMetronomeVolume(Number(e.target.value))}
             />
+            <button className="settings-toggle" onClick={testMetronomeClick} title="Play one click at this volume">
+              Test
+            </button>
           </div>
           <div className="settings-row">
             <span>Output</span>
@@ -201,6 +270,20 @@ export function SettingsPanel() {
             </p>
           )}
         </section>
+
+        {isOwner && projectTitle !== null && (
+          <section className="settings-section danger-zone">
+            <h3>Danger zone</h3>
+            <p className="settings-note">
+              Deleting this project removes it, all of its channels and every recording in it for everyone, permanently.
+              There is no undo and no backup.
+            </p>
+            <button className="danger-btn" onClick={handleDelete} disabled={deleting || !!recordingTrackId}>
+              {deleting ? "Deleting…" : "Delete this project…"}
+            </button>
+            {deleteError && <p className="assign-error">{deleteError}</p>}
+          </section>
+        )}
       </div>
     </div>
   );

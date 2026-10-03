@@ -1032,6 +1032,12 @@ export class AudioEngine {
     this.clickGain.gain.value = this.metronomeVolume;
   }
 
+  /** One click at the current click volume, for the Settings "Test" button. Works while stopped. */
+  async playTestClick() {
+    await this.resume();
+    this.scheduleClick(this.ctx.currentTime + 0.02, true, "grid");
+  }
+
   private restartMetronomeScheduler() {
     this.stopMetronomeScheduler();
     const beatDurationSec = 60 / this.bpm;
