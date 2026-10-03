@@ -2,8 +2,9 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
 import { SignInGate } from "../components/SignInGate";
-import { listMyProjects, createProject, fetchParticipantNames } from "../lib/projectApi";
+import { listMyProjects, createProject, fetchParticipantNames, fetchCoverUrls } from "../lib/projectApi";
 import type { Project } from "../types/project";
+import { ProjectCover } from "../components/ProjectCover";
 import { WaveformIcon, PlusCircleIcon, GlobeIcon } from "../components/icons/Icons";
 
 function HomeContent() {
@@ -13,6 +14,7 @@ function HomeContent() {
   const navigate = useNavigate();
   const [projects, setProjects] = useState<Project[] | null>(null);
   const [people, setPeople] = useState<Record<string, string[]>>({});
+  const [covers, setCovers] = useState<Record<string, string>>({});
   const [creating, setCreating] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
 
@@ -21,6 +23,7 @@ function HomeContent() {
     listMyProjects(userId)
       .then((list) => {
         setProjects(list);
+        fetchCoverUrls(list).then(setCovers).catch((err) => console.error("Failed to load covers:", err));
         fetchParticipantNames(list).then(setPeople).catch((err) => console.error("Failed to load participant names:", err));
       })
       .catch((err) => {
@@ -69,23 +72,37 @@ function HomeContent() {
         </Link>
       </div>
 
-      <main className="track-list">
+      <h2 className="home-title">Projects</h2>
+
+      <main className="home-shelves">
         {projects === null && !loadError && <div className="empty-state">Loading your projects…</div>}
         {loadError && <div className="empty-state">{loadError}</div>}
         {projects?.length === 0 && (
           <div className="empty-state">You haven't started or joined a project yet. Create one to get going.</div>
         )}
-        {projects?.map((p) => (
-          <Link key={p.id} to={`/song/${p.id}`} className="song-list-item">
-            <span className="song-list-main">
-              <span className="song-list-title">{p.title}</span>
-              {people[p.id]?.length > 0 && <span className="song-list-people">{people[p.id].join(" · ")}</span>}
-            </span>
-            <span className={p.status === "published" ? "song-list-status published" : "song-list-status"}>
-              {p.status === "published" ? "Published" : "Draft"}
-            </span>
-          </Link>
-        ))}
+        {projects && projects.length > 0 && (
+          <>
+            {[
+              { title: "Drafts", large: true, items: projects.filter((p) => p.status !== "published") },
+              { title: "Published", large: false, items: projects.filter((p) => p.status === "published") },
+            ]
+              .filter((shelf) => shelf.items.length > 0)
+              .map((shelf) => (
+                <section key={shelf.title} className={shelf.large ? "shelf shelf-large" : "shelf"}>
+                  <h3>{shelf.title}</h3>
+                  <div className="shelf-row">
+                    {shelf.items.map((p) => (
+                      <Link key={p.id} to={`/song/${p.id}`} className="tile">
+                        <ProjectCover id={p.id} imageUrl={covers[p.id]} />
+                        <span className="tile-title">{p.title}</span>
+                        <span className="tile-people">{people[p.id]?.length ? people[p.id].join(" · ") : "\u00a0"}</span>
+                      </Link>
+                    ))}
+                  </div>
+                </section>
+              ))}
+          </>
+        )}
       </main>
     </div>
   );

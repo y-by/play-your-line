@@ -17,6 +17,7 @@ function mapProject(row: any, tracks: Track[], takes: Record<string, Take>): Pro
     initiatorId: row.initiator_id,
     mixerId: row.mixer_id ?? null,
     mixerName: null,
+    coverPath: row.cover_path ?? null,
     listeners: [],
     status: row.status,
     createdAt: new Date(row.created_at).getTime(),
@@ -237,8 +238,51 @@ export async function deleteProject(projectId: string, trackIds: string[]): Prom
     const files = await listTrackFiles(projectId, trackId);
     await removeTakeFiles(projectId, trackId, files.map((f) => f.name));
   }
+  const { data: covers } = await client.storage.from("covers").list(projectId);
+  if (covers?.length) await client.storage.from("covers").remove(covers.map((f) => `${projectId}/${f.name}`));
   const { error } = await client.from("projects").delete().eq("id", projectId);
   if (error) throw error;
+}
+
+/** Owner: saves a new cover image (already shrunk) and removes the previous file. Returns the new path. */
+export async function setProjectCover(projectId: string, image: Blob, previousPath: string | null): Promise<string> {
+  const client = requireSupabase();
+  const path = `${projectId}/${crypto.randomUUID()}.jpg`;
+  const { error: uploadError } = await client.storage.from("covers").upload(path, image, { contentType: "image/jpeg", upsert: false });
+  if (uploadError) throw uploadError;
+  const { error } = await client.from("projects").update({ cover_path: path }).eq("id", projectId);
+  if (error) {
+    await client.storage.from("covers").remove([path]);
+    throw error;
+  }
+  if (previousPath) await client.storage.from("covers").remove([previousPath]);
+  return path;
+}
+
+export async function removeProjectCover(projectId: string, path: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("projects").update({ cover_path: null }).eq("id", projectId);
+  if (error) throw error;
+  await client.storage.from("covers").remove([path]);
+}
+
+/** Short-lived links to cover images (the bucket is private), keyed by project id. */
+export async function fetchCoverUrls(projects: Pick<Project, "id" | "coverPath">[]): Promise<Record<string, string>> {
+  const withCover = projects.filter((p) => p.coverPath);
+  if (withCover.length === 0) return {};
+  const client = requireSupabase();
+  const { data, error } = await client.storage.from("covers").createSignedUrls(
+    withCover.map((p) => p.coverPath as string),
+    3600
+  );
+  if (error) throw error;
+  const byPath = new Map((data ?? []).map((d) => [d.path, d.signedUrl]));
+  const out: Record<string, string> = {};
+  for (const p of withCover) {
+    const url = byPath.get(p.coverPath as string);
+    if (url) out[p.id] = url;
+  }
+  return out;
 }
 
 export async function renameProject(projectId: string, title: string): Promise<void> {

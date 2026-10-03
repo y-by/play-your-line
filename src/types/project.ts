@@ -66,6 +66,8 @@ export interface Project {
   /** The one optional Mixer, who may set the final mix (volume, mute). */
   mixerId: string | null;
   mixerName: string | null;
+  /** Path of the cover image in the "covers" bucket, if the Owner added one. */
+  coverPath: string | null;
   /** People invited to hear the draft. */
   listeners: { userId: string; name: string | null }[];
   status: ProjectStatus;

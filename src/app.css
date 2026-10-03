@@ -3123,3 +3123,252 @@
   opacity: 0.5;
   cursor: default;
 }
+
+/* Projects home: cover-art tiles in horizontal shelves */
+
+.home-title {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  margin: 4px 0 0;
+  color: var(--color-label);
+}
+
+.home-shelves {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+.shelf h3 {
+  font-size: 20px;
+  font-weight: 650;
+  letter-spacing: -0.3px;
+  margin: 0 0 12px;
+  color: var(--color-label);
+}
+
+.shelf-row {
+  display: flex;
+  gap: 18px;
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  padding-bottom: 6px;
+  margin-inline: -4px;
+  padding-inline: 4px;
+  scrollbar-width: none;
+}
+
+.shelf-row::-webkit-scrollbar {
+  display: none;
+}
+
+.tile {
+  flex: none;
+  width: clamp(130px, 15vw, 180px);
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  text-decoration: none;
+  color: inherit;
+}
+
+.cover {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  margin-bottom: 6px;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.cover::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(120% 90% at 20% 0%, rgba(255, 255, 255, 0.28), transparent 55%);
+}
+
+.cover svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.cover img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* The whole picture fits inside the square; a blurred copy fills the leftover space. */
+.cover .cover-image {
+  object-fit: contain;
+}
+
+.cover .cover-backdrop {
+  object-fit: cover;
+  filter: blur(18px) brightness(0.7);
+  transform: scale(1.25);
+}
+
+.cover svg {
+  padding: 8%;
+  box-sizing: border-box;
+}
+
+.cover svg * {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.82);
+  stroke-width: 1.4;
+  stroke-linecap: round;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.cover svg .motif-dot {
+  fill: rgba(255, 255, 255, 0.9);
+  stroke: none;
+}
+
+.cover svg .motif-core {
+  fill: rgba(255, 255, 255, 0.16);
+}
+
+.motif-rings circle {
+  animation: motif-breathe 7s ease-in-out infinite;
+}
+
+.motif-orbit {
+  animation: motif-spin 48s linear infinite;
+}
+
+.motif-sparkle {
+  animation: motif-spin 60s linear infinite, motif-breathe 8s ease-in-out infinite;
+}
+
+.motif-stack ellipse {
+  animation: motif-float 8s ease-in-out infinite;
+}
+
+.motif-bars line {
+  animation: motif-bob 3.6s ease-in-out infinite;
+}
+
+.motif-spiral ellipse {
+  animation: motif-sway 9s ease-in-out infinite;
+}
+
+@keyframes motif-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.045); opacity: 1; }
+}
+
+@keyframes motif-spin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes motif-float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-2.4px); }
+}
+
+@keyframes motif-bob {
+  0%, 100% { transform: scaleY(1); }
+  50% { transform: scaleY(0.62); }
+}
+
+@keyframes motif-sway {
+  0%, 100% { transform: translateX(-1.6px); }
+  50% { transform: translateX(1.6px); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cover svg * {
+    animation: none !important;
+  }
+}
+
+.tile:hover .cover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.45);
+}
+
+.tile:focus-visible .cover {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.tile-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--color-label);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tile-people {
+  font-size: 12px;
+  color: var(--color-label-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cover {
+    transition: none;
+  }
+}
+
+.cover-setting {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.cover-setting-preview {
+  width: 84px;
+  height: 84px;
+  flex: none;
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--color-fill);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  color: var(--color-label-secondary);
+}
+
+.cover-setting-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.cover-setting-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.settings-toggle.disabled {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Drafts are the work in progress, so their tiles are the larger ones. */
+.shelf-large .tile {
+  width: clamp(180px, 26vw, 300px);
+}
+
+.shelf-large .tile-title {
+  font-size: 16px;
+}

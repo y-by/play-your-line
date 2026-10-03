@@ -15,6 +15,7 @@ import { TRACK_COLORS } from "../lib/trackColors";
 import { findOrphanFiles, takeIdFromFileName } from "../lib/orphans";
 import { upsertClip, removeClip } from "../lib/remoteMerge";
 import { orderTracks, moveId } from "../lib/trackOrder";
+import { prepareCoverImage } from "../lib/coverImage";
 import { clampFx } from "../lib/channelFx";
 import { rolesOf, roleBadge, canMixFinal } from "../lib/roles";
 
@@ -217,6 +218,8 @@ interface ProjectState {
   publish: () => Promise<void>;
   /** Owner only: take a published song back to a draft. */
   unpublish: () => Promise<void>;
+  /** Owner only: sets (or, with null, removes) the project's cover image. Throws if it couldn't. */
+  setProjectCover: (file: File | null) => Promise<void>;
   /** Owner only, irreversible: deletes the project and all its recordings. Throws if it couldn't. */
   deleteProject: () => Promise<void>;
 }
@@ -1667,6 +1670,21 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       if (!project || !get().isInitiator()) return;
       await api.publishProject(project.id);
       set({ project: { ...project, status: "published", publishedAt: Date.now() } });
+    },
+
+    setProjectCover: async (file) => {
+      const { project } = get();
+      if (!project || !get().isInitiator()) throw new Error("Only the owner can change the cover.");
+      if (!file) {
+        if (project.coverPath) await api.removeProjectCover(project.id, project.coverPath);
+        const current = get().project;
+        if (current) set({ project: { ...current, coverPath: null } });
+        return;
+      }
+      const image = await prepareCoverImage(file);
+      const path = await api.setProjectCover(project.id, image, project.coverPath);
+      const current = get().project;
+      if (current) set({ project: { ...current, coverPath: path } });
     },
 
     deleteProject: async () => {

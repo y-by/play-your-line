@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useProjectStore } from "../store/useProjectStore";
+import { errorMessage } from "../lib/errorMessage";
+import { fetchCoverUrls } from "../lib/projectApi";
 import { useAuthStore } from "../store/useAuthStore";
 import { CloseIcon } from "./icons/Icons";
 import { InputSourceSelector } from "./InputSourceSelector";
@@ -39,6 +41,34 @@ export function SettingsPanel() {
   const projectTitle = useProjectStore((s) => s.project?.title ?? null);
   const isOwner = useProjectStore((s) => s.isInitiator());
   const deleteProject = useProjectStore((s) => s.deleteProject);
+  const coverPath = useProjectStore((s) => s.project?.coverPath ?? null);
+  const projectId = useProjectStore((s) => s.project?.id ?? null);
+  const setProjectCover = useProjectStore((s) => s.setProjectCover);
+  const [coverBusy, setCoverBusy] = useState(false);
+  const [coverError, setCoverError] = useState<string | null>(null);
+  const [coverPreview, setCoverPreview] = useState<string | null>(null);
+  useEffect(() => {
+    if (!open || !coverPath || !projectId) return;
+    let cancelled = false;
+    fetchCoverUrls([{ id: projectId, coverPath }])
+      .then((urls) => !cancelled && setCoverPreview(urls[projectId] ?? null))
+      .catch(() => !cancelled && setCoverPreview(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [open, coverPath, projectId]);
+  const changeCover = async (file: File | null) => {
+    setCoverBusy(true);
+    setCoverError(null);
+    try {
+      await setProjectCover(file);
+    } catch (err) {
+      console.error("Failed to change the cover:", err);
+      setCoverError(`Couldn't change the cover: ${errorMessage(err, "try another image")}`);
+    } finally {
+      setCoverBusy(false);
+    }
+  };
   const [deleting, setDeleting] = useState(false);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const handleDelete = async () => {
@@ -270,6 +300,43 @@ export function SettingsPanel() {
             </p>
           )}
         </section>
+
+        {isOwner && projectTitle !== null && (
+          <section className="settings-section">
+            <h3>Cover image</h3>
+            <div className="cover-setting">
+              <div className="cover-setting-preview">
+                {coverPath && coverPreview ? <img src={coverPreview} alt="Project cover" /> : <span>No image</span>}
+              </div>
+              <div className="cover-setting-actions">
+                <label className={coverBusy ? "settings-toggle disabled" : "settings-toggle"}>
+                  {coverBusy ? "Working…" : coverPath ? "Replace image" : "Add image"}
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp"
+                    hidden
+                    disabled={coverBusy}
+                    onChange={(e) => {
+                      const file = e.target.files?.[0];
+                      e.target.value = "";
+                      if (file) void changeCover(file);
+                    }}
+                  />
+                </label>
+                {coverPath && (
+                  <button className="settings-toggle" disabled={coverBusy} onClick={() => changeCover(null)}>
+                    Remove
+                  </button>
+                )}
+              </div>
+            </div>
+            {coverError && <p className="assign-error">{coverError}</p>}
+            <p className="settings-note">
+              Shown on this project's card, fitted inside the square so nothing is cut off. Without one, the card gets
+              generated artwork. The image is shrunk before it's saved.
+            </p>
+          </section>
+        )}
 
         {isOwner && projectTitle !== null && (
           <section className="settings-section danger-zone">
