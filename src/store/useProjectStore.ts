@@ -1691,10 +1691,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const { project } = get();
       if (!project || !get().isInitiator()) throw new Error("Only the owner can delete a project.");
       engine.pause();
-      await api.deleteProject(
-        project.id,
-        project.tracks.map((t) => t.id)
-      );
+      await api.deleteProject(project.id);
     },
 
     unpublish: async () => {

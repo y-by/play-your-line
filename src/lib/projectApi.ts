@@ -227,19 +227,38 @@ export async function setTempo(projectId: string, bpm: number): Promise<void> {
   if (error) throw error;
 }
 
-/**
- * Owner only, irreversible. Removes every recording file first (while the
- * channel rows still exist for the storage policy to check), then the project
- * row — which cascades to channels, takes, clips, invites and listeners.
- */
-export async function deleteProject(projectId: string, trackIds: string[]): Promise<void> {
+/** Every file under one folder of a bucket (one level), following the 1000-per-page limit. */
+async function listFolderFiles(bucket: string, folder: string): Promise<string[]> {
   const client = requireSupabase();
-  for (const trackId of trackIds) {
-    const files = await listTrackFiles(projectId, trackId);
-    await removeTakeFiles(projectId, trackId, files.map((f) => f.name));
+  const names: string[] = [];
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await client.storage.from(bucket).list(folder, { limit: 1000, offset });
+    if (error) throw error;
+    const page = data ?? [];
+    // Entries without an id are sub-folders; callers handle those separately.
+    names.push(...page.filter((f) => f.id).map((f) => `${folder}/${f.name}`));
+    if (page.length < 1000) return names;
   }
-  const { data: covers } = await client.storage.from("covers").list(projectId);
-  if (covers?.length) await client.storage.from("covers").remove(covers.map((f) => `${projectId}/${f.name}`));
+}
+
+/**
+ * Owner only, irreversible. Removes every recording file in the project's folder (found by listing the
+ * folder in storage, not from the channels on screen, so nothing is missed), then the cover, then the
+ * project row — which cascades to channels, takes, clips, invites and listeners.
+ */
+export async function deleteProject(projectId: string): Promise<void> {
+  const client = requireSupabase();
+  const { data: trackFolders, error: listError } = await client.storage.from("takes").list(projectId, { limit: 1000 });
+  if (listError) throw listError;
+  for (const entry of trackFolders ?? []) {
+    const files = entry.id ? [`${projectId}/${entry.name}`] : await listFolderFiles("takes", `${projectId}/${entry.name}`);
+    if (files.length) {
+      const { error } = await client.storage.from("takes").remove(files);
+      if (error) throw error;
+    }
+  }
+  const covers = await listFolderFiles("covers", projectId);
+  if (covers.length) await client.storage.from("covers").remove(covers);
   const { error } = await client.from("projects").delete().eq("id", projectId);
   if (error) throw error;
 }
