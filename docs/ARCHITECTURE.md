@@ -245,10 +245,10 @@ Three layers:
 flowchart LR
   clock["Audio clock<br/>one timeline"]
   clock --> ch["Channels<br/>each with volume"]
-  clock --> click["Click<br/>generated live"]
+  clock --> clk["Click<br/>generated live"]
   ch --> master["Master mix"]
   master --> spk["Speakers"]
-  click --> clickvol["Click volume"]
+  clk --> clickvol["Click volume"]
   clickvol --> spk
 ```
 
