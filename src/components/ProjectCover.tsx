@@ -1,16 +1,5 @@
 import { TRACK_COLORS } from "../lib/trackColors";
-
-/** Small deterministic hash so a project always gets the same artwork. */
-function hash(text: string): number {
-  let h = 2166136261;
-  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 16777619);
-  return h >>> 0;
-}
-
-function makeRandom(seed: number): () => number {
-  let h = seed;
-  return () => (h = Math.imul(h ^ (h >>> 15), 2246822507) >>> 0);
-}
+import { hash, makeRandom } from "../lib/coverArt";
 
 const delay = (i: number, step = 0.5) => ({ animationDelay: `${(-i * step).toFixed(2)}s` });
 

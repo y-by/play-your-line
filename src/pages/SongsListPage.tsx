@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
+import { AppShell } from "../components/AppShell";
 import { SignInGate } from "../components/SignInGate";
 import { listPublishedProjects, getProject, hydrateTakeBlobs, fetchParticipantNames } from "../lib/projectApi";
 import { mixdownProject } from "../lib/mixdown";
 import type { Project } from "../types/project";
-import { WaveformIcon, BackArrowIcon, PlayIcon, PauseIcon, SpinnerIcon } from "../components/icons/Icons";
+import { PlayIcon, PauseIcon, SpinnerIcon } from "../components/icons/Icons";
 
 type PlayState = "idle" | "loading" | "playing" | "paused";
 
@@ -82,19 +83,7 @@ function SongsListContent() {
   }, []);
 
   return (
-    <div className="app">
-      <header className="app-header">
-        <Link to="/" className="icon-btn" title="Back" aria-label="Back">
-          <BackArrowIcon size={16} />
-        </Link>
-        <h1>
-          <span className="header-icon">
-            <WaveformIcon size={22} />
-          </span>
-          Published Projects
-        </h1>
-      </header>
-
+    <AppShell title="Published">
       <main className="track-list">
         {projects === null && <div className="empty-state">Loading…</div>}
         {projects?.length === 0 && <div className="empty-state">No projects have been published yet.</div>}
@@ -102,7 +91,7 @@ function SongsListContent() {
           <SongListItem key={p.id} project={p} people={people[p.id] ?? []} />
         ))}
       </main>
-    </div>
+    </AppShell>
   );
 }
 

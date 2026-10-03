@@ -3163,16 +3163,6 @@
   display: none;
 }
 
-.tile {
-  flex: none;
-  width: clamp(130px, 15vw, 180px);
-  scroll-snap-align: start;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  text-decoration: none;
-  color: inherit;
-}
 
 .cover {
   position: relative;
@@ -3294,32 +3284,9 @@
   }
 }
 
-.tile:hover .cover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.45);
-}
 
-.tile:focus-visible .cover {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
-}
 
-.tile-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--color-label);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
-.tile-people {
-  font-size: 12px;
-  color: var(--color-label-secondary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 
 @media (prefers-reduced-motion: reduce) {
   .cover {
@@ -3365,10 +3332,353 @@
 }
 
 /* Drafts are the work in progress, so their tiles are the larger ones. */
-.shelf-large .tile {
-  width: clamp(180px, 26vw, 300px);
+
+
+
+/* ---- App shell: side menu on desktop, tab bar on phones ---- */
+
+.shell {
+  display: flex;
+  min-height: 100%;
 }
 
-.shelf-large .tile-title {
+.shell-side {
+  width: 232px;
+  flex: none;
+  position: sticky;
+  top: 0;
+  height: 100vh;
+  padding: 18px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  border-right: 1px solid var(--color-separator);
+  background: color-mix(in srgb, var(--color-bg-elevated) 70%, var(--color-bg));
+}
+
+.shell-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 8px 6px;
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -0.2px;
+  color: var(--color-label);
+}
+
+.shell-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.shell-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  color: var(--color-label);
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 560;
+}
+
+.shell-link svg {
+  color: var(--color-accent);
+}
+
+.shell-link:hover {
+  background: var(--color-fill);
+}
+
+.shell-link.active {
+  background: var(--color-fill-secondary);
+}
+
+.shell-new {
+  justify-content: center;
+}
+
+.shell-user {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px;
+}
+
+.shell-user-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--color-label-secondary);
+}
+
+.shell-main {
+  flex: 1;
+  min-width: 0;
+  padding: 22px 24px 60px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.shell-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.shell-head h1 {
+  margin: 0;
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: -0.6px;
+  color: var(--color-label);
+}
+
+.shell-avatar,
+.shell-tabs {
+  display: none;
+}
+
+.shell-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+}
+
+.shell-sheet {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-bg-elevated) 82%, transparent);
+  backdrop-filter: blur(22px) saturate(1.6);
+  border: 1px solid var(--color-separator);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+/* ---- Project cards: square cover, the cover's colour carries on underneath with the text ---- */
+
+.card {
+  flex: none;
+  width: clamp(130px, 15vw, 180px);
+  scroll-snap-align: start;
+  display: flex;
+  flex-direction: column;
+  border-radius: 14px;
+  overflow: hidden;
+  text-decoration: none;
+  color: #fff;
+  background: color-mix(in srgb, var(--tint) 52%, black);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+
+.card-large {
+  width: clamp(190px, 24vw, 300px);
+}
+
+.card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.45);
+}
+
+.card:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+.card .cover {
+  border-radius: 0;
+  box-shadow: none;
+  margin: 0;
+}
+
+.card-body {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: 64px;
+  padding: 10px 10px 12px;
+  text-align: center;
+  overflow: hidden;
+  background: linear-gradient(color-mix(in srgb, var(--tint) 78%, black), color-mix(in srgb, var(--tint) 50%, black));
+}
+
+.card-body-image {
+  background: #000;
+}
+
+/* A blurred copy of the cover image, under dark glass, so the picture's colour carries on. */
+.card-body-bg {
+  position: absolute;
+  inset: -30%;
+  width: 160%;
+  height: 160%;
+  object-fit: cover;
+  filter: blur(28px) saturate(1.3);
+}
+
+.card-body-image::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.42);
+}
+
+.card-title,
+.card-people {
+  position: relative;
+  z-index: 1;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.card-title {
+  font-size: 14px;
+  font-weight: 650;
+  color: #fff;
+}
+
+.card-large .card-title {
   font-size: 16px;
+}
+
+.card-people {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+/* Small cards: the square cover, with the text on the page background, left-aligned. */
+.card:not(.card-large) {
+  background: none;
+  box-shadow: none;
+  overflow: visible;
+  color: var(--color-label);
+}
+
+.card:not(.card-large):hover {
+  box-shadow: none;
+}
+
+.card:not(.card-large) .cover {
+  border-radius: 12px;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.card:not(.card-large) .card-body {
+  align-items: flex-start;
+  min-height: 0;
+  padding: 8px 2px 0;
+  text-align: left;
+  background: none;
+  overflow: visible;
+}
+
+.card:not(.card-large) .card-title {
+  color: var(--color-label);
+  font-weight: 600;
+}
+
+.card:not(.card-large) .card-people {
+  color: var(--color-label-secondary);
+}
+
+@media (max-width: 700px) {
+  .shell-side {
+    display: none;
+  }
+
+  .shell-main {
+    padding: calc(12px + env(safe-area-inset-top, 0px)) 14px calc(86px + env(safe-area-inset-bottom, 0px));
+    gap: 14px;
+  }
+
+  .shell-head h1 {
+    font-size: 30px;
+  }
+
+  .shell-avatar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: var(--color-fill-secondary);
+    color: var(--color-label);
+    font-size: 15px;
+    font-weight: 650;
+  }
+
+  .shell-tabs {
+    display: flex;
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 40;
+    padding: 6px 6px calc(6px + env(safe-area-inset-bottom, 0px));
+    background: color-mix(in srgb, var(--color-bg-elevated) 72%, transparent);
+    backdrop-filter: blur(22px) saturate(1.6);
+    border-top: 1px solid var(--color-separator);
+  }
+
+  .shell-tab {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 4px 0;
+    background: none;
+    border: none;
+    color: var(--color-label-secondary);
+    font-size: 10.5px;
+    font-weight: 560;
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .shell-tab.active,
+  .shell-tab-new {
+    color: var(--color-accent);
+  }
+
+  .shell-tab:disabled {
+    opacity: 0.5;
+  }
+
+  .shelf-row {
+    gap: 12px;
+  }
+
+  .card {
+    width: 42vw;
+    max-width: 190px;
+  }
+
+  .card-large {
+    width: 72vw;
+    max-width: 300px;
+  }
 }
