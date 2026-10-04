@@ -126,6 +126,11 @@ export class AudioEngine {
   private liveBinMin = 0;
   private liveBinMax = 0;
   private liveLastChunkAt = 0;
+  private liveBinSumSq = 0;
+  private liveLastRms = 0;
+  // While recording, the input meter is fed from the recording itself (see startRecordingMeter).
+  private recMeterRaf: number | null = null;
+  private recMeterLevel = 0;
   private recorderSampleRate = 0;
 
   // Independent, silent (not routed to speakers) input monitor so the user
@@ -711,7 +716,8 @@ export class AudioEngine {
   private tick = () => {
     if (!this.playing) return;
     const dur = this.getProjectDurationSec();
-    if (!this.activeLoop && dur > 0 && this.getPositionSec() >= dur) {
+    // A recording may run past the last clip; the song only ends by itself when nothing is being recorded.
+    if (!this.activeLoop && !this.recorderNode && dur > 0 && this.getPositionSec() >= dur) {
       this.pause();
       this.startedAtPositionSec = 0;
       this.emit();
@@ -817,6 +823,29 @@ export class AudioEngine {
 
     this.recorderNode = workletNode;
     this.recorderSilentGain = silentGain;
+    this.startRecordingMeter();
+  }
+
+  /**
+   * The input meter while recording is driven by the recording itself (the samples we are keeping),
+   * so it always matches what is being captured — a second microphone stream for the meter can fall
+   * silent while the recorder holds the device. Rises instantly, falls smoothly.
+   */
+  private startRecordingMeter() {
+    this.stopRecordingMeter();
+    const loop = () => {
+      this.recMeterLevel = Math.max(this.liveLastRms, this.recMeterLevel * 0.88);
+      this.levelListeners.forEach((l) => l(this.recMeterLevel));
+      this.recMeterRaf = requestAnimationFrame(loop);
+    };
+    this.recMeterRaf = requestAnimationFrame(loop);
+  }
+
+  private stopRecordingMeter() {
+    if (this.recMeterRaf === null) return;
+    cancelAnimationFrame(this.recMeterRaf);
+    this.recMeterRaf = null;
+    this.levelListeners.forEach((l) => l(0));
   }
 
   private resetLivePeaks() {
@@ -824,6 +853,9 @@ export class AudioEngine {
     this.liveBinFill = 0;
     this.liveBinMin = 0;
     this.liveBinMax = 0;
+    this.liveBinSumSq = 0;
+    this.liveLastRms = 0;
+    this.recMeterLevel = 0;
     this.liveLastChunkAt = performance.now();
   }
 
@@ -833,7 +865,10 @@ export class AudioEngine {
       const v = chunk[i];
       if (v < this.liveBinMin) this.liveBinMin = v;
       if (v > this.liveBinMax) this.liveBinMax = v;
+      this.liveBinSumSq += v * v;
       if (++this.liveBinFill >= LIVE_BIN) {
+        this.liveLastRms = Math.sqrt(this.liveBinSumSq / LIVE_BIN);
+        this.liveBinSumSq = 0;
         if (this.livePeakCount + 2 > this.livePeaks.length) {
           const bigger = new Float32Array(this.livePeaks.length * 2);
           bigger.set(this.livePeaks);
@@ -881,6 +916,7 @@ export class AudioEngine {
   }
 
   private releaseCaptureGraph() {
+    this.stopRecordingMeter();
     this.rawInputStream?.getTracks().forEach((t) => t.stop());
     this.rawInputStream = null;
     this.recorderSource?.disconnect();
@@ -1087,7 +1123,8 @@ export class AudioEngine {
         sumSquares += v * v;
       }
       const rms = Math.sqrt(sumSquares / data.length);
-      this.levelListeners.forEach((l) => l(rms));
+      if (!this.recorderNode) this.levelListeners.forEach((l) => l(rms)); // while recording, the recording drives the meter
+      
       this.monitorRafId = requestAnimationFrame(loop);
     };
     loop();

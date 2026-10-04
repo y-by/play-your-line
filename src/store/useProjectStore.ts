@@ -94,6 +94,8 @@ interface ProjectState {
   recordingTrackId: string | null;
   recordingPhase: "idle" | "requesting-mic" | "count-in" | "recording" | "uploading";
   recordingError: string | null;
+  /** A calm heads-up (not a failure), shown in a neutral toast. */
+  recordingNotice: string | null;
   recordingGhost: RecordingGhost | null;
 
   availableInputs: InputDevice[];
@@ -191,6 +193,9 @@ interface ProjectState {
   /** Timeline zoom (screen pixels per beat). Not saved. */
   pxPerBeat: number;
   setPxPerBeat: (pxPerBeat: number) => void;
+  /** Whether the timeline scrolls to keep the playhead in view. Saved on this device. */
+  followPlayhead: boolean;
+  setFollowPlayhead: (follow: boolean) => void;
   snapEnabled: boolean;
   snapResolution: SnapResolution;
   setSnapEnabled: (enabled: boolean) => void;
@@ -244,6 +249,7 @@ const COUNT_IN_STORAGE_KEY = "pyl.countIn";
 const COUNT_IN_BEATS = 4;
 const SNAP_ENABLED_KEY = "pyl.snapEnabled";
 const SNAP_RESOLUTION_KEY = "pyl.snapResolution";
+const FOLLOW_KEY = "pyl.followPlayhead";
 const monitorKey = (projectId: string) => `pyl.monitor.${projectId}`;
 const orderKey = (projectId: string) => `pyl.order.${projectId}`;
 const colorsKey = (projectId: string) => `pyl.colors.${projectId}`;
@@ -279,6 +285,14 @@ function writePersonalOrder(projectId: string, order: string[] | null) {
 function readStoredSnapEnabled(): boolean {
   try {
     return localStorage.getItem(SNAP_ENABLED_KEY) !== "off"; // on by default
+  } catch {
+    return true;
+  }
+}
+
+function readStoredFollow(): boolean {
+  try {
+    return localStorage.getItem(FOLLOW_KEY) !== "off"; // on by default
   } catch {
     return true;
   }
@@ -874,6 +888,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     recordingTrackId: null,
     recordingPhase: "idle",
     recordingError: null,
+    recordingNotice: null,
     recordingGhost: null,
 
     availableInputs: [],
@@ -1334,6 +1349,16 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
     pxPerBeat: 28,
     setPxPerBeat: (pxPerBeat) => set({ pxPerBeat: Math.min(120, Math.max(8, pxPerBeat)) }),
+    followPlayhead: readStoredFollow(),
+    setFollowPlayhead: (follow) => {
+      set({ followPlayhead: follow });
+      try {
+        if (follow) localStorage.removeItem(FOLLOW_KEY);
+        else localStorage.setItem(FOLLOW_KEY, "off");
+      } catch {
+        // storage unavailable — the setting just won't persist
+      }
+    },
     snapEnabled: readStoredSnapEnabled(),
     snapResolution: readStoredSnapResolution(),
     setSnapEnabled: (enabled) => {
@@ -1566,8 +1591,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         if (mismatch) {
           const khz = (hz: number) => `${Math.round(hz / 100) / 10} kHz`;
           set({
-            editError: `Your microphone runs at ${khz(mismatch.inputHz)} but the app's audio runs at ${khz(mismatch.contextHz)}. That mismatch can leave clicks in the recording. In your computer's sound settings, give the input and output the same sample rate, then reload.`,
+            recordingNotice: `Your microphone runs at ${khz(mismatch.inputHz)} and your computer's audio at ${khz(mismatch.contextHz)}. For the cleanest recording, give both the same sample rate in your sound settings, then reload.`,
           });
+        } else if (get().recordingNotice) {
+          set({ recordingNotice: null });
         }
       } catch (err) {
         console.error("Could not start recording:", err);

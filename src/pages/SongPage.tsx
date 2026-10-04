@@ -123,6 +123,8 @@ export function SongPage() {
               {project.title}
             </button>
           )}
+        </h1>
+        <div className="header-meta">
           <span className="project-title">
             {project.status === "published" ? "Published" : "Draft"}
           </span>
@@ -145,20 +147,20 @@ export function SongPage() {
               {roleLabel}
             </span>
           )}
-        </h1>
+        </div>
         {isInitiator && project.status === "draft" && (
-          <button className="publish-btn" onClick={handlePublish} disabled={!hasAnyTake || publishing}>
+          <button className="publish-btn" title="Publish this project" aria-label="Publish" onClick={handlePublish} disabled={!hasAnyTake || publishing}>
             <GlobeIcon size={13} />
-            {publishing ? "Publishing…" : "Publish"}
+            <span className="publish-label">{publishing ? "Publishing…" : "Publish"}</span>
           </button>
         )}
         {isInitiator && project.status === "published" && (
-          <button className="publish-btn unpublish" onClick={handleUnpublish} disabled={publishing}>
+          <button className="publish-btn unpublish" title="Unpublish this project" aria-label="Unpublish" onClick={handleUnpublish} disabled={publishing}>
             <GlobeIcon size={13} />
-            {publishing ? "Working…" : "Unpublish"}
+            <span className="publish-label">{publishing ? "Working…" : "Unpublish"}</span>
           </button>
         )}
-        <button className="export-btn" onClick={handleExport} disabled={!hasAnyTake || exporting}>
+        <button className="export-btn" title="Export the mix" aria-label="Export mix" onClick={handleExport} disabled={!hasAnyTake || exporting}>
           <ExportIcon size={14} />
           <span className="export-btn-label">{exporting ? "Mixing…" : "Export Mix"}</span>
         </button>

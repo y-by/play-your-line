@@ -4,6 +4,7 @@ import type { Track } from "../../types/project";
 import { TRACK_COLORS } from "../../lib/trackColors";
 import { gainToDb, dbToGain, MIN_DB, MAX_DB } from "../../lib/dbFader";
 import { ChannelMeter } from "./ChannelMeter";
+import { FaderScale } from "./FaderScale";
 import { ChannelFx } from "./ChannelFx";
 import { useProjectStore } from "../../store/useProjectStore";
 import { XmarkCircleIcon, MicIcon } from "../icons/Icons";
@@ -67,6 +68,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
           </span>
         )}
       </div>
+      {!pickingColor && <ChannelMeter trackId={track.id} armed={armed} />}
       {pickingColor ? (
         <div className="info-main color-picker" role="group" aria-label="Pick a colour">
           {TRACK_COLORS.map((c) => (
@@ -109,9 +111,9 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
               {track.instrument}
             </button>
           )}
-          <span className={track.assignedUserId ? "info-name" : "info-name unclaimed"}>
-            {online && <span className="online-dot" title={`${playerName} is here`} />}
-            {playerName}
+          <span className={status ? "info-name status" : track.assignedUserId ? "info-name" : "info-name unclaimed"}>
+            {online && !status && <span className="online-dot" title={`${playerName} is here`} />}
+            {status ?? playerName}
           </span>
           <span className="info-actions">
             {isInitiator && !track.assignedUserId && (
@@ -166,18 +168,21 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
           >
             S
           </button>
-          <input
-            className="volume-slider info-volume"
-            type="range"
-            min={MIN_DB}
-            max={MAX_DB}
-            step={1}
-            value={Math.round(gainToDb(mix.volume))}
-            disabled={!canAdjustMix}
-            onChange={(e) => setChannelVolume(track.id, dbToGain(Number(e.target.value)))}
-            aria-label="Volume in decibels"
-            title={`${Math.round(gainToDb(mix.volume))} dB — 0 dB is unity, resting near the top of the fader`}
-          />
+          <div className="fader">
+            <input
+              className="volume-slider info-volume"
+              type="range"
+              min={MIN_DB}
+              max={MAX_DB}
+              step={1}
+              value={Math.round(gainToDb(mix.volume))}
+              disabled={!canAdjustMix}
+              onChange={(e) => setChannelVolume(track.id, dbToGain(Number(e.target.value)))}
+              aria-label="Volume in decibels"
+              title={`${Math.round(gainToDb(mix.volume))} dB — 0 dB is unity, resting near the top of the fader`}
+            />
+            <FaderScale />
+          </div>
           {canUseFx && (
             <button
               ref={fxButtonRef}
@@ -201,11 +206,9 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
             </button>
           )}
         </div>
-        <ChannelMeter trackId={track.id} armed={armed} />
         {fxAnchor && createPortal(<ChannelFx track={track} initialAnchor={fxAnchor} onClose={() => setFxAnchor(null)} />, document.body)}
       </div>
       )}
-      {status && <div className="info-status">{status}</div>}
     </div>
   );
 }

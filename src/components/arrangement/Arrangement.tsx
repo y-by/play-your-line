@@ -13,6 +13,8 @@ export function Arrangement() {
   const project = useProjectStore((s) => s.project);
   const positionSec = useProjectStore((s) => s.positionSec);
   const isPlaying = useProjectStore((s) => s.isPlaying);
+  const followPlayhead = useProjectStore((s) => s.followPlayhead);
+  const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const pxPerBeat = useProjectStore((s) => s.pxPerBeat);
   const scrollRef = useRef<HTMLDivElement>(null);
   const personalOrder = useProjectStore((s) => s.personalOrder);
@@ -74,19 +76,21 @@ export function Arrangement() {
   const barPx = pxPerBeat * BEATS_PER_BAR;
 
   const songEnd = project ? project.tracks.reduce((m, t) => Math.max(m, clipsEnd(t.clips)), 0) : 0;
-  const totalBars = Math.max(MIN_BARS, Math.ceil(songEnd / barSec(bpm)) + 4);
+  // While recording, the grid keeps growing ahead of the playhead, so it never runs out under a long take.
+  const reachSec = recordingTrackId ? Math.max(songEnd, positionSec) : songEnd;
+  const totalBars = Math.max(MIN_BARS, Math.ceil(reachSec / barSec(bpm)) + 4);
   const timelinePx = totalBars * barPx;
 
   // While playing, keep the playhead in view.
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el || !isPlaying) return;
+    if (!el || !isPlaying || !followPlayhead) return;
     const infoW = parseFloat(getComputedStyle(el).getPropertyValue("--info-w")) || 224;
     const x = positionSec * pxPerSec;
     const visibleStart = el.scrollLeft;
     const visibleEnd = el.scrollLeft + el.clientWidth - infoW;
     if (x > visibleEnd - 40 || x < visibleStart) el.scrollLeft = Math.max(0, x - 40);
-  }, [positionSec, isPlaying, pxPerSec]);
+  }, [positionSec, isPlaying, pxPerSec, followPlayhead]);
 
   // When the playhead jumps back to the left of the view (Back to start, a loop
   // wrapping, a click on the ruler), bring the view with it — even when stopped.
@@ -96,9 +100,9 @@ export function Arrangement() {
   }, [pxPerSec]);
   useEffect(() => {
     const el = scrollRef.current;
-    if (!el) return;
+    if (!el || !followPlayhead) return;
     if (positionSec * pxPerSecRef.current < el.scrollLeft) el.scrollLeft = Math.max(0, positionSec * pxPerSecRef.current - 40);
-  }, [positionSec]);
+  }, [positionSec, followPlayhead]);
 
   // Pinch to zoom on a trackpad (and Ctrl + scroll wheel). The moment under
   // your fingers stays put while the timeline stretches around it.

@@ -1400,15 +1400,6 @@
   opacity: 0.4;
 }
 
-.info-status {
-  position: absolute;
-  inset: auto 0 0 0;
-  padding: 2px 14px;
-  font-size: 11px;
-  font-weight: 600;
-  color: var(--color-red);
-  background: var(--color-bg-elevated);
-}
 
 .toggle-btn:disabled {
   opacity: 0.35;
@@ -1765,15 +1756,6 @@
   flex: none;
 }
 
-.info-status {
-  position: absolute;
-  inset: auto 0 0 0;
-  padding: 1px 36px;
-  font-size: 10px;
-  font-weight: 700;
-  color: var(--color-red);
-  background: var(--color-bg-tertiary);
-}
 
 /* Clips: solid colour with a name band, like a DAW region */
 
@@ -2044,9 +2026,6 @@
     font-size: 11px;
   }
 
-  .info-status {
-    padding-left: 24px;
-  }
 }
 
 /* Mobile: keep the sticky bar to two slim rows */
@@ -2784,28 +2763,8 @@
 
 /* Signal lights: microphone level on the armed channel */
 
-.chan-meter-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  margin-top: 3px;
-}
 
-.chan-meter {
-  flex: 1;
-  display: flex;
-  gap: 2px;
-  height: 4px;
-}
 
-.chan-meter-value {
-  flex: none;
-  font-size: 9px;
-  font-variant-numeric: tabular-nums;
-  color: var(--color-label-tertiary);
-  min-width: 22px;
-  text-align: right;
-}
 
 .chan-meter-seg {
   flex: 1;
@@ -3750,5 +3709,305 @@
   .clip {
     transition: none;
     animation: none;
+  }
+}
+
+/* Follow-playhead toggle, at the right end of the "Bar" corner, just before bar 1 */
+
+.ruler-corner {
+  justify-content: space-between;
+  padding-right: 8px;
+}
+
+.follow-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--color-label-tertiary);
+  cursor: pointer;
+}
+
+.follow-btn:hover {
+  background: var(--color-fill);
+  color: var(--color-label-secondary);
+}
+
+.follow-btn.on {
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, transparent);
+}
+
+/* A calm heads-up, as opposed to an error */
+.toast.notice {
+  background: color-mix(in srgb, var(--color-bg-elevated) 88%, transparent);
+  backdrop-filter: blur(20px) saturate(1.5);
+  color: var(--color-label);
+  border: 1px solid var(--color-separator);
+  font-weight: 500;
+}
+
+/* While this channel is counting in, recording or saving, its status takes the player name's place (so it never covers the level lights). */
+.info-name.status {
+  color: var(--color-red);
+  font-weight: 700;
+  font-style: normal;
+}
+
+/* Vertical signal lights, tight against the colour tab (replaces the horizontal row under the fader) */
+
+.chan-meter-v {
+  flex: none;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+  width: 6px;
+  margin: 5px 0 5px 4px;
+}
+
+.chan-meter-v .chan-meter-seg {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  border-radius: 1.5px;
+}
+
+/* ---- Channel fader: a dark slot, a hardware-style cap with a white centre line, and a printed dB scale ---- */
+
+.fader {
+  --thumb: 12px;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  container-type: inline-size;
+}
+
+.lane .fader .info-volume {
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  height: 22px;
+  background: transparent;
+  border-radius: 0;
+}
+
+.info-volume::-webkit-slider-runnable-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(#08080a, #1c1c20);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.info-volume::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(#08080a, #1c1c20);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.9), 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.info-volume::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: var(--thumb);
+  height: 22px;
+  margin-top: -8px;
+  border-radius: 3px;
+  border: 1px solid #000;
+  background:
+    linear-gradient(to right, transparent calc(50% - 1px), #f4f4f6 calc(50% - 1px), #f4f4f6 calc(50% + 1px), transparent calc(50% + 1px)),
+    repeating-linear-gradient(to right, #17171a 0 1px, #2f2f35 1px 2px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  cursor: grab;
+}
+
+.info-volume::-moz-range-thumb {
+  width: var(--thumb);
+  height: 22px;
+  border-radius: 3px;
+  border: 1px solid #000;
+  background:
+    linear-gradient(to right, transparent calc(50% - 1px), #f4f4f6 calc(50% - 1px), #f4f4f6 calc(50% + 1px), transparent calc(50% + 1px)),
+    repeating-linear-gradient(to right, #17171a 0 1px, #2f2f35 1px 2px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.65), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+  cursor: grab;
+}
+
+.info-volume:active::-webkit-slider-thumb {
+  cursor: grabbing;
+}
+
+.info-volume:focus-visible::-webkit-slider-thumb {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.info-volume:disabled::-webkit-slider-thumb {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.fader-scale {
+  position: relative;
+  height: 12px;
+  pointer-events: none;
+}
+
+/* Position follows the cap's travel: the cap's centre runs from half a cap in to half a cap short of the end. */
+.fader-mark {
+  position: absolute;
+  top: 0;
+  left: calc(var(--thumb) / 2 + (100% - var(--thumb)) * var(--f));
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  color: var(--color-label-tertiary);
+}
+
+.fader-mark i {
+  display: block;
+  width: 1px;
+  height: 3px;
+  background: currentColor;
+}
+
+.fader-mark.major i {
+  height: 5px;
+}
+
+.fader-mark b {
+  margin-top: 0;
+  font-size: 8px;
+  font-weight: 600;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+}
+
+.fader-mark.zero {
+  color: var(--color-label-secondary);
+}
+
+.fader-mark.zero i {
+  height: 7px;
+  width: 2px;
+}
+
+/* Less of the scale on a narrow fader: labels thin out first, then the minor ticks. */
+.fader-mark.tier-2,
+.fader-mark.tier-3 {
+  display: none;
+}
+
+@container (min-width: 90px) {
+  .fader-mark.tier-2 {
+    display: flex;
+  }
+}
+
+@container (min-width: 150px) {
+  .fader-mark.tier-3 {
+    display: flex;
+  }
+}
+
+@media (max-width: 700px) {
+  .fader-scale {
+    display: none;
+  }
+
+  .fader {
+    --thumb: 10px;
+  }
+
+  .lane .fader .info-volume {
+    height: 18px;
+  }
+
+  .info-volume::-webkit-slider-thumb {
+    height: 18px;
+    margin-top: -6px;
+  }
+}
+
+/* ---- Project header: title, then who/what state it is in ---- */
+
+.app-header h1 {
+  flex: 0 1 auto;
+}
+
+.header-meta {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+/* ---- Phones: room for the title and the strips ---- */
+
+@media (max-width: 700px) {
+  /* Row 1: back, the title (as much as fits), publish / export as icons. Row 2: draft state, live, people, role. */
+  .app-header {
+    flex-wrap: wrap;
+    gap: 2px 8px;
+  }
+
+  .app-header h1 {
+    flex: 1 1 0;
+    font-size: 19px;
+  }
+
+  .app-header .header-icon {
+    display: none;
+  }
+
+  .header-meta {
+    order: 10;
+    flex: 1 1 100%;
+    padding-left: 42px; /* lines up with the title, past the back button */
+  }
+
+  .header-meta .project-title {
+    display: inline;
+    font-size: 12px;
+  }
+
+  .publish-label,
+  .export-btn-label {
+    display: none;
+  }
+
+  .publish-btn,
+  .export-btn {
+    padding: 8px 11px;
+  }
+
+  /* Channel strips: a wider column, FX moved up beside the name, so the fader gets real length. */
+  .arrangement,
+  .arr-scroll {
+    --info-w: 190px;
+  }
+
+  .info-main {
+    position: relative;
+  }
+
+  .info-top {
+    padding-right: 34px;
+  }
+
+  .info-main .fx-toggle {
+    position: absolute;
+    top: 3px;
+    right: 6px;
   }
 }

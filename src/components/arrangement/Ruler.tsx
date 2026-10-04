@@ -1,5 +1,6 @@
 import { useCallback, useRef } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
+import { FollowIcon } from "../icons/Icons";
 import { BEATS_PER_BAR, beatSec, stepSec, snapTo } from "../../lib/grid";
 
 interface Props {
@@ -30,6 +31,8 @@ export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
   const loop = useProjectStore((s) => s.loop);
   const loopEnabled = useProjectStore((s) => s.loopEnabled);
   const setLoopRegion = useProjectStore((s) => s.setLoopRegion);
+  const followPlayhead = useProjectStore((s) => s.followPlayhead);
+  const setFollowPlayhead = useProjectStore((s) => s.setFollowPlayhead);
   const drag = useRef<LoopDrag | null>(null);
 
   const seekFrom = useCallback(
@@ -96,6 +99,15 @@ export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
     <div className="arr-row ruler-row">
       <div className="arr-info ruler-corner">
         <span>Bar</span>
+        <button
+          className={followPlayhead ? "follow-btn on" : "follow-btn"}
+          onClick={() => setFollowPlayhead(!followPlayhead)}
+          title={followPlayhead ? "Following the playhead — click to stop the view from scrolling" : "Not following — click to keep the playhead in view"}
+          aria-pressed={followPlayhead}
+          aria-label="Follow playhead"
+        >
+          <FollowIcon size={13} />
+        </button>
       </div>
       <div className="ruler-col" style={{ width: totalBars * barPx }}>
         <div

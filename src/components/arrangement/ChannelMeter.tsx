@@ -7,16 +7,20 @@ const MIC_GAIN = 3.5; // matches InputLevelMeter
 
 // Thresholds start low: an ordinary playing level is often a raw RMS well
 // under 0.1, so the first light needs to catch that, not just a shout.
+// Eight lights, bottom to top: five green, two amber, one red.
 const SEGMENTS: { threshold: number; color: "green" | "amber" | "red" }[] = [
-  { threshold: 0.04, color: "green" },
-  { threshold: 0.12, color: "green" },
-  { threshold: 0.28, color: "green" },
+  { threshold: 0.03, color: "green" },
+  { threshold: 0.07, color: "green" },
+  { threshold: 0.13, color: "green" },
+  { threshold: 0.22, color: "green" },
+  { threshold: 0.35, color: "green" },
   { threshold: 0.5, color: "amber" },
-  { threshold: 0.8, color: "red" },
+  { threshold: 0.7, color: "amber" },
+  { threshold: 0.88, color: "red" },
 ];
 
 /**
- * Signal lights next to a channel's fader. Two sources feed them, whichever
+ * Signal lights, a vertical column right beside the channel's colour tab. Two sources feed them, whichever
  * is relevant at the moment: while this channel is armed to record, the raw
  * microphone level (checking your input before/while capturing it); the rest
  * of the time, that channel's own audio — post-fader, so it lights up
@@ -29,12 +33,10 @@ export function ChannelMeter({ trackId, armed }: { trackId: string; armed: boole
   );
 
   return (
-    <div className="chan-meter-row">
-      <div className="chan-meter" title={armed ? "Microphone level, live while armed to record" : "This channel's own level, live while it's audible"}>
-        {SEGMENTS.map((seg, i) => (
-          <span key={i} className={level >= seg.threshold ? `chan-meter-seg on ${seg.color}` : "chan-meter-seg"} />
-        ))}
-      </div>
+    <div className="chan-meter-v" title={armed ? "Microphone level, live while armed to record" : "This channel's own level, live while it's audible"}>
+      {SEGMENTS.map((seg, i) => (
+        <span key={i} className={level >= seg.threshold ? `chan-meter-seg on ${seg.color}` : "chan-meter-seg"} />
+      ))}
     </div>
   );
 }
