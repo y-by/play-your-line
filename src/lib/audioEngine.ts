@@ -717,12 +717,21 @@ export class AudioEngine {
    *                      stereo signal is downmixed to mono, matching the
    *                      one-line-per-track model).
    */
+  /** Set when the microphone's sample rate differs from the audio context's — the browser then converts between them, which can leave clicks. */
+  private captureRateMismatch: { inputHz: number; contextHz: number } | null = null;
+
+  getCaptureRateMismatch() {
+    return this.captureRateMismatch;
+  }
+
   async startRecording(deviceId?: string | null, channelIndex?: number | null): Promise<void> {
     const audioConstraints = buildAudioConstraints(deviceId, channelIndex);
     const rawStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
     this.rawInputStream = rawStream;
     // Chrome reports the input device's own latency (seconds) when it knows it.
     this.recorderInputLatencySec = rawStream.getAudioTracks()[0]?.getSettings().latency ?? 0;
+    const inputHz = rawStream.getAudioTracks()[0]?.getSettings().sampleRate;
+    this.captureRateMismatch = inputHz && Math.abs(inputHz - this.ctx.sampleRate) > 1 ? { inputHz, contextHz: this.ctx.sampleRate } : null;
 
     await this.ensureRecorderWorklet();
 

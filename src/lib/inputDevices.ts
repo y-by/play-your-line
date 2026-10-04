@@ -20,7 +20,9 @@ export function buildAudioConstraints(deviceId?: string | null, channelIndex?: n
     echoCancellation: false,
     noiseSuppression: false,
     autoGainControl: false,
-    sampleRate: { ideal: 48000 },
+    // No sampleRate here on purpose: asking for 48 kHz made Chrome convert from the device's own
+    // rate (e.g. a 44.1 kHz-only audio interface) and then again into the audio context's rate,
+    // which left clicks in the recording. The microphone's native rate is used instead.
   };
   if (deviceId && deviceId !== DEFAULT_DEVICE_ID) constraints.deviceId = { exact: deviceId };
   if (channelIndex != null) constraints.channelCount = { ideal: Math.max(2, channelIndex + 1) };

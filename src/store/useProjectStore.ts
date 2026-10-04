@@ -1546,6 +1546,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         await engine.resume();
         const resolvedDeviceId = await resolveInputDeviceId(get().inputDeviceId);
         await engine.startRecording(resolvedDeviceId, get().inputChannelIndex);
+        const mismatch = engine.getCaptureRateMismatch();
+        if (mismatch) {
+          const khz = (hz: number) => `${Math.round(hz / 100) / 10} kHz`;
+          set({
+            editError: `Your microphone runs at ${khz(mismatch.inputHz)} but the app's audio runs at ${khz(mismatch.contextHz)}. That mismatch can leave clicks in the recording. In your computer's sound settings, give the input and output the same sample rate, then reload.`,
+          });
+        }
       } catch (err) {
         console.error("Could not start recording:", err);
         if (get().recordingTrackId === trackId) {
