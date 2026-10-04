@@ -38,6 +38,20 @@ function currentUserId(): string | null {
   return useAuthStore.getState().userId;
 }
 
+/** A just-finished recording, kept on screen while it is saved and then eased into the clip that replaces it. */
+export interface RecordingGhost {
+  trackId: string;
+  startSec: number;
+  durationSec: number;
+  binSec: number;
+  peaks: Float32Array;
+  /** Set once the saved clip exists: where the ghost slides to before fading out. */
+  target: { startSec: number; durationSec: number } | null;
+}
+
+/** How long the finished recording takes to settle into its clip (matches the CSS transition). */
+const GHOST_SETTLE_MS = 700;
+
 interface ProjectState {
   project: Project | null;
   projectLoading: boolean;
@@ -80,6 +94,7 @@ interface ProjectState {
   recordingTrackId: string | null;
   recordingPhase: "idle" | "requesting-mic" | "count-in" | "recording" | "uploading";
   recordingError: string | null;
+  recordingGhost: RecordingGhost | null;
 
   availableInputs: InputDevice[];
   inputDeviceId: string;
@@ -859,6 +874,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     recordingTrackId: null,
     recordingPhase: "idle",
     recordingError: null,
+    recordingGhost: null,
 
     availableInputs: [],
     inputDeviceId: DEFAULT_DEVICE_ID,
@@ -1600,6 +1616,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         return;
       }
 
+      const live = recordingPhase === "recording" ? engine.getLiveRecording() : null;
       engine.pause();
       let result: RecordingResult;
       try {
@@ -1616,7 +1633,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         return;
       }
 
-      set({ recordingPhase: "uploading" });
+      const ghost: RecordingGhost | null = live
+        ? {
+            trackId: recordingTrackId,
+            startSec: live.startSec,
+            durationSec: live.dataSec,
+            binSec: live.binSec,
+            peaks: live.peaks.slice(),
+            target: null,
+          }
+        : null;
+      set({ recordingPhase: "uploading", recordingGhost: ghost });
       try {
         const take = await api.createTake({
           projectId: project.id,
@@ -1652,11 +1679,19 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           takesVersion: get().takesVersion + 1,
           selectedClip: { trackId: recordingTrackId, clipId: clip.id },
         });
+        if (ghost) {
+          const landing: RecordingGhost = { ...ghost, target: { startSec: clip.startSec, durationSec: clip.durationSec } };
+          set({ recordingGhost: landing });
+          window.setTimeout(() => {
+            if (get().recordingGhost === landing) set({ recordingGhost: null });
+          }, GHOST_SETTLE_MS + 200);
+        }
         applyTrackClips(recordingTrackId, next);
         updateHistoryCounts();
       } catch (err) {
         console.error("Failed to save the take:", err);
         set({
+          recordingGhost: null,
           recordingTrackId: null,
           recordingPhase: "idle",
           recordingError: "Could not save that take — please try recording again.",

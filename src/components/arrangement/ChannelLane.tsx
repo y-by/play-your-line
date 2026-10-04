@@ -4,6 +4,7 @@ import { useProjectStore } from "../../store/useProjectStore";
 import { snapTo, stepSec } from "../../lib/grid";
 import { ChannelInfo } from "./ChannelInfo";
 import { ClipView } from "./ClipView";
+import { LiveRecordingClip } from "./LiveRecordingClip";
 
 interface Props {
   track: Track;
@@ -29,7 +30,7 @@ export function ChannelLane({ track, number, style, onGripDown, pxPerSec, timeli
   const clips = [...track.clips].sort((a, b) => a.z - b.z);
   const hint = importing
     ? "Adding your file…"
-    : clips.length > 0
+    : recordingTrackId === track.id || clips.length > 0
       ? null
       : track.assignedUserId
         ? canEdit
@@ -86,6 +87,7 @@ export function ChannelLane({ track, number, style, onGripDown, pxPerSec, timeli
             pxPerSec={pxPerSec}
           />
         ))}
+        <LiveRecordingClip track={track} pxPerSec={pxPerSec} />
       </div>
     </div>
   );

@@ -23,12 +23,29 @@ import pcmRecorderWorkletUrl from "../worklets/pcm-recorder-processor.js?url&no-
 type PlaybackListener = (state: { isPlaying: boolean; positionSec: number }) => void;
 type LevelListener = (rms: number) => void;
 
+/** Samples per min/max pair of the live waveform (about 10 ms). */
+const LIVE_BIN = 512;
+
 export interface RecordingResult {
   blob: Blob;
   /** Where this take belongs on the song timeline, latency-compensated. */
   timelineOffsetSec: number;
   latencySec: number;
   durationSec: number;
+}
+
+/** A recording in progress, reduced to peaks for drawing a waveform while it is being made. */
+export interface LiveRecording {
+  /** Where on the song timeline the take will land (same maths as the final placement). */
+  startSec: number;
+  /** Seconds of audio each pair of peak values stands for. */
+  binSec: number;
+  /** [min0, max0, min1, max1, ...] — a view into a buffer that keeps growing, so copy it to keep it. */
+  peaks: Float32Array;
+  /** Seconds covered by `peaks`. */
+  dataSec: number;
+  /** `dataSec` plus the moment since the last chunk arrived, so the right edge grows continuously. */
+  tipSec: number;
 }
 
 export interface CalibrationResult {
@@ -102,6 +119,13 @@ export class AudioEngine {
   private recorderMonoGain: GainNode | null = null;
   private recorderSource: MediaStreamAudioSourceNode | null = null;
   private recorderChunks: Float32Array[] = [];
+  // Peaks of the take so far, for the live waveform: one min/max pair per LIVE_BIN samples.
+  private livePeaks = new Float32Array(8192);
+  private livePeakCount = 0; // number of floats used in livePeaks
+  private liveBinFill = 0;
+  private liveBinMin = 0;
+  private liveBinMax = 0;
+  private liveLastChunkAt = 0;
   private recorderSampleRate = 0;
 
   // Independent, silent (not routed to speakers) input monitor so the user
@@ -767,6 +791,7 @@ export class AudioEngine {
       channelCount: 1,
     });
     this.recorderChunks = [];
+    this.resetLivePeaks();
     this.recorderSampleRate = this.ctx.sampleRate;
     this.recorderStartFrame = null;
     this.recordingAnchor = null;
@@ -774,6 +799,7 @@ export class AudioEngine {
       const data = event.data;
       if (data instanceof Float32Array) {
         this.recorderChunks.push(data);
+        this.addLivePeaks(data);
       } else if (data?.type === "start") {
         this.recorderStartFrame = data.frame ?? null;
       } else if (data?.type === "flush-done") {
@@ -791,6 +817,67 @@ export class AudioEngine {
 
     this.recorderNode = workletNode;
     this.recorderSilentGain = silentGain;
+  }
+
+  private resetLivePeaks() {
+    this.livePeakCount = 0;
+    this.liveBinFill = 0;
+    this.liveBinMin = 0;
+    this.liveBinMax = 0;
+    this.liveLastChunkAt = performance.now();
+  }
+
+  private addLivePeaks(chunk: Float32Array) {
+    this.liveLastChunkAt = performance.now();
+    for (let i = 0; i < chunk.length; i++) {
+      const v = chunk[i];
+      if (v < this.liveBinMin) this.liveBinMin = v;
+      if (v > this.liveBinMax) this.liveBinMax = v;
+      if (++this.liveBinFill >= LIVE_BIN) {
+        if (this.livePeakCount + 2 > this.livePeaks.length) {
+          const bigger = new Float32Array(this.livePeaks.length * 2);
+          bigger.set(this.livePeaks);
+          this.livePeaks = bigger;
+        }
+        this.livePeaks[this.livePeakCount++] = this.liveBinMin;
+        this.livePeaks[this.livePeakCount++] = this.liveBinMax;
+        this.liveBinFill = 0;
+        this.liveBinMin = 0;
+        this.liveBinMax = 0;
+      }
+    }
+  }
+
+  /**
+   * The take as it stands right now, for drawing while recording. Null until the first audio has
+   * arrived and the song position it belongs to is known. Placement uses exactly the maths the
+   * finished take uses, so the drawing sits where the clip will land.
+   */
+  getLiveRecording(): LiveRecording | null {
+    const anchor = this.recordingAnchor;
+    if (!this.recorderNode || !anchor || this.recorderStartFrame === null) return null;
+    const rate = this.recorderSampleRate || this.ctx.sampleRate;
+    const placement = computeTakePlacement({
+      anchorPositionSec: anchor.position,
+      anchorCtxSec: anchor.ctxTime,
+      captureStartCtxSec: this.recorderStartFrame / rate,
+      latencySec: this.effectiveLatencySec(),
+      sampleRate: rate,
+      earliestPositionSec: anchor.position,
+    });
+    // Anything captured before the song started (the count-in) is dropped from the final take too.
+    const skipBins = Math.ceil(placement.dropSamples / LIVE_BIN);
+    const startSec = placement.offsetSec + (skipBins * LIVE_BIN - placement.dropSamples) / rate;
+    const firstFloat = Math.min(this.livePeakCount, skipBins * 2);
+    const dataSec = ((this.livePeakCount - firstFloat) / 2) * (LIVE_BIN / rate);
+    const sinceChunk = Math.min(0.09, (performance.now() - this.liveLastChunkAt) / 1000);
+    return {
+      startSec,
+      binSec: LIVE_BIN / rate,
+      peaks: this.livePeaks.subarray(firstFloat, this.livePeakCount),
+      dataSec,
+      tipSec: dataSec + sinceChunk,
+    };
   }
 
   private releaseCaptureGraph() {
