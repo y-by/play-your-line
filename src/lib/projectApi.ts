@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient";
-import type { Project, Track, Take, Clip, ChannelFx } from "../types/project";
+import type { ProjectNote, Project, Track, Take, Clip, ChannelFx } from "../types/project";
 import { DEFAULT_CHANNEL_FX } from "../types/project";
 import type { StoredFile } from "./orphans";
 
@@ -17,6 +17,7 @@ function mapProject(row: any, tracks: Track[], takes: Record<string, Take>): Pro
     initiatorId: row.initiator_id,
     mixerId: row.mixer_id ?? null,
     mixerName: null,
+    initiatorName: null,
     coverPath: row.cover_path ?? null,
     listeners: [],
     status: row.status,
@@ -102,6 +103,7 @@ export async function getProject(id: string): Promise<Project> {
       ...(trackRows ?? []).map((t) => t.assigned_user_id).filter((v): v is string => !!v),
       ...listenerIds,
       ...(projectRow.mixer_id ? [projectRow.mixer_id as string] : []),
+      projectRow.initiator_id as string,
     ]),
   ];
 
@@ -134,6 +136,7 @@ export async function getProject(id: string): Promise<Project> {
   );
 
   const project = mapProject(projectRow, tracks, takes);
+  project.initiatorName = namesById.get(project.initiatorId) ?? null;
   project.mixerName = project.mixerId ? (namesById.get(project.mixerId) ?? null) : null;
   project.listeners = listenerIds.map((userId) => ({ userId, name: namesById.get(userId) ?? null }));
   return project;
@@ -655,4 +658,87 @@ export async function fetchListeners(projectId: string): Promise<{ userId: strin
   if (pe) throw pe;
   const names = new Map((profiles ?? []).map((p) => [p.id as string, p.display_name as string | null]));
   return ids.map((userId) => ({ userId, name: names.get(userId) ?? null }));
+}
+
+// ---- Notes ----------------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function mapNote(row: any, authorName: string | null): ProjectNote {
+  return {
+    id: row.id,
+    projectId: row.project_id,
+    authorId: row.author_id,
+    authorName,
+    body: row.body,
+    atBeat: row.at_beat ?? null,
+    trackId: row.track_id ?? null,
+    mentions: (row.mentions as string[] | null) ?? [],
+    sharedWithListeners: !!row.shared_with_listeners,
+    done: !!row.done,
+    doneBy: row.done_by ?? null,
+    createdAt: new Date(row.created_at).getTime(),
+  };
+}
+
+/** The notes this person is allowed to see (the database filters them), oldest first, with author names. */
+export async function listNotes(projectId: string): Promise<ProjectNote[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("project_notes").select("*").eq("project_id", projectId).order("created_at", { ascending: true });
+  if (error) throw error;
+  const rows = data ?? [];
+  const ids = [...new Set(rows.map((r) => r.author_id as string))];
+  const names = new Map<string, string | null>();
+  if (ids.length) {
+    const { data: profiles, error: pe } = await client.from("profiles").select("id, display_name").in("id", ids);
+    if (pe) throw pe;
+    for (const p of profiles ?? []) names.set(p.id as string, (p.display_name as string | null) ?? null);
+  }
+  return rows.map((r) => mapNote(r, names.get(r.author_id as string) ?? null));
+}
+
+export async function createNote(note: {
+  projectId: string;
+  authorId: string;
+  body: string;
+  atBeat: number | null;
+  trackId: string | null;
+  mentions: string[];
+  sharedWithListeners: boolean;
+}): Promise<string> {
+  const client = requireSupabase();
+  const id = crypto.randomUUID();
+  const { error } = await client.from("project_notes").insert({
+    id,
+    project_id: note.projectId,
+    author_id: note.authorId,
+    body: note.body,
+    at_beat: note.atBeat,
+    track_id: note.trackId,
+    mentions: note.mentions,
+    shared_with_listeners: note.sharedWithListeners,
+  });
+  if (error) throw error;
+  return id;
+}
+
+export async function updateNote(
+  id: string,
+  patch: Partial<{ body: string; atBeat: number | null; trackId: string | null; mentions: string[]; sharedWithListeners: boolean; done: boolean }>
+): Promise<void> {
+  const client = requireSupabase();
+  const row: Record<string, unknown> = {};
+  if (patch.body !== undefined) row.body = patch.body;
+  if (patch.atBeat !== undefined) row.at_beat = patch.atBeat;
+  if (patch.trackId !== undefined) row.track_id = patch.trackId;
+  if (patch.mentions !== undefined) row.mentions = patch.mentions;
+  if (patch.sharedWithListeners !== undefined) row.shared_with_listeners = patch.sharedWithListeners;
+  if (patch.done !== undefined) row.done = patch.done;
+  const { error } = await client.from("project_notes").update(row).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteNote(id: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("project_notes").delete().eq("id", id);
+  if (error) throw error;
 }

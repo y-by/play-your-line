@@ -8,7 +8,7 @@ import { FaderScale } from "./FaderScale";
 import { PanKnob } from "./PanKnob";
 import { ChannelFx } from "./ChannelFx";
 import { useProjectStore } from "../../store/useProjectStore";
-import { XmarkCircleIcon, MicIcon } from "../icons/Icons";
+import { XmarkCircleIcon, MicIcon, NoteIcon } from "../icons/Icons";
 
 /** The left-hand column of a lane: who plays it, record, mute/solo, volume. */
 export function ChannelInfo({ track, number, onGripDown }: { track: Track; number: number; onGripDown?: (e: React.PointerEvent) => void }) {
@@ -18,6 +18,11 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
   const toggleChannelMute = useProjectStore((s) => s.toggleChannelMute);
   const toggleChannelSolo = useProjectStore((s) => s.toggleChannelSolo);
   const setChannelPan = useProjectStore((s) => s.setChannelPan);
+  const openChannelNotes = useProjectStore((s) => (s.notesVisible ? s.notes.filter((n) => n.trackId === track.id && !n.done).length : 0));
+  const showChannelNotes = useProjectStore((s) => s.showChannelNotes);
+  const toggleChords = useProjectStore((s) => s.toggleChords);
+  const chordsShown = useProjectStore((s) => !!s.chordsShown[track.id]);
+  const detecting = useProjectStore((s) => s.detectingChords === track.id);
   const canMix = useProjectStore((s) => s.canMix());
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const recordingPhase = useProjectStore((s) => s.recordingPhase);
@@ -119,6 +124,12 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
             {status ?? playerName}
           </span>
           <span className="info-actions">
+            {openChannelNotes > 0 && (
+              <button className="note-badge" onClick={() => showChannelNotes(track.id)} title={`${openChannelNotes} open note${openChannelNotes === 1 ? "" : "s"} for this channel`} aria-label="Open this channel's notes">
+                <NoteIcon size={12} />
+                {openChannelNotes}
+              </button>
+            )}
             {isInitiator && !track.assignedUserId && (
               <button className="info-chip" onClick={() => claimChannel(track.id)} title="Take this channel and play it yourself">
                 <MicIcon size={12} />
@@ -189,6 +200,18 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
           </div>
           <PanKnob value={track.pan} disabled={!canMix} onChange={(v) => setChannelPan(track.id, v)} />
           <div className="strip-side">
+          {track.clips.length > 0 && (
+            <button
+              className={chordsShown ? "fx-toggle on" : "fx-toggle"}
+              disabled={detecting}
+              onClick={() => void toggleChords(track.id)}
+              title={detecting ? "Listening for chords…" : chordsShown ? "Hide the detected chords" : "Detect the chords in this channel (a suggestion, not a guarantee)"}
+              aria-pressed={chordsShown}
+              aria-label="Detect chords"
+            >
+              {detecting ? "…" : "♪"}
+            </button>
+          )}
           {canUseFx && (
             <button
               ref={fxButtonRef}

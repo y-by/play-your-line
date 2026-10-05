@@ -1,6 +1,7 @@
 import { useCallback, useRef } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
 import { FollowIcon } from "../icons/Icons";
+import { NoteFlags } from "../notes/NoteFlags";
 import { BEATS_PER_BAR, beatSec, stepSec, snapTo } from "../../lib/grid";
 
 interface Props {
@@ -139,6 +140,7 @@ export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
         </div>
       </div>
       <div className="ruler-col" style={{ width: totalBars * barPx }}>
+        <NoteFlags pxPerSec={pxPerSec} />
         <div
           className={locked ? "arr-ruler locked" : "arr-ruler"}
           style={{ "--beat-px": `${barPx / BEATS_PER_BAR}px` } as React.CSSProperties}

@@ -3,6 +3,8 @@ import { useParams, Link } from "react-router-dom";
 import { useProjectStore } from "../store/useProjectStore";
 import { Arrangement } from "../components/arrangement/Arrangement";
 import { Transport, type SongPanel } from "../components/Transport";
+import { NotesTray } from "../components/notes/NotesTray";
+import { NoteCards } from "../components/notes/NoteCards";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { ErrorToast } from "../components/ErrorToast";
 import { PresenceDots } from "../components/PresenceDots";
@@ -176,6 +178,8 @@ export function SongPage() {
       )}
 
       <SettingsPanel />
+      <NotesTray />
+      <NoteCards />
       <ErrorToast />
     </div>
   );

@@ -3,11 +3,12 @@ import { useProjectStore } from "../store/useProjectStore";
 import { formatTime } from "../lib/format";
 import { barAndBeat, BEATS_PER_BAR } from "../lib/grid";
 import { BackToStartIcon, PlayIcon, PauseIcon, StopIcon, LoopIcon, MetronomeIcon, PlusCircleIcon, UserPlusIcon, GearIcon } from "./icons/Icons";
+import { TunerCell } from "./TunerCell";
 import { TempoControl } from "./TempoControl";
 import { EditToolbar } from "./arrangement/EditToolbar";
 import { AddChannelPanel } from "./AddChannelPanel";
 import { PeoplePanel } from "./PeoplePanel";
-import { CloseIcon } from "./icons/Icons";
+import { CloseIcon, NoteIcon } from "./icons/Icons";
 
 export type SongPanel = "add" | "people" | null;
 
@@ -21,6 +22,10 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
   const isInitiator = useProjectStore((s) => s.isInitiator());
   const isParticipant = useProjectStore((s) => s.isParticipant());
   const openSettings = useProjectStore((s) => s.openSettings);
+  const notesVisible = useProjectStore((s) => s.notesVisible);
+  const setNotesVisible = useProjectStore((s) => s.setNotesVisible);
+  const openNotes = useProjectStore((s) => s.notes.filter((n) => !n.done).length);
+  const hasNotesToShow = useProjectStore((s) => s.canWriteNotes() || s.notes.length > 0);
   return (
     <div className={`lg ${className}`}>
       <button className="lb" onClick={openSettings} title="Audio settings" aria-label="Audio settings">
@@ -34,6 +39,18 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
           aria-label="People"
         >
           <UserPlusIcon size={16} />
+        </button>
+      )}
+      {hasNotesToShow && (
+        <button
+          className={notesVisible ? "lb on notes-btn" : "lb notes-btn"}
+          onClick={() => setNotesVisible(!notesVisible)}
+          title={notesVisible ? "Notes are showing — click to hide the notes tray, cards and flags" : "Notes are hidden — click to show them"}
+          aria-pressed={notesVisible}
+          aria-label="Notes"
+        >
+          <NoteIcon size={16} />
+          {openNotes > 0 && <span className="notes-btn-dot">{openNotes > 9 ? "9+" : openNotes}</span>}
         </button>
       )}
       {isParticipant && (
@@ -196,6 +213,7 @@ export function Transport({ panel, onPanel }: Props) {
               <span className="lcd-n s">{BEATS_PER_BAR}/4</span>
               <span className="lcd-l">signature</span>
             </div>
+            <TunerCell />
           </div>
 
           <ModeButtons className="hide-m cb-modes" />

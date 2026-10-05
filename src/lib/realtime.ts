@@ -15,6 +15,7 @@ export interface RealtimeHandlers {
   onTrack: (type: ChangeType, row: Row) => void;
   onClip: (type: ChangeType, row: Row) => void;
   onListeners: () => void;
+  onNote: (type: ChangeType, row: Row) => void;
   onStatus: (status: RealtimeStatus) => void;
   /** Who has this song open right now (each person once, even on several devices). */
   onPresence: (users: PresentUser[]) => void;
@@ -43,6 +44,10 @@ export function subscribeToProject(projectId: string, handlers: RealtimeHandlers
     // Clips carry no project id, so every visible clip change arrives and the store ignores other songs' channels.
     .on("postgres_changes", { event: "*", schema: "public", table: "clips" }, (p) =>
       handlers.onClip(p.eventType as ChangeType, p.eventType === "DELETE" ? p.old : p.new)
+    )
+    // Notes: DELETE events can't be filtered by project, so every visible note change arrives and the store checks the project.
+    .on("postgres_changes", { event: "*", schema: "public", table: "project_notes" }, (p) =>
+      handlers.onNote(p.eventType as ChangeType, p.eventType === "DELETE" ? p.old : p.new)
     )
     .on("presence", { event: "sync" }, () => {
       const state = channel.presenceState() as Record<string, { name?: string }[]>;

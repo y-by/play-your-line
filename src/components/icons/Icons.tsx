@@ -234,6 +234,24 @@ export function FollowIcon({ size = 14 }: IconProps) {
   );
 }
 
+export function NoteIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 4.5h14a1 1 0 0 1 1 1V15l-5 5H5a1 1 0 0 1-1-1V5.5a1 1 0 0 1 1-1z" />
+      <path d="M15 20v-4a1 1 0 0 1 1-1h4" />
+      <path d="M8 9h8M8 12.5h5" />
+    </svg>
+  );
+}
+
+export function FlagIcon({ size = 14 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor">
+      <path d="M6 3.5a1 1 0 0 1 1 1V5h10.2a1 1 0 0 1 .8 1.6L15.8 10l2.2 3.4a1 1 0 0 1-.8 1.6H7v5.5a1 1 0 1 1-2 0v-16a1 1 0 0 1 1-1z" />
+    </svg>
+  );
+}
+
 export function GoogleIcon({ size = 18 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24">

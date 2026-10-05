@@ -5,6 +5,7 @@ import { snapTo, stepSec } from "../../lib/grid";
 import { ChannelInfo } from "./ChannelInfo";
 import { ClipView } from "./ClipView";
 import { LiveRecordingClip } from "./LiveRecordingClip";
+import { ChordStrip } from "./ChordStrip";
 
 interface Props {
   track: Track;
@@ -88,6 +89,7 @@ export function ChannelLane({ track, number, style, onGripDown, pxPerSec, timeli
           />
         ))}
         <LiveRecordingClip track={track} pxPerSec={pxPerSec} />
+        <ChordStrip track={track} pxPerSec={pxPerSec} />
       </div>
     </div>
   );

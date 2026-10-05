@@ -68,6 +68,8 @@ export interface Project {
   /** The one optional Mixer, who may set the final mix (volume, mute). */
   mixerId: string | null;
   mixerName: string | null;
+  /** The Owner's display name (so they can be tagged in a note). */
+  initiatorName: string | null;
   /** Path of the cover image in the "covers" bucket, if the Owner added one. */
   coverPath: string | null;
   /** People invited to hear the draft. */
@@ -86,4 +88,25 @@ export interface TrackInvite {
   trackId: string;
   token: string;
   status: "pending" | "accepted" | "revoked";
+}
+
+/** A note one of the people on a project left for the others. */
+export interface ProjectNote {
+  id: string;
+  projectId: string;
+  authorId: string;
+  authorName: string | null;
+  body: string;
+  /** Pinned to this beat of the timeline (4 beats to a bar), or null for a general note. */
+  atBeat: number | null;
+  /** Attached to this channel, or null. */
+  trackId: string | null;
+  /** People tagged with @name in the text. */
+  mentions: string[];
+  /** Listeners can read it too. */
+  sharedWithListeners: boolean;
+  /** Done notes are archived. */
+  done: boolean;
+  doneBy: string | null;
+  createdAt: number;
 }

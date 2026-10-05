@@ -1,12 +1,13 @@
 import { create } from "zustand";
-import type { Project, Track, Clip, ChannelFx } from "../types/project";
+import type { ProjectNote, Project, Track, Clip, ChannelFx } from "../types/project";
 import { AudioEngine, type RecordingResult } from "../lib/audioEngine";
 import { useAuthStore } from "./useAuthStore";
 import * as api from "../lib/projectApi";
 import { listInputDevices, probeChannelCount, resolveInputDeviceId, type InputDevice, DEFAULT_DEVICE_ID } from "../lib/inputDevices";
 import { listOutputDevices, type OutputDevice } from "../lib/outputDevices";
-import { nextZ, splitClip, duplicateClip, moveClip } from "../lib/clips";
+import { nextZ, splitClip, duplicateClip, moveClip, audibleSegments } from "../lib/clips";
 import { encodeWavFloat32 } from "../lib/wav";
+import { detectChords, type ChordSegment } from "../lib/chords";
 import { stepSec, beatSec, BEATS_PER_BAR, type SnapResolution } from "../lib/grid";
 import { clipEnd as clipEndSec } from "../lib/clips";
 import { effectiveChannelMix } from "../lib/mix";
@@ -226,6 +227,43 @@ interface ProjectState {
   editError: string | null;
 
   /** Are we hearing other people's changes as they happen? */
+
+
+  // ---- Chords (our own detector; suggestions only, recalculated on request, not saved) ----
+  /** Detected chords per channel, on the project's beat grid. Cleared when that channel's clips or the tempo change. */
+  chords: Record<string, ChordSegment[]>;
+  chordsShown: Record<string, boolean>;
+  detectingChords: string | null;
+  /** First press: listen to the channel and show its chords. After that: show / hide them. */
+  toggleChords: (trackId: string) => Promise<void>;
+
+  // ---- Notes ----
+  notes: ProjectNote[];
+  /** Master switch for the notes tray, the floating cards and the flags on the timeline. Saved on this device. */
+  notesVisible: boolean;
+  setNotesVisible: (visible: boolean) => void;
+  notesTrayOpen: boolean;
+  setNotesTrayOpen: (open: boolean) => void;
+  /** Notes popped out as floating cards, with where they sit and whether they are minimised to the bottom row. */
+  noteCards: Record<string, { x: number; y: number; min: boolean }>;
+  floatNote: (id: string) => void;
+  moveNoteCard: (id: string, x: number, y: number) => void;
+  minimizeNoteCard: (id: string, min: boolean) => void;
+  unfloatNote: (id: string) => void;
+  /** The flag on the timeline whose bubble is open. */
+  openFlagId: string | null;
+  setOpenFlag: (id: string | null) => void;
+  /** Show only the notes attached to this channel in the tray (null = all). */
+  noteChannelFilter: string | null;
+  showChannelNotes: (trackId: string | null) => void;
+  /** Owner, Mixer or a Player may write notes; Listeners may only read the ones shared with them. */
+  canWriteNotes: () => boolean;
+  addNote: (input: { body: string; atBeat: number | null; trackId: string | null; mentions: string[]; sharedWithListeners: boolean }) => Promise<void>;
+  editNote: (id: string, patch: Partial<{ body: string; atBeat: number | null; trackId: string | null; mentions: string[]; sharedWithListeners: boolean }>) => Promise<void>;
+  setNoteDone: (id: string, done: boolean) => Promise<void>;
+  removeNote: (id: string) => Promise<void>;
+  jumpToNote: (id: string) => void;
+
   realtimeStatus: RealtimeStatus | "off";
   /** Who has this song open right now. */
   presentUsers: PresentUser[];
@@ -297,6 +335,35 @@ function readStoredSnapEnabled(): boolean {
     return localStorage.getItem(SNAP_ENABLED_KEY) !== "off"; // on by default
   } catch {
     return true;
+  }
+}
+
+
+const NOTES_VISIBLE_KEY = "pyl.notesVisible";
+const noteCardsKey = (projectId: string) => `pyl.noteCards.${projectId}`;
+
+function readNotesVisible(): boolean {
+  try {
+    return localStorage.getItem(NOTES_VISIBLE_KEY) === "on"; // off by default
+  } catch {
+    return false;
+  }
+}
+
+function readNoteCards(projectId: string): Record<string, { x: number; y: number; min: boolean }> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(noteCardsKey(projectId)) ?? "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeNoteCards(projectId: string, cards: Record<string, { x: number; y: number; min: boolean }>) {
+  try {
+    localStorage.setItem(noteCardsKey(projectId), JSON.stringify(cards));
+  } catch {
+    // not remembering where the cards sit is fine
   }
 }
 
@@ -453,6 +520,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     if (!project) return;
     const tracks = project.tracks.map((t) => (t.id === trackId ? { ...t, clips } : t));
     engine.setTrackClips(trackId, clips);
+    if (get().chords[trackId]) {
+      const { [trackId]: _stale, ...rest } = get().chords;
+      void _stale;
+      set({ chords: rest });
+    }
     const stillSelected = !selectedClip || selectedClip.trackId !== trackId || clips.some((c) => c.id === selectedClip.clipId);
     set({
       project: { ...project, tracks },
@@ -634,6 +706,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   // rows quietly, reusing recordings we already have.
   const syncFromServer = async () => {
     const current = get().project;
+    if (current) void refreshNotes(current.id);
     if (!current || get().recordingTrackId || get().isPlaying) return;
     try {
       const fresh = await api.getProject(current.id);
@@ -691,6 +764,50 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }
   };
 
+
+  // ---- Notes (internals) ----
+  const sortNotes = (list: ProjectNote[]) => [...list].sort((a, b) => a.createdAt - b.createdAt);
+
+  const nameForUser = (userId: string): string | null => {
+    const { project, notes } = get();
+    if (userId === currentUserId()) return useAuthStore.getState().profile?.displayName ?? null;
+    const fromNote = notes.find((n) => n.authorId === userId && n.authorName)?.authorName;
+    if (fromNote) return fromNote;
+    if (!project) return null;
+    if (project.mixerId === userId && project.mixerName) return project.mixerName;
+    return project.tracks.find((t) => t.assignedUserId === userId && t.assignedPlayerName)?.assignedPlayerName ?? null;
+  };
+
+  const refreshNotes = async (projectId: string) => {
+    try {
+      const notes = await api.listNotes(projectId);
+      if (get().project?.id === projectId) set({ notes });
+    } catch (err) {
+      // Before the notes migration has been run there is no table yet; the rest of the app is unaffected.
+      console.warn("Couldn't load the notes:", err);
+    }
+  };
+
+  const handleNoteChange = (type: "INSERT" | "UPDATE" | "DELETE", row: Record<string, unknown>) => {
+    const project = get().project;
+    if (!project) return;
+    if (type === "DELETE") {
+      set({ notes: get().notes.filter((n) => n.id !== row.id) });
+      return;
+    }
+    if (row.project_id !== project.id) return;
+    const authorId = row.author_id as string;
+    const name = nameForUser(authorId);
+    const note = api.mapNote(row, name);
+    const rest = get().notes.filter((n) => n.id !== note.id);
+    set({ notes: sortNotes([...rest, note]) });
+    if (!name) {
+      void api.fetchDisplayName(authorId).then((fetched) => {
+        if (fetched) set({ notes: get().notes.map((n) => (n.authorId === authorId && !n.authorName ? { ...n, authorName: fetched } : n)) });
+      });
+    }
+  };
+
   const startRealtime = (projectId: string) => {
     stopRealtime();
     const uid = currentUserId();
@@ -708,6 +825,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           })
           .catch((err) => console.warn("Couldn't refresh the listeners:", err));
       },
+      onNote: (type, row) => handleNoteChange(type, row),
       onTrack: (type, row) => void handleTrackChange(type, row),
       onClip: (type, row) => void handleClipChange(type, row),
       onStatus: (status) => {
@@ -825,7 +943,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     loadProject: async (id) => {
-      set({ projectLoading: true, projectError: null, project: null, selectedClip: null, editError: null, loop: null, loopEnabled: false, armedTrackId: null });
+      set({ projectLoading: true, projectError: null, project: null, selectedClip: null, editError: null, loop: null, loopEnabled: false, armedTrackId: null, notes: [], notesTrayOpen: false, noteCards: {}, openFlagId: null, noteChannelFilter: null, chords: {}, chordsShown: {} });
       try {
         const project = await api.getProject(id);
         await api.hydrateTakeBlobs(project);
@@ -859,6 +977,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           takesVersion: get().takesVersion + 1,
         });
         syncMixToEngine();
+        set({ noteCards: readNoteCards(project.id) });
+        void refreshNotes(project.id);
         startRealtime(project.id);
         void cleanUpUnusedFiles(project);
       } catch (err) {
@@ -874,7 +994,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       if (!project || !get().isInitiator() || get().tempoLocked()) return;
       const clamped = Math.min(MAX_BPM, Math.max(MIN_BPM, Math.round(bpm)));
       const previous = project.bpm;
-      set({ project: { ...project, bpm: clamped } });
+      set({ project: { ...project, bpm: clamped }, chords: {}, chordsShown: {} });
       engine.setBpm(clamped);
       syncLoop();
       try {
@@ -1554,13 +1674,178 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     play: () => {
       engine.resume().then(() => engine.play(get().positionSec));
     },
+
+    chords: {},
+    chordsShown: {},
+    detectingChords: null,
+    toggleChords: async (trackId) => {
+      const { project, chords, chordsShown } = get();
+      const track = project?.tracks.find((t) => t.id === trackId);
+      if (!project || !track) return;
+      if (chords[trackId]) {
+        set({ chordsShown: { ...chordsShown, [trackId]: !chordsShown[trackId] } });
+        return;
+      }
+      if (get().detectingChords) return;
+      set({ detectingChords: trackId });
+      try {
+        const found: ChordSegment[] = [];
+        for (const seg of audibleSegments(track.clips)) {
+          const buffer = engine.getTakeBuffer(seg.takeId);
+          if (!buffer) continue;
+          // Let the screen breathe between recordings: the analysis is a second or two of number crunching.
+          await new Promise((r) => setTimeout(r, 0));
+          found.push(
+            ...detectChords(buffer.getChannelData(0), buffer.sampleRate, project.bpm, {
+              timelineStartSec: seg.startSec,
+              sourceStartSec: seg.sourceStartSec,
+              durationSec: seg.endSec - seg.startSec,
+            })
+          );
+        }
+        found.sort((a, b) => a.startBeat - b.startBeat);
+        if (get().project?.id !== project.id) return;
+        set({ chords: { ...get().chords, [trackId]: found }, chordsShown: { ...get().chordsShown, [trackId]: true } });
+      } catch (err) {
+        console.error("Failed to detect the chords:", err);
+        set({ editError: `Couldn't work out the chords${errorDetail(err)}` });
+      } finally {
+        set({ detectingChords: null });
+      }
+    },
+
+    notes: [],
+    notesVisible: readNotesVisible(),
+    setNotesVisible: (visible) => {
+      set({ notesVisible: visible });
+      try {
+        if (visible) localStorage.setItem(NOTES_VISIBLE_KEY, "on");
+        else localStorage.removeItem(NOTES_VISIBLE_KEY);
+      } catch {
+        // storage unavailable — the setting just won't persist
+      }
+    },
+    notesTrayOpen: false,
+    setNotesTrayOpen: (open) => set({ notesTrayOpen: open }),
+    noteCards: {},
+    floatNote: (id) => {
+      const project = get().project;
+      if (!project || get().noteCards[id]) return;
+      const count = Object.keys(get().noteCards).length;
+      const next = { ...get().noteCards, [id]: { x: 80 + count * 28, y: 150 + count * 28, min: false } };
+      set({ noteCards: next });
+      writeNoteCards(project.id, next);
+    },
+    moveNoteCard: (id, x, y) => {
+      const project = get().project;
+      const card = get().noteCards[id];
+      if (!project || !card) return;
+      const next = { ...get().noteCards, [id]: { ...card, x, y } };
+      set({ noteCards: next });
+      writeNoteCards(project.id, next);
+    },
+    minimizeNoteCard: (id, min) => {
+      const project = get().project;
+      const card = get().noteCards[id];
+      if (!project || !card) return;
+      const next = { ...get().noteCards, [id]: { ...card, min } };
+      set({ noteCards: next });
+      writeNoteCards(project.id, next);
+    },
+    unfloatNote: (id) => {
+      const project = get().project;
+      if (!project) return;
+      const next = { ...get().noteCards };
+      delete next[id];
+      set({ noteCards: next });
+      writeNoteCards(project.id, next);
+    },
+    openFlagId: null,
+    setOpenFlag: (id) => set({ openFlagId: id }),
+    noteChannelFilter: null,
+    showChannelNotes: (trackId) => set({ noteChannelFilter: trackId, notesVisible: true, notesTrayOpen: true }),
+    canWriteNotes: () => {
+      const { project } = get();
+      const uid = currentUserId();
+      if (!project || !uid) return false;
+      return project.initiatorId === uid || project.mixerId === uid || project.tracks.some((t) => t.assignedUserId === uid);
+    },
+    addNote: async ({ body, atBeat, trackId, mentions, sharedWithListeners }) => {
+      const { project } = get();
+      const uid = currentUserId();
+      const text = body.trim();
+      if (!project || !uid || !text || !get().canWriteNotes()) return;
+      try {
+        const id = await api.createNote({ projectId: project.id, authorId: uid, body: text.slice(0, 2000), atBeat, trackId, mentions, sharedWithListeners });
+        // The live update may already have added it.
+        if (!get().notes.some((n) => n.id === id)) {
+          const note: ProjectNote = {
+            id,
+            projectId: project.id,
+            authorId: uid,
+            authorName: useAuthStore.getState().profile?.displayName ?? null,
+            body: text.slice(0, 2000),
+            atBeat,
+            trackId,
+            mentions,
+            sharedWithListeners,
+            done: false,
+            doneBy: null,
+            createdAt: Date.now(),
+          };
+          set({ notes: sortNotes([...get().notes, note]) });
+        }
+      } catch (err) {
+        console.error("Failed to add the note:", err);
+        set({ editError: `Couldn't save that note${errorDetail(err)}` });
+      }
+    },
+    editNote: async (id, patch) => {
+      const before = get().notes;
+      set({ notes: before.map((n) => (n.id === id ? { ...n, ...patch } : n)) });
+      try {
+        await api.updateNote(id, patch);
+      } catch (err) {
+        console.error("Failed to edit the note:", err);
+        set({ notes: before, editError: `Couldn't save that change to the note${errorDetail(err)}` });
+      }
+    },
+    setNoteDone: async (id, done) => {
+      const before = get().notes;
+      const uid = currentUserId();
+      set({ notes: before.map((n) => (n.id === id ? { ...n, done, doneBy: done ? uid : null } : n)), openFlagId: done ? null : get().openFlagId });
+      try {
+        await api.updateNote(id, { done });
+      } catch (err) {
+        console.error("Failed to update the note:", err);
+        set({ notes: before, editError: `Couldn't update that note${errorDetail(err)}` });
+      }
+    },
+    removeNote: async (id) => {
+      const before = get().notes;
+      set({ notes: before.filter((n) => n.id !== id) });
+      get().unfloatNote(id);
+      try {
+        await api.deleteNote(id);
+      } catch (err) {
+        console.error("Failed to delete the note:", err);
+        set({ notes: before, editError: `Couldn't delete that note${errorDetail(err)}` });
+      }
+    },
+    jumpToNote: (id) => {
+      const { project, notes } = get();
+      const note = notes.find((n) => n.id === id);
+      if (!project || !note || note.atBeat === null) return;
+      engine.seek(note.atBeat * beatSec(project.bpm));
+    },
+
     realtimeStatus: "off",
     presentUsers: [],
     leaveProject: () => {
       engine.pause();
       engine.stopMonitoring();
       stopRealtime();
-      set({ realtimeStatus: "off", presentUsers: [], armedTrackId: null });
+      set({ realtimeStatus: "off", presentUsers: [], armedTrackId: null, notes: [], notesTrayOpen: false, noteCards: {}, openFlagId: null });
     },
 
     pause: () => engine.pause(),
