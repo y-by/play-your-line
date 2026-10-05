@@ -66,6 +66,7 @@ export function mapTrack(row: any, clips: Clip[], assignedPlayerName: string | n
     clips,
     volume: row.volume,
     muted: row.muted,
+    pan: row.pan ?? 0,
     fx: {
       eqLow: row.eq_low ?? DEFAULT_CHANNEL_FX.eqLow,
       eqMid: row.eq_mid ?? DEFAULT_CHANNEL_FX.eqMid,
@@ -362,7 +363,7 @@ export async function removeTrack(trackId: string): Promise<void> {
 }
 
 /** The saved final mix. Only the initiator may change it (enforced by the database). */
-export async function updateTrackMix(trackId: string, patch: Partial<{ volume: number; muted: boolean }>): Promise<void> {
+export async function updateTrackMix(trackId: string, patch: Partial<{ volume: number; muted: boolean; pan: number }>): Promise<void> {
   const client = requireSupabase();
   const { error } = await client.from("tracks").update(patch).eq("id", trackId);
   if (error) throw error;
@@ -401,6 +402,13 @@ export async function assignTrackToUser(trackId: string, userId: string): Promis
 export async function reassignTrack(trackId: string, userId: string | null): Promise<void> {
   const client = requireSupabase();
   const { error } = await client.rpc("reassign_track", { p_track_id: trackId, p_user_id: userId });
+  if (error) throw error;
+}
+
+/** Owner adds someone who already has an account straight into the project. */
+export async function addProjectMember(projectId: string, userId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc("add_project_member", { p_project_id: projectId, p_user_id: userId });
   if (error) throw error;
 }
 

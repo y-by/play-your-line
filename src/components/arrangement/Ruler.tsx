@@ -31,6 +31,11 @@ export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
   const loop = useProjectStore((s) => s.loop);
   const loopEnabled = useProjectStore((s) => s.loopEnabled);
   const setLoopRegion = useProjectStore((s) => s.setLoopRegion);
+  const anySolo = useProjectStore((s) => Object.values(s.localSolo).some(Boolean));
+  const clearSolo = useProjectStore((s) => s.clearSolo);
+  const anyMuted = useProjectStore((s) => (s.project?.tracks ?? []).some((t) => s.effectiveMix(t).muted));
+  const setAllMuted = useProjectStore((s) => s.setAllMuted);
+  const canAdjustMix = useProjectStore((s) => s.canAdjustMix());
   const followPlayhead = useProjectStore((s) => s.followPlayhead);
   const setFollowPlayhead = useProjectStore((s) => s.setFollowPlayhead);
   const drag = useRef<LoopDrag | null>(null);
@@ -98,16 +103,40 @@ export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
   return (
     <div className="arr-row ruler-row">
       <div className="arr-info ruler-corner">
-        <span>Bar</span>
-        <button
-          className={followPlayhead ? "follow-btn on" : "follow-btn"}
-          onClick={() => setFollowPlayhead(!followPlayhead)}
-          title={followPlayhead ? "Following the playhead — click to stop the view from scrolling" : "Not following — click to keep the playhead in view"}
-          aria-pressed={followPlayhead}
-          aria-label="Follow playhead"
-        >
-          <FollowIcon size={13} />
-        </button>
+        <span className="rc-label">Bar</span>
+        <div className="rc-controls">
+          <span className="arm-slot" aria-hidden="true" />
+          <button
+            className={anyMuted ? "strip-btn mute on" : "strip-btn mute"}
+            disabled={!canAdjustMix}
+            onClick={() => setAllMuted(!anyMuted)}
+            title={anyMuted ? "Master mute: un-mute every channel" : "Master mute: mute every channel"}
+            aria-pressed={anyMuted}
+            aria-label="Master mute"
+          >
+            M
+          </button>
+          <button
+            className={anySolo ? "strip-btn solo on" : "strip-btn solo"}
+            disabled={!anySolo}
+            onClick={clearSolo}
+            title="Master solo: turn off every solo"
+            aria-pressed={anySolo}
+            aria-label="Master solo — turn off every solo"
+          >
+            S
+          </button>
+          <span className="rc-grow" />
+          <button
+            className={followPlayhead ? "follow-btn on" : "follow-btn"}
+            onClick={() => setFollowPlayhead(!followPlayhead)}
+            title={followPlayhead ? "Following the playhead — click to stop the view from scrolling" : "Not following — click to keep the playhead in view"}
+            aria-pressed={followPlayhead}
+            aria-label="Follow playhead"
+          >
+            <FollowIcon size={13} />
+          </button>
+        </div>
       </div>
       <div className="ruler-col" style={{ width: totalBars * barPx }}>
         <div

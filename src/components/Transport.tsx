@@ -1,9 +1,13 @@
+import { useEffect } from "react";
 import { useProjectStore } from "../store/useProjectStore";
 import { formatTime } from "../lib/format";
 import { barAndBeat, BEATS_PER_BAR } from "../lib/grid";
 import { BackToStartIcon, PlayIcon, PauseIcon, StopIcon, LoopIcon, MetronomeIcon, PlusCircleIcon, UserPlusIcon, GearIcon } from "./icons/Icons";
 import { TempoControl } from "./TempoControl";
 import { EditToolbar } from "./arrangement/EditToolbar";
+import { AddChannelPanel } from "./AddChannelPanel";
+import { PeoplePanel } from "./PeoplePanel";
+import { CloseIcon } from "./icons/Icons";
 
 export type SongPanel = "add" | "people" | null;
 
@@ -46,7 +50,7 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
   );
 }
 
-/** Loop, count-in, metronome and clear-solo. */
+/** Loop, count-in and metronome. (Master solo and mute sit above the channels, in the ruler's corner.) */
 function ModeButtons({ className }: { className: string }) {
   const loop = useProjectStore((s) => s.loop);
   const loopEnabled = useProjectStore((s) => s.loopEnabled);
@@ -55,8 +59,6 @@ function ModeButtons({ className }: { className: string }) {
   const setCountInEnabled = useProjectStore((s) => s.setCountInEnabled);
   const metronomeEnabled = useProjectStore((s) => s.metronomeEnabled);
   const toggleMetronome = useProjectStore((s) => s.toggleMetronome);
-  const anySolo = useProjectStore((s) => Object.values(s.localSolo).some(Boolean));
-  const clearSolo = useProjectStore((s) => s.clearSolo);
   const metronomeVolume = useProjectStore((s) => s.metronomeVolume);
   const setMetronomeVolume = useProjectStore((s) => s.setMetronomeVolume);
   return (
@@ -98,9 +100,6 @@ function ModeButtons({ className }: { className: string }) {
         title="Click volume"
         aria-label="Click volume"
       />
-      <button className={anySolo ? "lb solo-on" : "lb"} onClick={clearSolo} disabled={!anySolo} title="Turn off all solos" aria-label="Clear solos">
-        S
-      </button>
     </div>
   );
 }
@@ -121,6 +120,15 @@ export function Transport({ panel, onPanel }: Props) {
   const armedName = useProjectStore((s) => s.project?.tracks.find((t) => t.id === s.effectiveArmedId())?.instrument ?? null);
   const toggleRecord = useProjectStore((s) => s.toggleRecord);
   const stopRecording = useProjectStore((s) => s.stopRecording);
+
+  useEffect(() => {
+    if (!panel) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onPanel(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [panel, onPanel]);
 
   const { bar, beat } = barAndBeat(positionSec, bpm);
   const recActive = !!recordingTrackId && recordingPhase !== "uploading";
@@ -201,6 +209,21 @@ export function Transport({ panel, onPanel }: Props) {
           {hasChannels && <EditToolbar />}
         </div>
       </div>
+
+      {panel && (
+        <>
+          <div className="cb-popup-catcher" onClick={() => onPanel(null)} />
+          <div className="cb-popup" role="dialog" aria-label={panel === "add" ? "Channels" : "People"}>
+            <header className="cb-popup-head">
+              <h2>{panel === "add" ? "Channels" : "People"}</h2>
+              <button className="settings-close" onClick={() => onPanel(null)} aria-label="Close">
+                <CloseIcon />
+              </button>
+            </header>
+            {panel === "add" ? <AddChannelPanel /> : <PeoplePanel />}
+          </div>
+        </>
+      )}
     </div>
   );
 }

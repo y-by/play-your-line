@@ -3994,20 +3994,225 @@
   /* Channel strips: a wider column, FX moved up beside the name, so the fader gets real length. */
   .arrangement,
   .arr-scroll {
-    --info-w: 190px;
+    --info-w: 200px;
   }
 
-  .info-main {
+}
+
+/* ---- Ruler corner: "Bar", the master M / S exactly above the channels' M / S, and the follow button ---- */
+
+.ruler-corner {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 0;
+  padding: 0;
+}
+
+.rc-label {
+  flex: none;
+  width: 36px; /* the channel's colour tab (26) + its level lights (10) */
+  padding-left: 5px;
+  font-size: 10px;
+}
+
+.rc-controls {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px; /* same as .info-controls */
+  padding: 0 10px; /* same as .info-main */
+}
+
+/* The arm button's place in a channel strip; kept empty where there is no arm button so M and S line up everywhere. */
+.arm-slot {
+  flex: none;
+  width: 26px;
+  height: 1px;
+}
+
+.rc-grow {
+  flex: 1;
+}
+
+@media (max-width: 700px) {
+  /* The phone strip is narrower (18 px colour tab, 5 px padding, 3 px gaps); the corner follows it. */
+  .rc-label {
+    width: 28px;
+    padding-left: 2px;
+  }
+
+  .rc-controls {
+    gap: 3px;
+    padding: 0 5px;
+  }
+}
+
+/* ---- Pan knob ---- */
+
+/* The FX button sits at the top right of every channel strip (desktop and phone); the pan knob stays in the controls row, after the fader. */
+.info-main {
+  position: relative;
+}
+
+.info-top {
+  padding-right: 34px;
+}
+
+.strip-side {
+  position: absolute;
+  top: 3px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pan-knob {
+  flex: none;
+  cursor: ns-resize;
+  touch-action: none;
+  outline: none;
+}
+
+.pan-knob.disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.pan-track {
+  fill: #17171a;
+  stroke: var(--color-separator);
+  stroke-width: 1;
+}
+
+.pan-fill {
+  stroke: var(--color-accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.pan-pointer {
+  stroke: #f4f4f6;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+
+.pan-detent {
+  fill: var(--color-label-tertiary);
+}
+
+.pan-knob:focus-visible .pan-track,
+.pan-knob.dragging .pan-track {
+  stroke: var(--color-accent);
+}
+
+/* ---- Channels / People popups: float over the page under the control bar, never push the channels down ---- */
+
+/* The popups hang off the control bar (it is sticky on a phone, which already anchors them). */
+@media (min-width: 701px) {
+  .cbar {
     position: relative;
   }
+}
 
-  .info-top {
-    padding-right: 34px;
+.cb-popup-catcher {
+  position: fixed;
+  inset: 0;
+  z-index: 59;
+}
+
+.cb-popup {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 12px;
+  z-index: 60;
+  width: min(480px, calc(100vw - 24px));
+  max-height: min(72vh, 620px);
+  overflow-y: auto;
+  padding: 12px 16px 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--color-bg-elevated) 94%, transparent);
+  backdrop-filter: blur(20px) saturate(1.4);
+  border: 1px solid var(--color-separator);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  animation: popup-in 0.16s ease-out;
+}
+
+@keyframes popup-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to { opacity: 1; transform: none; }
+}
+
+.cb-popup-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.cb-popup-head h2 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 650;
+  color: var(--color-label);
+}
+
+/* The panels were cards of their own; inside the popup they are just content. */
+.cb-popup .add-channel-panel {
+  background: none;
+  box-shadow: none;
+  padding: 0;
+  border-radius: 0;
+  margin: 0;
+  border-top: none;
+}
+
+.people-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+
+.people-tag {
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 560;
+  padding: 1px 8px;
+  border-radius: 980px;
+  background: var(--color-fill);
+  color: var(--color-label-secondary);
+}
+
+.people-tag.mixer {
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  color: var(--color-accent);
+}
+
+.people-tag.muted {
+  font-style: italic;
+}
+
+@media (max-width: 700px) {
+  .cb-popup {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    max-height: 68vh;
   }
+}
 
-  .info-main .fx-toggle {
-    position: absolute;
-    top: 3px;
-    right: 6px;
+@media (prefers-reduced-motion: reduce) {
+  .cb-popup {
+    animation: none;
+  }
+}
+
+/* Second row on desktop: the panel buttons (settings / people / channels) sit at the left, the editing tools stay right. */
+@media (min-width: 701px) {
+  .tools-scroll > .lg:first-child {
+    margin-right: auto;
   }
 }

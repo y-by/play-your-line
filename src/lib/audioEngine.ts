@@ -21,7 +21,7 @@ import type { ChannelFx } from "../types/project";
 import pcmRecorderWorkletUrl from "../worklets/pcm-recorder-processor.js?url&no-inline";
 
 type PlaybackListener = (state: { isPlaying: boolean; positionSec: number }) => void;
-type LevelListener = (rms: number) => void;
+type LevelListener = (rms: number, peak: number) => void;
 
 /** Samples per min/max pair of the live waveform (about 10 ms). */
 const LIVE_BIN = 512;
@@ -71,6 +71,8 @@ interface LoadedTrack {
   reverbDry: GainNode;
   reverbWet: GainNode;
   reverbOut: GainNode;
+  /** Places the channel between left and right, after all effects. */
+  panner: StereoPannerNode;
   /** Tapped off the channel's fully-processed output — a real per-channel level meter. */
   analyser: AnalyserNode;
   volume: number;
@@ -79,7 +81,7 @@ interface LoadedTrack {
 }
 
 export type TrackLevels = Record<string, number>;
-type TrackLevelsListener = (levels: TrackLevels) => void;
+type TrackLevelsListener = (levels: TrackLevels, peaks: TrackLevels) => void;
 
 export class AudioEngine {
   private ctx: AudioContext;
@@ -131,6 +133,7 @@ export class AudioEngine {
   // While recording, the input meter is fed from the recording itself (see startRecordingMeter).
   private recMeterRaf: number | null = null;
   private recMeterLevel = 0;
+  private recPeakSinceFrame = 0;
   private recorderSampleRate = 0;
 
   // Independent, silent (not routed to speakers) input monitor so the user
@@ -350,6 +353,8 @@ export class AudioEngine {
       reverbWet.gain.value = 0;
       const reverbOut = this.ctx.createGain();
 
+      const panner = this.ctx.createStereoPanner();
+
       const analyser = this.ctx.createAnalyser();
       analyser.fftSize = 512;
 
@@ -372,7 +377,8 @@ export class AudioEngine {
       reverbDry.connect(reverbOut);
       reverbWet.connect(reverbOut);
       reverbOut.connect(analyser);
-      reverbOut.connect(this.masterGain);
+      reverbOut.connect(panner);
+      panner.connect(this.masterGain);
 
       track = {
         trackId,
@@ -391,6 +397,7 @@ export class AudioEngine {
         reverbDry,
         reverbWet,
         reverbOut,
+        panner,
         analyser,
         volume: 1,
         muted: false,
@@ -478,6 +485,7 @@ export class AudioEngine {
       t.reverbDry,
       t.reverbWet,
       t.reverbOut,
+      t.panner,
       t.analyser,
     ]) {
       node.disconnect();
@@ -504,19 +512,23 @@ export class AudioEngine {
 
   private ensureTrackLevelLoop() {
     if (this.trackLevelTimerId != null || this.trackLevelListeners.size === 0) return;
-    const data = new Uint8Array(512);
+    const data = new Float32Array(512);
     this.trackLevelTimerId = window.setInterval(() => {
       const levels: TrackLevels = {};
+      const peaks: TrackLevels = {};
       for (const t of this.tracks.values()) {
-        t.analyser.getByteTimeDomainData(data);
+        t.analyser.getFloatTimeDomainData(data);
         let sumSquares = 0;
+        let peak = 0;
         for (let i = 0; i < data.length; i++) {
-          const v = (data[i] - 128) / 128;
+          const v = data[i];
           sumSquares += v * v;
+          if (Math.abs(v) > peak) peak = Math.abs(v);
         }
         levels[t.trackId] = Math.sqrt(sumSquares / data.length);
+        peaks[t.trackId] = peak;
       }
-      this.trackLevelListeners.forEach((l) => l(levels));
+      this.trackLevelListeners.forEach((l) => l(levels, peaks));
     }, this.schedulerIntervalMs);
   }
 
@@ -535,6 +547,12 @@ export class AudioEngine {
     this.tracks.clear();
     this.takeBuffers.clear();
     this.startedAtPositionSec = 0;
+  }
+
+  /** -1 (hard left) … +1 (hard right). */
+  setTrackPan(trackId: string, pan: number) {
+    const t = this.ensureTrack(trackId);
+    t.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), this.ctx.currentTime, 0.015);
   }
 
   updateTrackMix(trackId: string, volume: number, muted: boolean, solo: boolean) {
@@ -835,7 +853,9 @@ export class AudioEngine {
     this.stopRecordingMeter();
     const loop = () => {
       this.recMeterLevel = Math.max(this.liveLastRms, this.recMeterLevel * 0.88);
-      this.levelListeners.forEach((l) => l(this.recMeterLevel));
+      const peak = this.recPeakSinceFrame; // the loudest sample since the last frame, so a short peak is never missed
+      this.recPeakSinceFrame = 0;
+      this.levelListeners.forEach((l) => l(this.recMeterLevel, peak));
       this.recMeterRaf = requestAnimationFrame(loop);
     };
     this.recMeterRaf = requestAnimationFrame(loop);
@@ -845,7 +865,7 @@ export class AudioEngine {
     if (this.recMeterRaf === null) return;
     cancelAnimationFrame(this.recMeterRaf);
     this.recMeterRaf = null;
-    this.levelListeners.forEach((l) => l(0));
+    this.levelListeners.forEach((l) => l(0, 0));
   }
 
   private resetLivePeaks() {
@@ -856,6 +876,7 @@ export class AudioEngine {
     this.liveBinSumSq = 0;
     this.liveLastRms = 0;
     this.recMeterLevel = 0;
+    this.recPeakSinceFrame = 0;
     this.liveLastChunkAt = performance.now();
   }
 
@@ -866,6 +887,7 @@ export class AudioEngine {
       if (v < this.liveBinMin) this.liveBinMin = v;
       if (v > this.liveBinMax) this.liveBinMax = v;
       this.liveBinSumSq += v * v;
+      if (Math.abs(v) > this.recPeakSinceFrame) this.recPeakSinceFrame = Math.abs(v);
       if (++this.liveBinFill >= LIVE_BIN) {
         this.liveLastRms = Math.sqrt(this.liveBinSumSq / LIVE_BIN);
         this.liveBinSumSq = 0;
@@ -905,7 +927,7 @@ export class AudioEngine {
     const startSec = placement.offsetSec + (skipBins * LIVE_BIN - placement.dropSamples) / rate;
     const firstFloat = Math.min(this.livePeakCount, skipBins * 2);
     const dataSec = ((this.livePeakCount - firstFloat) / 2) * (LIVE_BIN / rate);
-    const sinceChunk = Math.min(0.09, (performance.now() - this.liveLastChunkAt) / 1000);
+    const sinceChunk = Math.min(0.03, (performance.now() - this.liveLastChunkAt) / 1000);
     return {
       startSec,
       binSec: LIVE_BIN / rate,
@@ -1113,18 +1135,19 @@ export class AudioEngine {
     // Intentionally not connected to masterGain/destination — this is a
     // silent meter, not live monitoring through speakers (would cause echo).
 
-    const data = new Uint8Array(analyser.fftSize);
+    const data = new Float32Array(analyser.fftSize);
     const loop = () => {
       if (generation !== this.monitorGeneration) return;
-      analyser.getByteTimeDomainData(data);
+      analyser.getFloatTimeDomainData(data);
       let sumSquares = 0;
+      let peak = 0;
       for (let i = 0; i < data.length; i++) {
-        const v = (data[i] - 128) / 128;
+        const v = data[i];
         sumSquares += v * v;
+        if (Math.abs(v) > peak) peak = Math.abs(v);
       }
       const rms = Math.sqrt(sumSquares / data.length);
-      if (!this.recorderNode) this.levelListeners.forEach((l) => l(rms)); // while recording, the recording drives the meter
-      
+      if (!this.recorderNode) this.levelListeners.forEach((l) => l(rms, peak)); // while recording, the recording drives the meter
       this.monitorRafId = requestAnimationFrame(loop);
     };
     loop();
@@ -1142,7 +1165,7 @@ export class AudioEngine {
     this.monitorSource = null;
     this.monitorSplitter = null;
     this.monitorAnalyser = null;
-    this.levelListeners.forEach((l) => l(0));
+    this.levelListeners.forEach((l) => l(0, 0));
   }
 
   setBpm(bpm: number) {

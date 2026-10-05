@@ -1,22 +1,16 @@
 import { useProjectStore } from "../../store/useProjectStore";
 
-// RMS from an analyser is quiet by nature; scale it up so a normal level
-// lights a useful number of segments.
-const OUTPUT_GAIN = 6; // post-fader signal — generally louder headroom than a raw mic
-const MIC_GAIN = 3.5; // matches InputLevelMeter
-
-// Thresholds start low: an ordinary playing level is often a raw RMS well
-// under 0.1, so the first light needs to catch that, not just a shout.
-// Eight lights, bottom to top: five green, two amber, one red.
-const SEGMENTS: { threshold: number; color: "green" | "amber" | "red" }[] = [
-  { threshold: 0.03, color: "green" },
-  { threshold: 0.07, color: "green" },
-  { threshold: 0.13, color: "green" },
-  { threshold: 0.22, color: "green" },
-  { threshold: 0.35, color: "green" },
-  { threshold: 0.5, color: "amber" },
-  { threshold: 0.7, color: "amber" },
-  { threshold: 0.88, color: "red" },
+// Peak level in dBFS (0 dBFS is the loudest the file can hold). Five green, two amber, and a red light
+// that comes on within 1 dB of the top. Peak, not average: it shows how close the signal is to clipping.
+const SEGMENTS: { db: number; color: "green" | "amber" | "red" }[] = [
+  { db: -48, color: "green" },
+  { db: -36, color: "green" },
+  { db: -28, color: "green" },
+  { db: -21, color: "green" },
+  { db: -15, color: "green" },
+  { db: -9, color: "amber" },
+  { db: -4, color: "amber" },
+  { db: -1, color: "red" },
 ];
 
 /**
@@ -28,14 +22,13 @@ const SEGMENTS: { threshold: number; color: "green" | "amber" | "red" }[] = [
  * else passing through it.
  */
 export function ChannelMeter({ trackId, armed }: { trackId: string; armed: boolean }) {
-  const level = useProjectStore((s) =>
-    armed ? Math.min(1, s.inputLevel * MIC_GAIN) : Math.min(1, (s.trackLevels[trackId] ?? 0) * OUTPUT_GAIN)
-  );
+  const peak = useProjectStore((s) => (armed ? s.inputPeak : (s.trackPeaks[trackId] ?? 0)));
+  const db = peak > 0 ? 20 * Math.log10(peak) : -Infinity;
 
   return (
-    <div className="chan-meter-v" title={armed ? "Microphone level, live while armed to record" : "This channel's own level, live while it's audible"}>
+    <div className="chan-meter-v" title={armed ? "Microphone peak level (red = about to clip)" : "This channel's peak level (red = about to clip)"}>
       {SEGMENTS.map((seg, i) => (
-        <span key={i} className={level >= seg.threshold ? `chan-meter-seg on ${seg.color}` : "chan-meter-seg"} />
+        <span key={i} className={db >= seg.db ? `chan-meter-seg on ${seg.color}` : "chan-meter-seg"} />
       ))}
     </div>
   );

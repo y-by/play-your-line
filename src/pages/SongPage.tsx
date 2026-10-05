@@ -3,8 +3,6 @@ import { useParams, Link } from "react-router-dom";
 import { useProjectStore } from "../store/useProjectStore";
 import { Arrangement } from "../components/arrangement/Arrangement";
 import { Transport, type SongPanel } from "../components/Transport";
-import { PeoplePanel } from "../components/PeoplePanel";
-import { AddChannelPanel } from "../components/AddChannelPanel";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { ErrorToast } from "../components/ErrorToast";
 import { PresenceDots } from "../components/PresenceDots";
@@ -167,9 +165,6 @@ export function SongPage() {
       </header>
 
       <Transport panel={panel} onPanel={setPanel} />
-
-      {panel === "add" && <AddChannelPanel />}
-      {panel === "people" && <PeoplePanel />}
 
 
       {project.tracks.length === 0 ? (

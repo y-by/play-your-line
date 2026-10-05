@@ -5,6 +5,7 @@ import { TRACK_COLORS } from "../../lib/trackColors";
 import { gainToDb, dbToGain, MIN_DB, MAX_DB } from "../../lib/dbFader";
 import { ChannelMeter } from "./ChannelMeter";
 import { FaderScale } from "./FaderScale";
+import { PanKnob } from "./PanKnob";
 import { ChannelFx } from "./ChannelFx";
 import { useProjectStore } from "../../store/useProjectStore";
 import { XmarkCircleIcon, MicIcon } from "../icons/Icons";
@@ -16,6 +17,8 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
   const setChannelVolume = useProjectStore((s) => s.setChannelVolume);
   const toggleChannelMute = useProjectStore((s) => s.toggleChannelMute);
   const toggleChannelSolo = useProjectStore((s) => s.toggleChannelSolo);
+  const setChannelPan = useProjectStore((s) => s.setChannelPan);
+  const canMix = useProjectStore((s) => s.canMix());
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const recordingPhase = useProjectStore((s) => s.recordingPhase);
   const canEdit = useProjectStore((s) => s.canEditClips(track));
@@ -131,6 +134,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
         </div>
 
         <div className="info-controls">
+          {!canEdit && <span className="arm-slot" aria-hidden="true" />}
           {canEdit && (
             <button
               className={armed ? "arm-btn on" : "arm-btn"}
@@ -183,6 +187,8 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
             />
             <FaderScale />
           </div>
+          <PanKnob value={track.pan} disabled={!canMix} onChange={(v) => setChannelPan(track.id, v)} />
+          <div className="strip-side">
           {canUseFx && (
             <button
               ref={fxButtonRef}
@@ -205,6 +211,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
               FX
             </button>
           )}
+          </div>
         </div>
         {fxAnchor && createPortal(<ChannelFx track={track} initialAnchor={fxAnchor} onClose={() => setFxAnchor(null)} />, document.body)}
       </div>

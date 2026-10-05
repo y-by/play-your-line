@@ -74,6 +74,8 @@ interface ProjectState {
   /** Owner picks an existing participant as the Mixer (or null to clear it). */
   setMixer: (userId: string | null) => Promise<void>;
   removeListener: (userId: string) => Promise<void>;
+  /** Owner: add someone with an account by email. Throws a readable error if there is no such account. */
+  addMemberByEmail: (email: string) => Promise<string>;
 
   /** Tempo locks as soon as the song has any clip. */
   tempoLocked: () => boolean;
@@ -103,6 +105,10 @@ interface ProjectState {
   inputChannelCount: number;
   inputChannelIndex: number | null;
   inputLevel: number;
+  /** Peak of the microphone, linear 0..1, eased so the lights fall smoothly (for the level lights). */
+  inputPeak: number;
+  /** Same for each channel's own audio, post-fader. */
+  trackPeaks: Record<string, number>;
   /** Each channel's own live output level (post-fader) — 0..1, keyed by track id. */
   trackLevels: Record<string, number>;
   loadingInputs: boolean;
@@ -165,7 +171,11 @@ interface ProjectState {
   canAdjustMix: () => boolean;
   effectiveMix: (track: Track) => { volume: number; muted: boolean; solo: boolean };
   setChannelVolume: (trackId: string, volume: number) => void;
+  /** Owner / Mixer only (the saved final mix): -1 left … +1 right. */
+  setChannelPan: (trackId: string, pan: number) => void;
   toggleChannelMute: (trackId: string) => void;
+  /** Master mute: mutes every channel, or un-mutes them all. Follows the same rules as a single channel's M. */
+  setAllMuted: (muted: boolean) => void;
   toggleChannelSolo: (trackId: string) => void;
   /** Owner/Mixer only: EQ, Compressor, Delay and Reverb on the saved final mix. */
   setChannelFx: (trackId: string, patch: Partial<ChannelFx>) => void;
@@ -384,8 +394,20 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   const initialLatencyMs = readStoredLatencyMs();
   engine.setLatencyCompensationSec(initialLatencyMs === null ? null : initialLatencyMs / 1000);
   engine.onUpdate(({ isPlaying, positionSec }) => set({ isPlaying, positionSec }));
-  engine.onLevel((inputLevel) => set({ inputLevel }));
-  engine.onTrackLevels((trackLevels) => set({ trackLevels }));
+  // Peak meters rise instantly and fall at a steady, calm rate (about 19 dB a second), so the lights
+  // don't flicker with every note.
+  let easedInputPeak = 0;
+  engine.onLevel((inputLevel, peak) => {
+    easedInputPeak = Math.max(peak, easedInputPeak * 0.965);
+    set({ inputLevel, inputPeak: easedInputPeak });
+  });
+  let easedTrackPeaks: Record<string, number> = {};
+  engine.onTrackLevels((trackLevels, peaks) => {
+    const next: Record<string, number> = {};
+    for (const id of Object.keys(peaks)) next[id] = Math.max(peaks[id], (easedTrackPeaks[id] ?? 0) * 0.95);
+    easedTrackPeaks = next;
+    set({ trackLevels, trackPeaks: next });
+  });
 
   // Pushes the effective mix (saved final mix, or this person's personal
   // monitor mix) for every channel into the audio engine.
@@ -395,6 +417,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     for (const track of project.tracks) {
       const m = get().effectiveMix(track);
       engine.updateTrackMix(track.id, m.volume, m.muted, m.solo);
+      engine.setTrackPan(track.id, track.pan);
     }
   };
 
@@ -439,7 +462,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   };
 
   // The initiator drags a volume slider: update instantly, save once they pause.
-  const scheduleMixSave = (trackId: string, patch: Partial<{ volume: number; muted: boolean }>) => {
+  const scheduleMixSave = (trackId: string, patch: Partial<{ volume: number; muted: boolean; pan: number }>) => {
     const existing = pendingMixSaves.get(trackId);
     if (existing) clearTimeout(existing.timer);
     const merged = { ...(existing?.patch ?? {}), ...patch };
@@ -556,7 +579,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         color: row.color as string,
         assignedUserId,
         assignedPlayerName: name,
-        ...(savingMix ? {} : { volume: row.volume as number, muted: row.muted as boolean }),
+        ...(savingMix ? {} : { volume: row.volume as number, muted: row.muted as boolean, pan: (row.pan as number) ?? found.pan }),
         ...(savingFx
           ? {}
           : {
@@ -774,6 +797,20 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
+    addMemberByEmail: async (email) => {
+      const { project } = get();
+      if (!project || !get().isInitiator()) throw new Error("Only the owner can add people.");
+      const trimmed = email.trim();
+      if (!trimmed) throw new Error("Type an email address first.");
+      const match = await api.findProfileByEmail(trimmed);
+      if (!match) throw new Error("No account yet for that email — they need to sign in once first, or send them the invite link instead.");
+      await api.addProjectMember(project.id, match.id);
+      const fresh = await api.getProject(project.id);
+      const current = get().project;
+      if (current) set({ project: { ...current, mixerId: fresh.mixerId, mixerName: fresh.mixerName, listeners: fresh.listeners } });
+      return match.displayName ?? "That person";
+    },
+
     removeListener: async (userId) => {
       const { project } = get();
       if (!project || !get().isInitiator()) return;
@@ -896,6 +933,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     inputChannelCount: 1,
     inputChannelIndex: null,
     inputLevel: 0,
+    inputPeak: 0,
+    trackPeaks: {},
     trackLevels: {},
     loadingInputs: false,
 
@@ -1231,6 +1270,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
+    setChannelPan: (trackId, pan) => {
+      const { project } = get();
+      if (!project || !get().canMix()) return;
+      const p = Math.min(1, Math.max(-1, pan));
+      set({ project: { ...project, tracks: project.tracks.map((t) => (t.id === trackId ? { ...t, pan: p } : t)) } });
+      syncMixToEngine();
+      scheduleMixSave(trackId, { pan: p });
+    },
     toggleChannelMute: (trackId) => {
       const { project } = get();
       const track = project?.tracks.find((t) => t.id === trackId);
@@ -1278,6 +1325,21 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       syncLoop();
     },
 
+    setAllMuted: (muted) => {
+      const { project } = get();
+      if (!project) return;
+      if (get().canMix()) {
+        set({ project: { ...project, tracks: project.tracks.map((t) => ({ ...t, muted })) } });
+        syncMixToEngine();
+        for (const t of project.tracks) if (t.muted !== muted) scheduleMixSave(t.id, { muted });
+      } else if (get().listeningMode === "monitor") {
+        const monitor = { ...get().monitor };
+        for (const t of project.tracks) monitor[t.id] = { volume: monitor[t.id]?.volume ?? 1, muted };
+        set({ monitor });
+        writeMonitor(project.id, monitor);
+        syncMixToEngine();
+      }
+    },
     clearSolo: () => {
       set({ localSolo: {} });
       syncMixToEngine();

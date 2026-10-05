@@ -4,7 +4,7 @@
 class PCMRecorderProcessor extends AudioWorkletProcessor {
   constructor() {
     super();
-    this.chunkSize = 4096;
+    this.chunkSize = 1024; // ~21 ms: small enough for a live waveform that keeps up
     this.buffer = new Float32Array(this.chunkSize);
     this.writeIndex = 0;
     this.flushRequested = false;

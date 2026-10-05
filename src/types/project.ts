@@ -32,6 +32,8 @@ export interface Track {
   // Saved final mix — only the initiator changes these. (Solo is never saved.)
   volume: number; // 0..1
   muted: boolean;
+  /** -1 (left) … 0 (centre) … +1 (right). Part of the saved final mix. */
+  pan: number;
   fx: ChannelFx;
 }
 

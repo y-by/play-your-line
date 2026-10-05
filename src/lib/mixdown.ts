@@ -5,7 +5,7 @@ import { encodeWavFloat32 } from "./wav";
 
 /**
  * Renders the FINAL mix — the one the initiator saved: each channel's saved
- * volume and mute, clips placed and overlapped exactly as in live playback.
+ * volume, mute and pan, clips placed and overlapped exactly as in live playback.
  * Solo is a listening aid and is never part of the final mix.
  *
  * Takes must already have their audio downloaded (see hydrateTakeBlobs).
@@ -33,7 +33,10 @@ export async function mixdownProject(project: Project): Promise<Blob> {
   for (const { track, segments } of segmentsByTrack) {
     const gain = offlineCtx.createGain();
     gain.gain.value = track.volume;
-    gain.connect(offlineCtx.destination);
+    const panner = offlineCtx.createStereoPanner();
+    panner.pan.value = track.pan;
+    gain.connect(panner);
+    panner.connect(offlineCtx.destination);
     for (const seg of segments) {
       const buffer = buffers.get(seg.takeId);
       if (!buffer) continue;
