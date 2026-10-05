@@ -71,7 +71,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
           </span>
         )}
       </div>
-      {!pickingColor && <ChannelMeter trackId={track.id} armed={armed} />}
+      {!pickingColor && <ChannelMeter trackId={track.id} armed={armed} pan={track.pan} />}
       {pickingColor ? (
         <div className="info-main color-picker" role="group" aria-label="Pick a colour">
           {TRACK_COLORS.map((c) => (

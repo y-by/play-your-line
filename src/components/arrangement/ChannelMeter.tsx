@@ -21,15 +21,48 @@ const SEGMENTS: { db: number; color: "green" | "amber" | "red" }[] = [
  * whenever the channel is actually audible: a clip playing back, or anything
  * else passing through it.
  */
-export function ChannelMeter({ trackId, armed }: { trackId: string; armed: boolean }) {
-  const peak = useProjectStore((s) => (armed ? s.inputPeak : (s.trackPeaks[trackId] ?? 0)));
-  const db = peak > 0 ? 20 * Math.log10(peak) : -Infinity;
+const toDb = (peak: number) => (peak > 0 ? 20 * Math.log10(peak) : -Infinity);
 
+/**
+ * How much of a mono signal reaches each side after the channel's pan (equal-power, the same law the
+ * audio uses), so the lights show what is really going to the left and right speakers.
+ */
+function sideGains(pan: number): { left: number; right: number } {
+  const angle = ((Math.max(-1, Math.min(1, pan)) + 1) * Math.PI) / 4;
+  return { left: Math.cos(angle), right: Math.sin(angle) };
+}
+
+const Column = ({ db }: { db: number }) => (
+  <>
+    {SEGMENTS.map((seg, i) => (
+      <span key={i} className={db >= seg.db ? `chan-meter-seg on ${seg.color}` : "chan-meter-seg"} />
+    ))}
+  </>
+);
+
+export function ChannelMeter({ trackId, armed, pan }: { trackId: string; armed: boolean; pan: number }) {
+  const peak = useProjectStore((s) => (armed ? s.inputPeak : (s.trackPeaks[trackId] ?? 0)));
+  // Split into left and right only for a panned channel, and only for the channel's own sound — the
+  // microphone you are about to record is a single signal.
+  const split = !armed && Math.abs(pan) > 0.02;
+
+  if (!split) {
+    return (
+      <div className="chan-meter-v" title={armed ? "Microphone peak level (red = about to clip)" : "This channel's peak level (red = about to clip)"}>
+        <Column db={toDb(peak)} />
+      </div>
+    );
+  }
+
+  const { left, right } = sideGains(pan);
   return (
-    <div className="chan-meter-v" title={armed ? "Microphone peak level (red = about to clip)" : "This channel's peak level (red = about to clip)"}>
-      {SEGMENTS.map((seg, i) => (
-        <span key={i} className={db >= seg.db ? `chan-meter-seg on ${seg.color}` : "chan-meter-seg"} />
-      ))}
+    <div className="chan-meter-v split" title="Left and right levels of this panned channel (red = about to clip)">
+      <div className="chan-meter-side">
+        <Column db={toDb(peak * left)} />
+      </div>
+      <div className="chan-meter-side">
+        <Column db={toDb(peak * right)} />
+      </div>
     </div>
   );
 }

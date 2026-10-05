@@ -4216,3 +4216,17 @@
     margin-right: auto;
   }
 }
+
+/* A panned channel's lights split into a left and a right column inside the same 6 px, so nothing in the strip moves. */
+.chan-meter-v.split {
+  flex-direction: row;
+  gap: 1px;
+}
+
+.chan-meter-side {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column-reverse;
+  gap: 2px;
+}
