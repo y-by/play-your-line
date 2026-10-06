@@ -5,15 +5,19 @@ import { FX_PRESETS } from "../../lib/channelFx";
 import { CloseIcon, LockIcon, UndoIcon } from "../icons/Icons";
 import { Knob } from "./Knob";
 import { EqCurve } from "./EqCurve";
+import { TunerPanel } from "./TunerPanel";
 
-type Tool = "eq" | "comp" | "delay" | "reverb";
+type Tool = "eq" | "comp" | "delay" | "reverb" | "tuner";
 const TOOLS: { id: Tool; label: string; name: string }[] = [
   { id: "eq", label: "EQ", name: "EQ" },
   { id: "comp", label: "Comp", name: "Compressor" },
   { id: "delay", label: "Delay", name: "Delay" },
   { id: "reverb", label: "Reverb", name: "Reverb" },
+  { id: "tuner", label: "Tuner", name: "Tuner" },
 ];
 const ON_FIELD = { eq: "eqOn", comp: "compOn", delay: "delayOn", reverb: "reverbOn" } as const;
+/** The tuner is not an effect: it has no bypass and does not depend on the power switch. */
+const isEffect = (tool: Tool): tool is keyof typeof ON_FIELD => tool !== "tuner";
 
 /** A small on/off switch. */
 function Switch({ on, onChange, label, disabled, title }: { on: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean; title?: string }) {
@@ -93,12 +97,90 @@ function useDraggable(initial: { top: number; left: number }) {
       drag.current = null;
     },
   };
-  return { pos, headerProps };
+  /** Carry on dragging this window with a pointer that is already down (a tab that was just pulled out). */
+  const startWindowDrag = (clientX: number, clientY: number) => {
+    const start = { x: clientX, y: clientY, top: pos.top, left: pos.left };
+    const move = (e: PointerEvent) =>
+      setPos({
+        top: Math.max(0, start.top + (e.clientY - start.y)),
+        left: Math.max(0, Math.min(window.innerWidth - 60, start.left + (e.clientX - start.x))),
+      });
+    const up = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", up);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", up);
+  };
+  return { pos, headerProps, startWindowDrag };
+}
+
+const SCALE_KEY = "pyl.fxScale";
+const MAX_SCALE = 2;
+
+/** Grow a window by dragging its bottom-right corner, up to double its size (less on a narrow screen). */
+function useResizable(remember: boolean) {
+  const [scale, setScale] = useState(() => {
+    if (!remember) return 1;
+    try {
+      const v = Number(localStorage.getItem(SCALE_KEY));
+      return v >= 1 && v <= MAX_SCALE ? v : 1;
+    } catch {
+      return 1;
+    }
+  });
+  const box = useRef<HTMLDivElement>(null);
+  const grip = {
+    onPointerDown: (e: React.PointerEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const el = box.current;
+      if (!el) return;
+      const baseW = el.offsetWidth;
+      const baseH = el.offsetHeight;
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startScale = scale;
+      const max = Math.max(1, Math.min(MAX_SCALE, (window.innerWidth - 12) / baseW));
+      let latest = startScale;
+      const move = (ev: PointerEvent) => {
+        // The corner follows the pointer: a drag across the window's own size doubles it.
+        latest = Math.min(max, Math.max(1, startScale + (ev.clientX - startX + ev.clientY - startY) / (baseW + baseH)));
+        setScale(latest);
+      };
+      const up = () => {
+        window.removeEventListener("pointermove", move);
+        window.removeEventListener("pointerup", up);
+        window.removeEventListener("pointercancel", up);
+        if (remember) {
+          try {
+            localStorage.setItem(SCALE_KEY, String(Math.round(latest * 100) / 100));
+          } catch {
+            // storage unavailable — the size just won't be remembered
+          }
+        }
+      };
+      window.addEventListener("pointermove", move);
+      window.addEventListener("pointerup", up);
+      window.addEventListener("pointercancel", up);
+    },
+    onDoubleClick: () => setScale(1),
+  };
+  const style = scale === 1 ? {} : { transform: `scale(${scale})`, transformOrigin: "top left" };
+  return { box, grip, style };
+}
+
+/** The corner you drag to make a window bigger (double-click it to go back to normal size). */
+function Grip({ grip }: { grip: ReturnType<typeof useResizable>["grip"] }) {
+  return <span className="fx-grip" {...grip} title="Drag to make this bigger, up to double. Double-click for normal size." role="separator" aria-label="Resize" />;
 }
 
 /** The controls of one effect. */
 function ToolBody({ track, tool, canUse }: { track: Track; tool: Tool; canUse: boolean }) {
   const setChannelFx = useProjectStore((s) => s.setChannelFx);
+  if (tool === "tuner") return <TunerPanel />;
   const fx = track.fx;
   const set = (patch: Parameters<typeof setChannelFx>[1]) => setChannelFx(track.id, patch);
   const pct = (field: "delayMix" | "reverbMix") => (v: number) => set({ [field]: v / 100 });
@@ -152,27 +234,37 @@ function ToolBody({ track, tool, canUse }: { track: Track; tool: Tool; canUse: b
 }
 
 /** One effect pulled out of the main window into a window of its own. */
-function DetachedTool({ track, tool, canUse, start, onDock }: { track: Track; tool: Tool; canUse: boolean; start: { top: number; left: number }; onDock: () => void }) {
+function DetachedTool({ track, tool, canUse, start, grab, onDock }: { track: Track; tool: Tool; canUse: boolean; start: { top: number; left: number }; grab?: { x: number; y: number }; onDock: () => void }) {
   const setChannelFx = useProjectStore((s) => s.setChannelFx);
-  const { pos, headerProps } = useDraggable(start);
+  const { pos, headerProps, startWindowDrag } = useDraggable(start);
+  const { box: sizeBox, grip: sizeGrip, style: sizeStyle } = useResizable(false);
+  const grabbed = useRef(false);
+  useEffect(() => {
+    // Pulled out by dragging its tab: keep following the pointer until it is let go.
+    if (grab && !grabbed.current) {
+      grabbed.current = true;
+      startWindowDrag(grab.x, grab.y);
+    }
+  });
   const info = TOOLS.find((t) => t.id === tool)!;
-  const field = ON_FIELD[tool];
-  const live = track.fx.fxOn && track.fx[field];
+  const field = isEffect(tool) ? ON_FIELD[tool] : null;
+  const live = !field || (track.fx.fxOn && track.fx[field]);
   return (
-    <div className={live ? "channel-fx-plugin detached" : "channel-fx-plugin detached off"} style={{ top: pos.top, left: pos.left }} onPointerDown={(e) => e.stopPropagation()}>
+    <div ref={sizeBox} className={live ? "channel-fx-plugin detached" : "channel-fx-plugin detached off"} style={{ top: pos.top, left: pos.left, ...sizeStyle }} onPointerDown={(e) => e.stopPropagation()}>
       <div className="fx-plugin-header" {...headerProps}>
         <span className="fx-plugin-title">
           {track.instrument} — {info.name}
         </span>
         <span className="fx-header-tools">
-          <Switch on={track.fx[field]} disabled={!canUse} label={`${info.name} on`} title={track.fx[field] ? `${info.name} is on — click to bypass it` : `${info.name} is bypassed — click to turn it on`} onChange={(on) => setChannelFx(track.id, { [field]: on }, { checkpoint: true })} />
+          {field && <Switch on={track.fx[field]} disabled={!canUse} label={`${info.name} on`} title={track.fx[field] ? `${info.name} is on — click to bypass it` : `${info.name} is bypassed — click to turn it on`} onChange={(on) => setChannelFx(track.id, { [field]: on }, { checkpoint: true })} />}
           <button className="fx-dock" onClick={onDock} title="Put this back in the main FX window" aria-label={`Dock ${info.name}`}>
             Dock
           </button>
         </span>
       </div>
-      {!track.fx.fxOn && <p className="fx-offnote">FX is off for this channel — switch it on in the main window to hear this.</p>}
+      {field && !track.fx.fxOn && <p className="fx-offnote">FX is off for this channel — switch it on in the main window to hear this.</p>}
       <ToolBody track={track} tool={tool} canUse={canUse} />
+      <Grip grip={sizeGrip} />
     </div>
   );
 }
@@ -183,7 +275,21 @@ function DetachedTool({ track, tool, canUse, start, onDock }: { track: Track; to
  * A power switch (off by default), a bypass for each effect, presets, undo, reset and a before/after Compare.
  * Each effect can be pulled out into a window of its own and docked back.
  */
-export function ChannelFx({ track, initialAnchor, onClose }: { track: Track; initialAnchor: { top: number; left: number }; onClose: () => void }) {
+export function ChannelFx({
+  track,
+  initialAnchor,
+  mainOpen,
+  onMainOpen,
+  onClose,
+}: {
+  track: Track;
+  initialAnchor: { top: number; left: number };
+  /** Whether the main window is showing. Closing it leaves any tab that was dragged out where it is, on top. */
+  mainOpen: boolean;
+  onMainOpen: (open: boolean) => void;
+  /** Called when nothing is left to show: the main window is closed and no tab is out on its own. */
+  onClose: () => void;
+}) {
   const canUse = useProjectStore((s) => s.canUseFx(track));
   const canLock = useProjectStore((s) => s.canMix());
   const setChannelFx = useProjectStore((s) => s.setChannelFx);
@@ -198,33 +304,43 @@ export function ChannelFx({ track, initialAnchor, onClose }: { track: Track; ini
   const [tool, setTool] = useState<Tool>("eq");
   const [detached, setDetached] = useState<Tool[]>([]);
   const [starts, setStarts] = useState<Partial<Record<Tool, { top: number; left: number }>>>({});
+  const [grabs, setGrabs] = useState<Partial<Record<Tool, { x: number; y: number }>>>({});
+  const justDragged = useRef(false);
   const { pos, headerProps } = useDraggable(initialAnchor);
+  const { box: sizeBox, grip: sizeGrip, style: sizeStyle } = useResizable(true);
 
   // Hearing the channel dry is only for the moment: closing the window puts the effects back.
   useEffect(() => () => useProjectStore.getState().setFxCompare(track.id, false), [track.id]);
 
   const docked = TOOLS.filter((t) => !detached.includes(t.id));
   const shown = docked.some((t) => t.id === tool) ? tool : docked[0]?.id;
-  const detach = (id: Tool) => {
-    setStarts((s) => ({ ...s, [id]: { top: pos.top + 40 + detached.length * 28, left: Math.min(window.innerWidth - 300, pos.left + 280 + detached.length * 28) } }));
+  /** Pulling a tab off the tab strip opens it as its own window, under the pointer. */
+  const detach = (id: Tool, at: { x: number; y: number }) => {
+    setStarts((st) => ({ ...st, [id]: { top: Math.max(0, at.y - 18), left: Math.max(0, Math.min(window.innerWidth - 280, at.x - 130)) } }));
+    setGrabs((g) => ({ ...g, [id]: at }));
     setDetached((d) => [...d, id]);
   };
   const dock = (id: Tool) => {
     setDetached((d) => d.filter((x) => x !== id));
     setTool(id);
+    onMainOpen(true); // docking puts it back in the main window, so that has to be showing
   };
+  useEffect(() => {
+    if (!mainOpen && detached.length === 0) onClose();
+  }, [mainOpen, detached.length, onClose]);
   const fx = track.fx;
   const locked = track.fxLocked;
 
   return (
     <>
-      <div className={fx.fxOn ? "channel-fx-plugin" : "channel-fx-plugin off"} style={{ top: pos.top, left: pos.left }} onPointerDown={(e) => e.stopPropagation()}>
+      {mainOpen && (
+      <div ref={sizeBox} className={fx.fxOn ? "channel-fx-plugin" : "channel-fx-plugin off"} style={{ top: pos.top, left: pos.left, ...sizeStyle }} onPointerDown={(e) => e.stopPropagation()}>
         <div className="fx-plugin-header" {...headerProps}>
           <span className="fx-plugin-title">{track.instrument} — FX</span>
           <span className="fx-header-tools">
             <span className="fx-power-label">{fx.fxOn ? "On" : "Off"}</span>
             <Switch on={fx.fxOn} disabled={!canUse} label="Effects on" title={fx.fxOn ? "Effects are on — click to hear this channel dry" : "Effects are off — click to turn them on"} onChange={(on) => setChannelFx(track.id, { fxOn: on }, { checkpoint: true })} />
-            <button className="fx-close" onClick={onClose} aria-label="Close">
+            <button className="fx-close" onClick={() => onMainOpen(false)} aria-label="Close">
               <CloseIcon size={14} />
             </button>
           </span>
@@ -264,14 +380,44 @@ export function ChannelFx({ track, initialAnchor, onClose }: { track: Track; ini
           )}
         </div>
         {!canUse && <p className="fx-offnote">{locked ? "The owner or mixer has locked this channel's effects." : "You can look, but not change these."}</p>}
-        {canUse && !fx.fxOn && <p className="fx-offnote">Effects are off — switch them on (top right) to hear what you set.</p>}
+        {canUse && !fx.fxOn && shown !== "tuner" && <p className="fx-offnote">Effects are off — switch them on (top right) to hear what you set.</p>}
 
         {docked.length > 0 ? (
           <>
             <div className="fx-tabs" role="tablist">
               {docked.map((t) => (
-                <button key={t.id} className={shown === t.id ? "fx-tab on" : "fx-tab"} onClick={() => setTool(t.id)} role="tab" aria-selected={shown === t.id}>
-                  <span className={fx[ON_FIELD[t.id]] ? "fx-tab-dot on" : "fx-tab-dot"} />
+                <button
+                  key={t.id}
+                  className={shown === t.id ? "fx-tab on" : "fx-tab"}
+                  onClick={() => {
+                    if (justDragged.current) justDragged.current = false;
+                    else setTool(t.id);
+                  }}
+                  onPointerDown={(e) => {
+                    justDragged.current = false;
+                    const startX = e.clientX;
+                    const startY = e.clientY;
+                    const move = (ev: PointerEvent) => {
+                      if (Math.hypot(ev.clientX - startX, ev.clientY - startY) > 16) {
+                        stop();
+                        justDragged.current = true;
+                        detach(t.id, { x: ev.clientX, y: ev.clientY });
+                      }
+                    };
+                    const stop = () => {
+                      window.removeEventListener("pointermove", move);
+                      window.removeEventListener("pointerup", stop);
+                      window.removeEventListener("pointercancel", stop);
+                    };
+                    window.addEventListener("pointermove", move);
+                    window.addEventListener("pointerup", stop);
+                    window.addEventListener("pointercancel", stop);
+                  }}
+                  role="tab"
+                  aria-selected={shown === t.id}
+                  title="Click to open. Drag it out to open in its own window."
+                >
+                  {isEffect(t.id) && <span className={fx[ON_FIELD[t.id]] ? "fx-tab-dot on" : "fx-tab-dot"} />}
                   {t.label}
                 </button>
               ))}
@@ -281,10 +427,7 @@ export function ChannelFx({ track, initialAnchor, onClose }: { track: Track; ini
                 <div className="fx-tool-head">
                   <span className="fx-section-label">{TOOLS.find((t) => t.id === shown)!.name}</span>
                   <span className="fx-header-tools">
-                    <Switch on={fx[ON_FIELD[shown]]} disabled={!canUse} label={`${shown} on`} title={fx[ON_FIELD[shown]] ? "On — click to bypass just this effect" : "Bypassed — click to turn this effect on"} onChange={(on) => setChannelFx(track.id, { [ON_FIELD[shown]]: on }, { checkpoint: true })} />
-                    <button className="fx-dock" onClick={() => detach(shown)} title="Pull this tab out into its own window" aria-label="Detach">
-                      Detach
-                    </button>
+                    {isEffect(shown) && <Switch on={fx[ON_FIELD[shown]]} disabled={!canUse} label={`${shown} on`} title={fx[ON_FIELD[shown]] ? "On — click to bypass just this effect" : "Bypassed — click to turn this effect on"} onChange={(on) => setChannelFx(track.id, { [ON_FIELD[shown]]: on }, { checkpoint: true })} />}
                   </span>
                 </div>
                 <ToolBody track={track} tool={shown} canUse={canUse} />
@@ -299,9 +442,11 @@ export function ChannelFx({ track, initialAnchor, onClose }: { track: Track; ini
             Dock all tabs
           </button>
         )}
+        <Grip grip={sizeGrip} />
       </div>
+      )}
       {detached.map((id) => (
-        <DetachedTool key={id} track={track} tool={id} canUse={canUse} start={starts[id] ?? { top: pos.top + 40, left: pos.left + 280 }} onDock={() => dock(id)} />
+        <DetachedTool key={id} track={track} tool={id} canUse={canUse} start={starts[id] ?? { top: pos.top + 40, left: pos.left + 280 }} grab={grabs[id]} onDock={() => dock(id)} />
       ))}
     </>
   );

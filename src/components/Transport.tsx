@@ -4,11 +4,11 @@ import { useProjectStore } from "../store/useProjectStore";
 import { formatTime } from "../lib/format";
 import { barAndBeat, BEATS_PER_BAR } from "../lib/grid";
 import { BackToStartIcon, PlayIcon, PauseIcon, StopIcon, LoopIcon, MetronomeIcon, PlusCircleIcon, UserPlusIcon, GearIcon } from "./icons/Icons";
-import { TunerCell } from "./TunerCell";
 import { TempoControl } from "./TempoControl";
 import { EditToolbar } from "./arrangement/EditToolbar";
 import { AddChannelPanel } from "./AddChannelPanel";
 import { PeoplePanel } from "./PeoplePanel";
+import { ProjectName, ProjectStatus } from "./ProjectBar";
 import { CloseIcon, NoteIcon } from "./icons/Icons";
 
 export type SongPanel = "add" | "people" | null;
@@ -163,6 +163,7 @@ export function Transport({ panel, onPanel }: Props) {
   return (
     <div className="cbar">
       <div className="cb-row cb-main">
+        <ProjectName />
         <div className="cb-center">
           <div className="lg cb-transport">
             <button className="lb" onClick={() => seek(0)} disabled={busy} title="Back to start" aria-label="Back to start">
@@ -220,11 +221,11 @@ export function Transport({ panel, onPanel }: Props) {
               <span className="lcd-n s">{BEATS_PER_BAR}/4</span>
               <span className="lcd-l">signature</span>
             </div>
-            <TunerCell />
           </div>
 
           <ModeButtons className="hide-m cb-modes" />
         </div>
+        <ProjectStatus />
       </div>
 
       <div className="cb-row cb-tools">

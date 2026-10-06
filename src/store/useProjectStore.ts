@@ -444,7 +444,9 @@ function sameClip(a: Clip, b: Clip): boolean {
     a.z === b.z &&
     Math.abs(a.startSec - b.startSec) < EPS &&
     Math.abs(a.sourceStartSec - b.sourceStartSec) < EPS &&
-    Math.abs(a.durationSec - b.durationSec) < EPS
+    Math.abs(a.durationSec - b.durationSec) < EPS &&
+    Math.abs(a.fadeInSec - b.fadeInSec) < EPS &&
+    Math.abs(a.fadeOutSec - b.fadeOutSec) < EPS
   );
 }
 
@@ -859,27 +861,34 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     const uid = currentUserId();
     const name = useAuthStore.getState().profile?.displayName ?? "Someone";
     const me = uid ? { userId: uid, name } : null;
-    unsubscribeRealtime = subscribeToProject(projectId, {
-      onPresence: (users) => set({ presentUsers: users }),
-      onProject: handleProjectChange,
-      onListeners: () => {
-        void api
-          .fetchListeners(projectId)
-          .then((listeners) => {
-            const current = get().project;
-            if (current) set({ project: { ...current, listeners } });
-          })
-          .catch((err) => console.warn("Couldn't refresh the listeners:", err));
-      },
-      onNote: (type, row) => handleNoteChange(type, row),
-      onTrack: (type, row) => void handleTrackChange(type, row),
-      onClip: (type, row) => void handleClipChange(type, row),
-      onStatus: (status) => {
-        set({ realtimeStatus: status });
-        // Connected (or reconnected): pick up anything we missed in between.
-        if (status === "live") void syncFromServer();
-      },
-    }, me);
+    // Live updates are a bonus: if they can't start, the song still opens (just without them).
+    try {
+      unsubscribeRealtime = subscribeToProject(projectId, {
+        onPresence: (users) => set({ presentUsers: users }),
+        onProject: handleProjectChange,
+        onListeners: () => {
+          void api
+            .fetchListeners(projectId)
+            .then((listeners) => {
+              const current = get().project;
+              if (current) set({ project: { ...current, listeners } });
+            })
+            .catch((err) => console.warn("Couldn't refresh the listeners:", err));
+        },
+        onNote: (type, row) => handleNoteChange(type, row),
+        onTrack: (type, row) => void handleTrackChange(type, row),
+        onClip: (type, row) => void handleClipChange(type, row),
+        onStatus: (status) => {
+          set({ realtimeStatus: status });
+          // Connected (or reconnected): pick up anything we missed in between.
+          if (status === "live") void syncFromServer();
+        },
+      }, me);
+    } catch (err) {
+      console.error("Couldn't start live updates:", err);
+      unsubscribeRealtime = null;
+      set({ realtimeStatus: "offline" });
+    }
   };
 
   if (typeof document !== "undefined") {
@@ -2007,6 +2016,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           sourceStartSec: 0,
           durationSec: buffer.duration,
           z: nextZ(existing),
+          fadeInSec: 0,
+          fadeOutSec: 0,
         };
         await api.upsertClips(trackId, [clip]);
 
@@ -2146,6 +2157,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           sourceStartSec: 0,
           durationSec: result.durationSec,
           z: nextZ(existing),
+          fadeInSec: 0,
+          fadeOutSec: 0,
         };
         await api.upsertClips(recordingTrackId, [clip]);
 

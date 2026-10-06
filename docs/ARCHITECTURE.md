@@ -169,7 +169,7 @@ Good to know:
   channel: on each of your channels a small dot button (next to M and S) arms it — filled red
   means Record goes there, locked while that channel is already recording. **Stop** (or **Space**)
   stops a recording if one's running, otherwise stops playback.
-- **Your role** (Owner, Mixer, Player, Listener) is a small badge in the song header next to the title.
+- **Your role** (Owner, Mixer, Player, Listener) is a small badge at the right of the control bar (`ProjectBar.tsx`); the back button and the project name are at its left. Publish, Unpublish and Export Mix live on the project cards in the home list (`ProjectCardActions.tsx`, `lib/projectActions.ts`).
 - **Loop:** drag on the thin strip *under the bar numbers* to highlight a part; it turns the loop
   on. Drag the highlight to move it, its edges to resize it (snaps to the grid, hold Alt to
   place freely). The **loop button** switches it on/off; with no highlight yet it uses the
@@ -188,7 +188,7 @@ Good to know:
   plugin-style window. A **power switch** (off by default) turns the channel's effects on; each
   effect also has its own bypass. The header holds a preset menu, Undo (this visit only), Reset and
   **Compare** (hear it dry, local only, never saved); the Owner/Mixer also see a **lock**. Tabs can
-  be **detached** into their own draggable windows and docked back (Dock / Dock all). Every knob is
+  be **dragged out** of the tab strip into their own draggable windows and docked back (Dock / Dock all). Closing the main window leaves any tab that was dragged out open and on top; the FX button on the strip shows or hides the main window again. Every FX window has a resize corner (a `transform: scale`, 1x to 2x, capped on narrow screens; the main window remembers it in `pyl.fxScale`). Every knob is
   drag-to-turn (vertical drag, Shift to fine-tune, scroll to nudge, double-click to reset). The EQ
   shows its real frequency-response curve; the Compressor has threshold, ratio, attack, release and
   make-up, a live level meter and a gain-reduction meter. Effects that are off or neutral are taken
@@ -197,9 +197,9 @@ Good to know:
   player unless the Owner or Mixer locks the channel (enforced by the database).
 - **Notes** (`components/notes/`, `lib/notes.ts`): a tray, floating cards and ruler flags, with
   @tags (`mentions` column), a pin to any bar, channel colours, and a "tagged you" badge and message.
-- **Chords and tuner** (`lib/chords.ts`, `lib/tuner.ts`): our own detectors, pure and tested.
+- **Chords and tuner** (`lib/chords.ts`, `lib/tuner.ts`, `TunerPanel.tsx`): our own detectors, pure and tested. The tuner is a tab of the FX window (a strobe display on a canvas, auto or per-string, bass-capable: 25 Hz to 1.3 kHz, within 1 cent in tests).
 - **On a phone** (tested at 375 px wide, iPhone 13 mini): the bar sticks to the top while you
-  scroll (the song header scrolls away). Row 1 is transport plus the number display; row 2
+  scroll. Row 1 is transport plus the number display; row 2
   is a sideways-sliding strip with everything else. Each channel strip is three short lines in
   a narrower column so the clips get the room. Drag-to-reorder is desktop only.
 - **Errors** appear as a small dismissible message at the bottom of the screen.
@@ -294,7 +294,7 @@ src/
   lib/
     audioEngine.ts             playback, click, recording, calibration
     latency.ts                 timing math (pure, unit-testable)
-    clips.ts                   clip rules: overlap, move, trim, split, duplicate (pure)
+    clips.ts                   clip rules: overlap, move, trim, split, duplicate, fades (pure)
     grid.ts                    bars / beats / snapping (pure)
     mix.ts                     which mix a listener hears (pure)
     dbFader.ts                 fader ↔ decibel conversion (pure)

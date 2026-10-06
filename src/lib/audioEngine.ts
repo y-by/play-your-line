@@ -550,7 +550,7 @@ export class AudioEngine {
         const segFrom = Math.max(seg.startSec, from);
         const segTo = Math.min(seg.endSec, to);
         if (segTo <= segFrom) continue;
-        const source = scheduleSegment(this.ctx, t.gainNode, buffer, ctxStart + (segFrom - from), seg.sourceStartSec + (segFrom - seg.startSec), segTo - segFrom);
+        const source = scheduleSegment(this.ctx, t.gainNode, buffer, ctxStart + (segFrom - from), seg.sourceStartSec + (segFrom - seg.startSec), segTo - segFrom, { seg, fromSec: segFrom });
         this.sources.push(source);
         source.onended = () => {
           this.sources = this.sources.filter((s) => s !== source);

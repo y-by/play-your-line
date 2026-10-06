@@ -49,7 +49,7 @@ export async function mixdownProject(project: Project): Promise<Blob> {
     for (const seg of segments) {
       const buffer = buffers.get(seg.takeId);
       if (!buffer) continue;
-      scheduleSegment(offlineCtx, gain, buffer, seg.startSec, seg.sourceStartSec, seg.endSec - seg.startSec);
+      scheduleSegment(offlineCtx, gain, buffer, seg.startSec, seg.sourceStartSec, seg.endSec - seg.startSec, { seg, fromSec: seg.startSec });
     }
   }
 

@@ -47,7 +47,15 @@ function HomeContent() {
                 <h3>{shelf.title}</h3>
                 <div className="shelf-row">
                   {shelf.items.map((p) => (
-                    <ProjectCard key={p.id} project={p} people={people[p.id] ?? []} imageUrl={covers[p.id]} large={shelf.large} />
+                    <ProjectCard
+                      key={p.id}
+                      project={p}
+                      people={people[p.id] ?? []}
+                      imageUrl={covers[p.id]}
+                      large={shelf.large}
+                      isOwner={p.initiatorId === userId}
+                      onStatus={(id, status) => setProjects((list) => list && list.map((x) => (x.id === id ? { ...x, status } : x)))}
+                    />
                   ))}
                 </div>
               </section>

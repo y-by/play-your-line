@@ -8,6 +8,8 @@
 //   sourceStartSec  where in the take the clip begins playing
 //   durationSec     how long the clip plays
 //   z               stacking order; the newest clip has the highest z
+//   fadeInSec       how long the clip takes to rise from silence at its start (0 = no fade)
+//   fadeOutSec      how long it takes to fall to silence at its end
 //
 // Every edit (move, trim, split, duplicate) only changes these numbers.
 
@@ -18,6 +20,8 @@ export interface ClipData {
   sourceStartSec: number;
   durationSec: number;
   z: number;
+  fadeInSec: number;
+  fadeOutSec: number;
 }
 
 /** A stretch of a clip that is actually heard (not covered by a clip above it). */
@@ -28,6 +32,11 @@ export interface Segment {
   endSec: number;
   /** Position inside the take where this segment starts playing. */
   sourceStartSec: number;
+  /** The clip this piece belongs to, with its fades: the fade curve follows the whole clip, not the piece. */
+  clipStartSec: number;
+  clipEndSec: number;
+  fadeInSec: number;
+  fadeOutSec: number;
 }
 
 /** Shortest a clip may be trimmed to. */
@@ -87,6 +96,10 @@ export function audibleSegments(clips: ClipData[]): Segment[] {
         startSec: from,
         endSec: to,
         sourceStartSec: clip.sourceStartSec + (from - clip.startSec),
+        clipStartSec: clip.startSec,
+        clipEndSec: end,
+        fadeInSec: clip.fadeInSec,
+        fadeOutSec: clip.fadeOutSec,
       });
     };
 
@@ -118,9 +131,13 @@ function mergeContinuous(sorted: Segment[]): Segment[] {
       last &&
       last.takeId === seg.takeId &&
       Math.abs(last.endSec - seg.startSec) < 1e-6 &&
-      Math.abs(last.sourceStartSec + (last.endSec - last.startSec) - seg.sourceStartSec) < 1e-6
+      Math.abs(last.sourceStartSec + (last.endSec - last.startSec) - seg.sourceStartSec) < 1e-6 &&
+      // A fade at the cut itself means the two halves are not one smooth sound any more.
+      last.fadeOutSec === 0 &&
+      seg.fadeInSec === 0
     ) {
-      out[out.length - 1] = { ...last, endSec: seg.endSec };
+      // One sound again: it carries the first half's fade in and the second half's fade out.
+      out[out.length - 1] = { ...last, endSec: seg.endSec, clipEndSec: seg.clipEndSec, fadeOutSec: seg.fadeOutSec };
     } else {
       out.push({ ...seg });
     }
@@ -139,28 +156,30 @@ export function trimClipStart(clip: ClipData, newStartSec: number): ClipData {
   const latest = clipEnd(clip) - MIN_CLIP_SEC;
   const start = Math.min(latest, Math.max(earliest, newStartSec));
   const delta = start - clip.startSec;
-  return { ...clip, startSec: start, sourceStartSec: clip.sourceStartSec + delta, durationSec: clip.durationSec - delta };
+  return fitFades({ ...clip, startSec: start, sourceStartSec: clip.sourceStartSec + delta, durationSec: clip.durationSec - delta });
 }
 
 /** Drag the right edge: the clip shrinks (or grows back into the take) from the right. */
 export function trimClipEnd(clip: ClipData, newEndSec: number, takeDurationSec: number): ClipData {
   const latest = clip.startSec + Math.max(MIN_CLIP_SEC, takeDurationSec - clip.sourceStartSec);
   const end = Math.min(latest, Math.max(clip.startSec + MIN_CLIP_SEC, newEndSec));
-  return { ...clip, durationSec: end - clip.startSec };
+  return fitFades({ ...clip, durationSec: end - clip.startSec });
 }
 
 /** Cut a clip in two at `atSec`. Both halves keep the same z. Null if the cut is too close to an edge. */
 export function splitClip(clip: ClipData, atSec: number, newId: string): [ClipData, ClipData] | null {
   if (atSec <= clip.startSec + MIN_CLIP_SEC || atSec >= clipEnd(clip) - MIN_CLIP_SEC) return null;
   const leftDuration = atSec - clip.startSec;
-  const left: ClipData = { ...clip, durationSec: leftDuration };
-  const right: ClipData = {
+  // The fades stay on the outer edges: the cut itself is left smooth.
+  const left: ClipData = fitFades({ ...clip, durationSec: leftDuration, fadeOutSec: 0 });
+  const right: ClipData = fitFades({
     ...clip,
     id: newId,
     startSec: atSec,
     sourceStartSec: clip.sourceStartSec + leftDuration,
     durationSec: clip.durationSec - leftDuration,
-  };
+    fadeInSec: 0,
+  });
   return [left, right];
 }
 
@@ -172,4 +191,45 @@ export function duplicateClip(clip: ClipData, newId: string, z: number): ClipDat
 /** How long the song is: the end of the last clip. */
 export function clipsEnd(clips: ClipData[]): number {
   return clips.reduce((max, c) => Math.max(max, clipEnd(c)), 0);
+}
+
+/** Keeps a clip's fades inside the clip: together they can never be longer than the clip itself. */
+export function fitFades(clip: ClipData): ClipData {
+  const fadeIn = Math.min(Math.max(0, clip.fadeInSec), clip.durationSec);
+  const fadeOut = Math.min(Math.max(0, clip.fadeOutSec), clip.durationSec - fadeIn);
+  return fadeIn === clip.fadeInSec && fadeOut === clip.fadeOutSec ? clip : { ...clip, fadeInSec: fadeIn, fadeOutSec: fadeOut };
+}
+
+/** Sets a fade length. The other fade is left as it is; this one stops where the other begins. */
+export function setClipFade(clip: ClipData, which: "in" | "out", sec: number): ClipData {
+  const other = which === "in" ? clip.fadeOutSec : clip.fadeInSec;
+  const length = Math.min(Math.max(0, sec), Math.max(0, clip.durationSec - other));
+  return which === "in" ? { ...clip, fadeInSec: length } : { ...clip, fadeOutSec: length };
+}
+
+/** The volume (0..1) a clip's fades give at timeline position `t`. */
+export function fadeGain(clipStartSec: number, clipEndSec: number, fadeInSec: number, fadeOutSec: number, t: number): number {
+  let g = 1;
+  if (fadeInSec > 0 && t < clipStartSec + fadeInSec) g = Math.min(g, Math.max(0, (t - clipStartSec) / fadeInSec));
+  if (fadeOutSec > 0 && t > clipEndSec - fadeOutSec) g = Math.min(g, Math.max(0, (clipEndSec - t) / fadeOutSec));
+  return g;
+}
+
+/**
+ * The volume curve of one audible piece, from `fromSec` to `toSec` on the timeline, as points to join with
+ * straight lines: a tiny fade at each end so a cut never clicks, shaped by the clip's own fades.
+ */
+export function envelopePoints(seg: Pick<Segment, "clipStartSec" | "clipEndSec" | "fadeInSec" | "fadeOutSec">, fromSec: number, toSec: number, declickSec: number): { t: number; g: number }[] {
+  const d = Math.min(declickSec, (toSec - fromSec) / 2);
+  const times = new Set<number>([fromSec, fromSec + d, toSec - d, toSec]);
+  const fadeInEnd = seg.clipStartSec + seg.fadeInSec;
+  const fadeOutStart = seg.clipEndSec - seg.fadeOutSec;
+  if (seg.fadeInSec > 0 && fadeInEnd > fromSec && fadeInEnd < toSec) times.add(fadeInEnd);
+  if (seg.fadeOutSec > 0 && fadeOutStart > fromSec && fadeOutStart < toSec) times.add(fadeOutStart);
+  return [...times]
+    .sort((a, b) => a - b)
+    .map((t) => {
+      const declick = d <= 0 ? 1 : Math.min(1, (t - fromSec) / d, (toSec - t) / d);
+      return { t, g: Math.max(0, declick) * fadeGain(seg.clipStartSec, seg.clipEndSec, seg.fadeInSec, seg.fadeOutSec, t) };
+    });
 }

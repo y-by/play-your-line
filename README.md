@@ -14,7 +14,7 @@ tempo and click, mute / solo / volume, and trimming that never destroys a record
 
 ## How it works
 
-**Projects.** The home page shows your projects as cover tiles: Drafts (large) and Published.
+**Projects.** The home page shows your projects as cover tiles: Drafts (large) and Published. Hover a tile (always visible on a touch screen) for **Publish / Unpublish** (the Owner) and **Export mix**. Inside a project there is no separate header: the back button and the name (the Owner clicks it to rename) sit at the left of the control bar, and Draft / Live, who is here, and your role at the right.
 The Owner can add a cover image in **Settings**; without one, the tile gets generated artwork.
 
 **Roles.** One person owns a project; each channel belongs to one player.
@@ -44,7 +44,9 @@ own channel.
 
 **Clips.** A recording is never modified. What you see on a channel are clips, windows onto the
 recording: trim, split, move or duplicate them freely, and the original audio is always still
-there.
+there. Each clip can **fade in and out**: hover or select a clip and drag the small round handle at
+its top-left or top-right (double-click it to remove the fade). A shaded corner and a line show the
+ramp; the fades are heard in playback and in Export Mix, and can be undone.
 
 **Notes.** Switch notes on with the notes button (they are off by default). Write a note, tag
 a person with `@`, pin it to any bar, attach it to a channel (it then wears that channel's colour)
@@ -54,12 +56,15 @@ a note done archives it. A person you tag gets an orange `@` badge on the notes 
 **Chords.** The ♪ button next to FX listens to a channel and suggests the chords along the top of
 its lane. It is a suggestion, not a guarantee; click a chord to jump there.
 
-**Tuner.** The Tuner cell in the number display listens to your input and shows the note and how
-many cents sharp or flat.
+**Tuner.** The Tuner tab in a channel's FX window is a strobe tuner in the spirit of a Peterson: rings of
+stripes drift left when the note is flat, right when it is sharp, and stand still (and turn green) when
+it is in tune, with the note, the cents and a needle. It reads from your first note down to a 5-string
+bass's low B. Pick Guitar, Bass (4), Bass (5) or Ukulele and tap a string to tune to it, or leave it on
+"Any note". The reference pitch (A = 440) can be moved.
 
 **Effects.** FX is **off** for a channel until its power switch is turned on. Each effect has its
 own bypass, there are presets, undo, reset and a Compare (hear it dry) button, and each tab can be
-pulled out into its own window. Export Mix includes the effects.
+dragged out into its own window (and docked back with its Dock button). Close the main FX window and any tab you pulled out stays on screen, on top. Drag the bottom-right corner of an FX window to make it bigger, up to double (double-click the corner for normal size); the main window remembers its size. Export Mix includes the effects.
 
 **Mixes.** Players hear their own monitor mix (saved only on their device) or the Owner's saved
 final mix. Solo is never saved.

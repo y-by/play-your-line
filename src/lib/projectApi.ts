@@ -51,6 +51,8 @@ export function mapClip(row: any): Clip {
     sourceStartSec: row.source_start_sec,
     durationSec: row.duration_sec,
     z: row.z,
+    fadeInSec: row.fade_in_sec ?? 0,
+    fadeOutSec: row.fade_out_sec ?? 0,
   };
 }
 
@@ -472,6 +474,8 @@ export async function upsertClips(trackId: string, clips: Clip[]): Promise<void>
     source_start_sec: c.sourceStartSec,
     duration_sec: c.durationSec,
     z: c.z,
+    fade_in_sec: c.fadeInSec,
+    fade_out_sec: c.fadeOutSec,
   }));
   const { error } = await client.from("clips").upsert(rows, { onConflict: "id" });
   if (error) throw error;

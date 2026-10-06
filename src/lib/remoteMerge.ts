@@ -9,7 +9,9 @@ export function sameClip(a: Clip, b: Clip): boolean {
     a.startSec === b.startSec &&
     a.sourceStartSec === b.sourceStartSec &&
     a.durationSec === b.durationSec &&
-    a.z === b.z
+    a.z === b.z &&
+    a.fadeInSec === b.fadeInSec &&
+    a.fadeOutSec === b.fadeOutSec
   );
 }
 

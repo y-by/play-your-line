@@ -1,6 +1,6 @@
 // Checks the clip-editing rules, the overlap rule, the grid and the waveform peaks.
 // Run: npm run test:logic
-import { audibleSegments, moveClip, trimClipStart, trimClipEnd, splitClip, duplicateClip, nextZ, clipEnd, clipsEnd, MIN_CLIP_SEC, type ClipData } from "../src/lib/clips.ts";
+import { audibleSegments, moveClip, trimClipStart, trimClipEnd, splitClip, duplicateClip, nextZ, clipEnd, clipsEnd, MIN_CLIP_SEC, fitFades, setClipFade, fadeGain, envelopePoints, type ClipData } from "../src/lib/clips.ts";
 import { stepSec, snapTo, barAndBeat, formatBarsBeats, barSec, beatSec } from "../src/lib/grid.ts";
 import { computePeaks } from "../src/lib/waveform.ts";
 import { effectiveChannelMix } from "../src/lib/mix.ts";
@@ -12,7 +12,7 @@ import { loopApplies, positionWithLoop, nextLoopPass } from "../src/lib/loop.ts"
 import { gainToDb, dbToGain, MIN_DB, MAX_DB } from "../src/lib/dbFader.ts";
 import { clampFx, activeStages, isNeutralFx, fxTailSec, fxFromRow, fxToRow, presetPatch, resetPatch, FX_PRESETS, DEFAULT_CHANNEL_FX } from "../src/lib/channelFx.ts";
 import { detectChords } from "../src/lib/chords.ts";
-import { detectPitch, noteFromHz } from "../src/lib/tuner.ts";
+import { detectPitch, noteFromHz, centsFromTarget, hzOfMidi, strobeSpeed, INSTRUMENTS } from "../src/lib/tuner.ts";
 import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
@@ -20,7 +20,7 @@ import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
 let fail = 0;
 const near = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) <= eps;
 const check = (name: string, ok: boolean, detail = "") => { console.log((ok ? "PASS " : "FAIL ") + name + (detail ? "  " + detail : "")); if (!ok) fail++; };
-const clip = (id: string, start: number, dur: number, z: number, src = 0, take = "t1"): ClipData => ({ id, takeId: take, startSec: start, sourceStartSec: src, durationSec: dur, z });
+const clip = (id: string, start: number, dur: number, z: number, src = 0, take = "t1"): ClipData => ({ id, takeId: take, startSec: start, sourceStartSec: src, durationSec: dur, z, fadeInSec: 0, fadeOutSec: 0 });
 const segs = (clips: ClipData[]) => audibleSegments(clips).map((s) => `${s.clipId}[${s.startSec}-${s.endSec}]@${s.sourceStartSec}`).join(" ");
 
 // ---- overlap rule: newest on top, older keeps playing where nothing covers it
@@ -229,6 +229,29 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("clampFx leaves fields that weren't passed untouched (undefined)", clampFx({ eqLow: 3 }).eqMid === undefined);
 }
 
+// ---- clip fades
+{
+  const fc = (over: Partial<ClipData> = {}): ClipData => ({ ...clip("f", 10, 4, 1), ...over });
+  check("a fade can't be longer than the clip", setClipFade(fc(), "in", 99).fadeInSec === 4);
+  check("fade in stops where the fade out begins", setClipFade(fc({ fadeOutSec: 1.5 }), "in", 99).fadeInSec === 2.5);
+  check("a negative fade is none", setClipFade(fc(), "out", -3).fadeOutSec === 0);
+  check("trimming a clip shorter shortens its fades to fit", (() => { const c = trimClipEnd(fc({ fadeInSec: 1, fadeOutSec: 2.5 }), 12, 100); return c.durationSec === 2 && c.fadeInSec === 1 && Math.abs(c.fadeOutSec - 1) < 1e-9; })());
+  check("fades stay on the outer edges when a clip is split", (() => { const parts = splitClip(fc({ fadeInSec: 0.5, fadeOutSec: 0.7 }), 12, "g")!; return parts[0].fadeInSec === 0.5 && parts[0].fadeOutSec === 0 && parts[1].fadeInSec === 0 && parts[1].fadeOutSec === 0.7; })());
+  check("a duplicate keeps its fades", duplicateClip(fc({ fadeInSec: 0.5 }), "d", 2).fadeInSec === 0.5);
+  check("fadeGain: silent at the start, full after the fade in", fadeGain(10, 14, 1, 0, 10) === 0 && fadeGain(10, 14, 1, 0, 10.5) === 0.5 && fadeGain(10, 14, 1, 0, 11) === 1);
+  check("fadeGain: full until the fade out, silent at the end", fadeGain(10, 14, 0, 2, 12) === 1 && fadeGain(10, 14, 0, 2, 13) === 0.5 && fadeGain(10, 14, 0, 2, 14) === 0);
+  check("fadeGain: both fades together never exceed either", fadeGain(10, 14, 2, 2, 12) === 1 && fadeGain(10, 14, 2, 2, 11) === 0.5);
+  check("fitFades leaves good fades alone", (() => { const c = fc({ fadeInSec: 1, fadeOutSec: 1 }); return fitFades(c) === c; })());
+  const piece = (over = {}) => ({ clipStartSec: 10, clipEndSec: 14, fadeInSec: 1, fadeOutSec: 1, ...over });
+  const pts = envelopePoints(piece(), 10, 14, 0.002);
+  check("an envelope starts and ends at silence and has the fade corners in between", pts[0].g === 0 && pts[pts.length - 1].g === 0 && pts.some((p) => p.t === 11 && p.g === 1) && pts.some((p) => p.t === 13 && p.g === 1));
+  check("an envelope starting part-way through the fade starts at that height", (() => { const p = envelopePoints(piece(), 10.5, 14, 0.002); return Math.abs(p[1].g - 0.5) < 0.01; })());
+  check("a piece with no fades is just the little click-guard at each end", (() => { const p = envelopePoints(piece({ fadeInSec: 0, fadeOutSec: 0 }), 10, 14, 0.002); return p.length === 4 && p[1].g === 1 && p[2].g === 1; })());
+  check("pieces of the audible mix carry their clip's fades", (() => { const s = audibleSegments([fc({ fadeInSec: 1 })]); return s.length === 1 && s[0].fadeInSec === 1 && s[0].clipStartSec === 10 && s[0].clipEndSec === 14; })());
+  check("a cut clip with its two outer fades plays as one piece with both", (() => { const parts = splitClip(fc({ fadeInSec: 0.5, fadeOutSec: 0.7 }), 12, "g")!; const s = audibleSegments(parts); return s.length === 1 && s[0].fadeInSec === 0.5 && s[0].fadeOutSec === 0.7 && s[0].clipEndSec === 14; })());
+  check("a fade at the cut itself keeps the two halves apart", (() => { const [a, b] = splitClip(fc(), 12, "g")!; return audibleSegments([setClipFade(a, "out", 0.5), b]).length === 2; })());
+}
+
 // ---- notes
 {
   const note = (id: string, over: Partial<import("../src/types/project.ts").ProjectNote> = {}) => ({
@@ -306,15 +329,26 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
 }
 
 {
-  const sr = 44100;
-  const tone = (hz: number) => Float32Array.from({ length: 4096 }, (_, i) => 0.4 * Math.sin((2 * Math.PI * hz * i) / sr) + 0.15 * Math.sin((4 * Math.PI * hz * i) / sr));
-  const e2 = detectPitch(tone(82.41), sr);
-  check("tuner hears low E (82.41 Hz)", e2 !== null && Math.abs(e2 - 82.41) < 0.5);
-  const a4 = noteFromHz(detectPitch(tone(440), sr) ?? 0);
-  check("tuner reads 440 Hz as A4, in tune", a4.name === "A" && a4.octave === 4 && Math.abs(a4.cents) <= 2);
+  const hzOf = (sr: number, hz: number, amps = [0.4, 0.15, 0.08]) => Float32Array.from({ length: 8192 }, (_, i) => amps.reduce((sum, a, k) => sum + a * Math.sin((2 * Math.PI * hz * (k + 1) * i) / sr), 0));
+  const centsErr = (got: number | null, want: number) => (got === null ? 999 : Math.abs(1200 * Math.log2(got / want)));
+  for (const sr of [44100, 48000]) {
+    for (const hz of [30.87, 41.2, 55, 82.41, 110, 196, 329.63, 440, 1000]) {
+      check(`tuner reads ${hz} Hz within 1 cent at ${sr / 1000} kHz`, centsErr(detectPitch(hzOf(sr, hz), sr), hz) < 1);
+    }
+  }
+  check("a bass note whose fundamental is weak (strong 2nd harmonic) is still read as the fundamental", centsErr(detectPitch(hzOf(44100, 41.2, [0.25, 0.8, 0.5]), 44100), 41.2) < 1.5);
+  const a4 = noteFromHz(detectPitch(hzOf(44100, 440), 44100) ?? 0);
+  check("tuner reads 440 Hz as A4, in tune", a4.name === "A" && a4.octave === 4 && Math.abs(a4.cents) <= 1);
+  check("the low B of a 5-string bass is B0", (() => { const r = noteFromHz(30.87); return r.name === "B" && r.octave === 0; })());
   const sharp = noteFromHz(440 * Math.pow(2, 20 / 1200));
   check("tuner reports 20 cents sharp", sharp.name === "A" && sharp.cents === 20);
-  check("tuner gives nothing for silence", detectPitch(new Float32Array(4096), sr) === null);
+  check("the reference pitch can be moved (A=442 makes 442 Hz in tune)", noteFromHz(442, 442).cents === 0 && noteFromHz(440, 442).cents < 0);
+  check("tuner gives nothing for silence", detectPitch(new Float32Array(8192), 44100) === null);
+  check("tuner gives nothing for noise", (() => { const noise = Float32Array.from({ length: 8192 }, () => (Math.random() * 2 - 1) * 0.3); return detectPitch(noise, 44100) === null; })());
+  check("cents are measured from a chosen string, even far off", centsFromTarget(hzOfMidi(28) * Math.pow(2, 120 / 1200), 28) === 120);
+  check("every instrument lists its strings low to high", INSTRUMENTS.filter((i) => i.id === "guitar" || i.id.startsWith("bass")).every((i) => i.strings.every((st, k) => k === 0 || st.midi > i.strings[k - 1].midi)));
+  check("the strobe drifts right for sharp, left for flat, and stands still in tune", strobeSpeed(10, 1) > 0 && strobeSpeed(-10, 1) < 0 && strobeSpeed(0, 4) === 0);
+  check("the strobe's speed is capped so it never flickers", Math.abs(strobeSpeed(50, 8)) <= 6);
 }
 
 // ---- tooltip text

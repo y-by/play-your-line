@@ -36,6 +36,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
   const online = useProjectStore((s) => !!track.assignedUserId && s.presentUsers.some((u) => u.userId === track.assignedUserId));
   const [pickingColor, setPickingColor] = useState(false);
   const [fxAnchor, setFxAnchor] = useState<{ top: number; left: number } | null>(null);
+  const [fxMainOpen, setFxMainOpen] = useState(false);
   const fxButtonRef = useRef<HTMLButtonElement>(null);
   const canUseFx = useProjectStore((s) => s.canUseFx(track));
   const armTrack = useProjectStore((s) => s.armTrack);
@@ -215,12 +216,14 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
           {canUseFx && (
             <button
               ref={fxButtonRef}
-              className={`fx-toggle${fxAnchor ? " on" : ""}${track.fx.fxOn ? " live" : ""}`}
+              className={`fx-toggle${fxAnchor && fxMainOpen ? " on" : ""}${track.fx.fxOn ? " live" : ""}`}
               onClick={() => {
                 if (fxAnchor) {
-                  setFxAnchor(null);
+                  // Open already: this shows or hides the main window. Tabs dragged out stay put either way.
+                  setFxMainOpen(!fxMainOpen);
                   return;
                 }
+                setFxMainOpen(true);
                 // Rendered in a portal (see below) — the lanes scroll inside a
                 // container with overflow-y:hidden, which would otherwise clip
                 // a panel taller than one channel strip right off the screen.
@@ -228,7 +231,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
                 if (rect) setFxAnchor({ top: rect.bottom + 4, left: rect.left });
               }}
               title={track.fx.fxOn ? "Effects are on — EQ, Compressor, Delay and Reverb" : "Effects are off — EQ, Compressor, Delay and Reverb"}
-              aria-pressed={!!fxAnchor}
+              aria-pressed={!!fxAnchor && fxMainOpen}
               aria-label="Channel effects"
             >
               FX
@@ -236,7 +239,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
           )}
           </div>
         </div>
-        {fxAnchor && createPortal(<ChannelFx track={track} initialAnchor={fxAnchor} onClose={() => setFxAnchor(null)} />, document.body)}
+        {fxAnchor && createPortal(<ChannelFx track={track} initialAnchor={fxAnchor} mainOpen={fxMainOpen} onMainOpen={setFxMainOpen} onClose={() => setFxAnchor(null)} />, document.body)}
       </div>
       )}
     </div>

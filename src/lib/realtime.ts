@@ -21,6 +21,8 @@ export interface RealtimeHandlers {
   onPresence: (users: PresentUser[]) => void;
 }
 
+let subscriptionCount = 0;
+
 /**
  * Listens for changes other people make to this song (Supabase Realtime).
  * What arrives is already filtered by the same permission rules as normal
@@ -30,8 +32,10 @@ export function subscribeToProject(projectId: string, handlers: RealtimeHandlers
   if (!supabase) return () => {};
   const client = supabase;
 
+  // A fresh name every time: the library hands back the SAME channel for a name it still has, and removing
+  // the old one takes a moment, so re-entering a song quickly would try to add listeners to a live channel.
   const channel: RealtimeChannel = client
-    .channel(`song:${projectId}`, { config: { presence: { key: me?.userId ?? "anonymous" } } })
+    .channel(`song:${projectId}:${++subscriptionCount}`, { config: { presence: { key: me?.userId ?? "anonymous" } } })
     .on("postgres_changes", { event: "UPDATE", schema: "public", table: "projects", filter: `id=eq.${projectId}` }, (p) =>
       handlers.onProject(p.new)
     )

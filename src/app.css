@@ -4866,40 +4866,6 @@ select.note-opt {
   font-size: 13px;
 }
 
-/* ---- Tuner cell in the number display ---- */
-
-button.tuner-cell {
-  font: inherit;
-  color: inherit;
-  background: transparent;
-  border-top: none;
-  border-bottom: none;
-  border-left: none;
-  border-radius: 0;
-  cursor: pointer;
-}
-
-button.tuner-cell:disabled {
-  opacity: 0.5;
-  cursor: default;
-}
-
-button.tuner-cell:hover:not(:disabled) {
-  background: rgba(127, 161, 204, 0.12);
-}
-
-button.tuner-cell.on .lcd-l {
-  color: var(--lcd-text);
-}
-
-.tuner-note {
-  min-width: 2.4em;
-  text-align: center;
-}
-
-.tuner-note.ok {
-  color: #5fe08a;
-}
 
 /* ---- Tagged-in-a-note alert and badge ---- */
 
@@ -5054,6 +5020,7 @@ button.tuner-cell.on .lcd-l {
 }
 
 .fx-tab {
+  touch-action: none;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -5173,4 +5140,450 @@ button.tuner-cell.on .lcd-l {
 
 @media (prefers-reduced-motion: reduce) {
   .tip { animation: none; }
+}
+
+/* ---- Tuner tab (a strobe display in the style of the FX windows) ---- */
+
+.fx-section-tuner {
+  opacity: 1 !important;
+  gap: 8px;
+  width: 100%;
+}
+
+.tuner-top {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+}
+
+.tuner-ref {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--pl-muted);
+  white-space: nowrap;
+}
+
+.tuner-ref .fx-tool-btn {
+  padding: 0 7px;
+}
+
+.tuner-note {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  line-height: 1;
+  color: var(--lcd-text);
+}
+
+.tuner-note.idle {
+  color: var(--pl-dim);
+}
+
+.tuner-note.ok,
+.tuner-cents.ok {
+  color: #5fe08a;
+}
+
+.tuner-name {
+  font-size: 52px;
+  font-weight: 500;
+}
+
+.tuner-octave {
+  font-size: 18px;
+  color: var(--lcd-dim);
+  margin-left: 2px;
+}
+
+.tuner-cents {
+  margin-top: -2px;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+  color: var(--lcd-dim);
+}
+
+.strobe {
+  position: relative;
+  padding: 6px 0 0;
+  background: var(--pl-inset);
+  border: 1px solid var(--pl-header-border);
+  border-radius: 8px;
+}
+
+.strobe canvas {
+  display: block;
+  margin: 0 auto;
+}
+
+.strobe-side {
+  position: absolute;
+  top: 6px;
+  font-size: 18px;
+  color: var(--pl-dim);
+}
+
+.strobe-side.flat {
+  left: 10px;
+}
+
+.strobe-side.sharp {
+  right: 10px;
+}
+
+.tuner-gauge {
+  position: relative;
+  width: 100%;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--pl-field);
+}
+
+.tuner-gauge-mid {
+  position: absolute;
+  left: 50%;
+  top: -2px;
+  bottom: -2px;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--pl-dim);
+}
+
+.tuner-needle {
+  position: absolute;
+  top: -3px;
+  width: 6px;
+  height: 14px;
+  margin-left: -3px;
+  border-radius: 3px;
+  background: var(--pl-accent);
+  transition: left 0.08s linear;
+}
+
+.tuner-needle.ok {
+  background: #5fe08a;
+}
+
+.tuner-scale {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  margin-top: -4px;
+  font-size: 10px;
+  color: var(--pl-dim);
+}
+
+.tuner-strings {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+}
+
+.tuner-string {
+  min-width: 38px;
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--pl-header-border);
+  border-radius: 7px;
+  background: var(--pl-field);
+  color: var(--pl-text);
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.tuner-string sub {
+  font-size: 10px;
+  color: var(--pl-dim);
+}
+
+.tuner-string.near {
+  border-color: var(--pl-accent);
+}
+
+.tuner-string.on {
+  background: var(--pl-switch);
+  border-color: var(--pl-switch);
+  color: #fff;
+}
+
+.tuner-string.on sub {
+  color: rgba(255, 255, 255, 0.75);
+}
+
+.tuner-level {
+  width: 100%;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--pl-field);
+  overflow: hidden;
+}
+
+.tuner-level span {
+  display: block;
+  height: 100%;
+  background: var(--pl-accent);
+  transition: width 0.06s linear;
+}
+
+.fx-hint.ok {
+  color: #5fe08a;
+}
+
+/* The corner that makes an FX window bigger */
+.channel-fx-plugin {
+  overflow: visible;
+}
+
+.fx-grip {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 16px;
+  height: 16px;
+  cursor: nwse-resize;
+  touch-action: none;
+  background:
+    linear-gradient(135deg, transparent 0 46%, var(--pl-dim) 46% 54%, transparent 54% 66%, var(--pl-dim) 66% 74%, transparent 74% 86%, var(--pl-dim) 86% 94%, transparent 94%);
+  opacity: 0.6;
+  border-radius: 0 0 8px 0;
+}
+
+.fx-grip:hover {
+  opacity: 1;
+}
+
+/* Publish and export, on a project's card in the list */
+.card-art {
+  position: relative;
+}
+
+.card-actions {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  gap: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.card:hover .card-actions,
+.card:focus-within .card-actions,
+.card-actions:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .card-actions {
+    opacity: 1;
+  }
+}
+
+.card-act {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--lcd-border);
+  border-radius: 6px;
+  background: var(--lcd-bg);
+  color: var(--lcd-text);
+  cursor: pointer;
+}
+
+.card-act.on {
+  color: #5fe08a;
+}
+
+.card-act:hover:not(:disabled) {
+  border-color: var(--pl-accent);
+}
+
+.card-act:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+/* ---- The project's name and state live in the control bar (no separate header) ---- */
+
+.cb-main {
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.cb-name,
+.cb-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.cb-status {
+  justify-content: flex-end;
+}
+
+.cb-back {
+  flex: none;
+  width: 34px;
+  height: 34px;
+  border: 1px solid var(--color-separator);
+  border-radius: 8px;
+  background: var(--color-fill);
+  color: var(--color-label);
+}
+
+.cb-title {
+  min-width: 0;
+  max-width: 100%;
+  padding: 4px 6px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--color-label);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: text;
+}
+
+.cb-title:hover:not(.readonly) {
+  background: var(--color-fill);
+}
+
+.cb-title.readonly {
+  cursor: default;
+}
+
+.cb-title-input {
+  min-width: 0;
+  width: 100%;
+  max-width: 260px;
+  padding: 4px 8px;
+  border: 1px solid var(--color-accent);
+  border-radius: 6px;
+  background: var(--color-fill);
+  color: var(--color-label);
+  font: inherit;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.cb-state {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--color-label-secondary);
+}
+
+.cb-status .live-dot {
+  margin-left: 0;
+}
+
+/* Narrow windows: the name and state share a row above the display */
+@media (max-width: 900px) {
+  .cb-main {
+    flex-wrap: wrap;
+  }
+
+  .cb-name {
+    flex: 1 1 0;
+    order: 1;
+  }
+
+  .cb-status {
+    flex: none;
+    order: 2;
+  }
+
+  .cb-center {
+    flex: 1 1 100%;
+    order: 3;
+  }
+}
+
+@media (max-width: 700px) {
+  .cb-state,
+  .cb-status .role-badge,
+  .cb-status .live-label {
+    display: none;
+  }
+}
+
+/* Clip fades: a shaded corner and a line show the ramp; a small handle at the top sets its length */
+.clip-fades {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.clip-fade-shade {
+  fill: rgba(0, 0, 0, 0.42);
+}
+
+.clip-fade-line {
+  stroke: rgba(255, 255, 255, 0.75);
+  stroke-width: 1.5;
+}
+
+.clip-fade-handle {
+  position: absolute;
+  top: 4px;
+  width: 11px;
+  height: 11px;
+  margin-inline: -5px;
+  border-radius: 50%;
+  background: #fff;
+  border: 1.5px solid rgba(0, 0, 0, 0.55);
+  cursor: ew-resize;
+  opacity: 0;
+  transition: opacity 0.12s;
+  z-index: 3;
+  touch-action: none;
+}
+
+.clip-fade-handle.right {
+  margin-inline: 5px;
+}
+
+.clip:hover .clip-fade-handle,
+.clip.selected .clip-fade-handle,
+.clip.dragging .clip-fade-handle,
+.clip-fade-handle.set {
+  opacity: 1;
+}
+
+.clip-fade-tip {
+  position: absolute;
+  top: 18px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: var(--lcd-bg);
+  border: 1px solid var(--lcd-border);
+  color: var(--lcd-text);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+  z-index: 4;
+}
+
+.clip-fade-tip.left {
+  left: 14px;
+}
+
+.clip-fade-tip.right {
+  right: 14px;
 }

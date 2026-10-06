@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import type { Clip, Take, Track } from "../../types/project";
 import { useProjectStore } from "../../store/useProjectStore";
-import { clipEnd, moveClip, trimClipEnd, trimClipStart } from "../../lib/clips";
+import { clipEnd, moveClip, setClipFade, trimClipEnd, trimClipStart } from "../../lib/clips";
 import { snapTo, stepSec } from "../../lib/grid";
 import { computePeaks } from "../../lib/waveform";
 
-type DragMode = "move" | "trim-start" | "trim-end";
+type DragMode = "move" | "trim-start" | "trim-end" | "fade-in" | "fade-out";
 
 interface Props {
   track: Track;
@@ -30,6 +30,7 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
 
   // While dragging, the clip follows the pointer locally; nothing is saved until you let go.
   const [preview, setPreview] = useState<Clip | null>(null);
+  const [dragMode, setDragMode] = useState<DragMode | null>(null);
   const drag = useRef<{ mode: DragMode; startX: number; original: Clip; latest: Clip; moved: boolean } | null>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -86,11 +87,16 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
     const dx = e.clientX - d.startX;
     if (!d.moved && Math.abs(dx) < 3) return;
     d.moved = true;
+    setDragMode(d.mode);
     const delta = dx / pxPerSec;
     const free = e.altKey;
     let next: Clip;
     if (d.mode === "move") {
       next = moveClip(d.original, snap(d.original.startSec + delta, free));
+    } else if (d.mode === "fade-in") {
+      next = setClipFade(d.original, "in", d.original.fadeInSec + delta);
+    } else if (d.mode === "fade-out") {
+      next = setClipFade(d.original, "out", d.original.fadeOutSec - delta);
     } else if (d.mode === "trim-start") {
       next = trimClipStart(d.original, snap(d.original.startSec + delta, free));
     } else {
@@ -103,9 +109,21 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
   const onEnd = () => {
     const d = drag.current;
     drag.current = null;
+    setDragMode(null);
     if (!d) return;
     if (d.moved) void commitClips(track.id, track.clips.map((c) => (c.id === clip.id ? d.latest : c)));
     setPreview(null);
+  };
+
+  const fadeInPx = shown.fadeInSec * pxPerSec;
+  const fadeOutPx = shown.fadeOutSec * pxPerSec;
+  const showFadeHandles = canEdit && widthPx >= 48;
+  const dragging = dragMode;
+  const resetFade = (which: "in" | "out") => (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!canEdit) return;
+    const next = setClipFade(clip, which, 0);
+    if (next !== clip) void commitClips(track.id, track.clips.map((c) => (c.id === clip.id ? next : c)));
   };
 
   const className = ["clip", selected ? "selected" : "", canEdit ? "editable" : "", preview ? "dragging" : ""]
@@ -122,7 +140,43 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
       onPointerCancel={onEnd}
     >
       <canvas ref={canvasRef} className="clip-wave" />
+      {(fadeInPx > 0 || fadeOutPx > 0) && (
+        <svg className="clip-fades" width={widthPx} height={WAVE_HEIGHT} aria-hidden="true">
+          {fadeInPx > 0 && (
+            <>
+              <polygon points={`0,0 ${fadeInPx},0 0,${WAVE_HEIGHT}`} className="clip-fade-shade" />
+              <line x1={0} y1={WAVE_HEIGHT} x2={fadeInPx} y2={0} className="clip-fade-line" />
+            </>
+          )}
+          {fadeOutPx > 0 && (
+            <>
+              <polygon points={`${widthPx},0 ${widthPx - fadeOutPx},0 ${widthPx},${WAVE_HEIGHT}`} className="clip-fade-shade" />
+              <line x1={widthPx - fadeOutPx} y1={0} x2={widthPx} y2={WAVE_HEIGHT} className="clip-fade-line" />
+            </>
+          )}
+        </svg>
+      )}
       <div className="clip-name">{track.assignedPlayerName ?? track.instrument}</div>
+      {dragging === "fade-in" && <div className="clip-fade-tip left">{shown.fadeInSec.toFixed(2)} s</div>}
+      {dragging === "fade-out" && <div className="clip-fade-tip right">{shown.fadeOutSec.toFixed(2)} s</div>}
+      {showFadeHandles && (
+        <>
+          <div
+            className={shown.fadeInSec > 0 ? "clip-fade-handle left set" : "clip-fade-handle left"}
+            style={{ left: 10 + fadeInPx }}
+            onPointerDown={(e) => begin("fade-in", e)}
+            onDoubleClick={resetFade("in")}
+            title="Drag to fade in. Double-click to remove the fade."
+          />
+          <div
+            className={shown.fadeOutSec > 0 ? "clip-fade-handle right set" : "clip-fade-handle right"}
+            style={{ right: 10 + fadeOutPx }}
+            onPointerDown={(e) => begin("fade-out", e)}
+            onDoubleClick={resetFade("out")}
+            title="Drag to fade out. Double-click to remove the fade."
+          />
+        </>
+      )}
       {canEdit && (
         <>
           <div className="clip-handle left" onPointerDown={(e) => begin("trim-start", e)} />
