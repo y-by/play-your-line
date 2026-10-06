@@ -25,8 +25,9 @@ The Owner can add a cover image in **Settings**; without one, the tile gets gene
 | Add a channel, rename a channel | ✅ | ✅ | ✅ | ✅ |
 | Put someone on a channel (link, email or pick from the list), reassign it | ✅ | – | – | – |
 | Tempo, channel order and colours, rename or delete the project, publish | ✅ | – | – | – |
-| Final mix (volume and mute per channel) | ✅ | ✅ | – | – |
-| Channel FX (EQ, Compressor, Delay, Reverb) | ✅ | ✅ | their own channel | – |
+| Final mix (volume, mute and pan per channel) | ✅ | ✅ | – | – |
+| Channel FX (EQ, Compressor, Delay, Reverb) | ✅ | ✅ | their own channel, until the Owner or Mixer locks it | – |
+| Write notes, tag people with @ | ✅ | ✅ | ✅ | – (they read the notes shared with them) |
 | Record and edit clips | own channel | own channel | own channel | – |
 | Listen to the draft | ✅ | ✅ | ✅ | ✅ |
 
@@ -44,6 +45,21 @@ own channel.
 **Clips.** A recording is never modified. What you see on a channel are clips, windows onto the
 recording: trim, split, move or duplicate them freely, and the original audio is always still
 there.
+
+**Notes.** Switch notes on with the notes button (they are off by default). Write a note, tag
+a person with `@`, pin it to any bar, attach it to a channel (it then wears that channel's colour)
+and see it three ways: a tray along the bottom, floating cards, and flags on the bar ruler. Marking
+a note done archives it. A person you tag gets an orange `@` badge on the notes button and a message.
+
+**Chords.** The ♪ button next to FX listens to a channel and suggests the chords along the top of
+its lane. It is a suggestion, not a guarantee; click a chord to jump there.
+
+**Tuner.** The Tuner cell in the number display listens to your input and shows the note and how
+many cents sharp or flat.
+
+**Effects.** FX is **off** for a channel until its power switch is turned on. Each effect has its
+own bypass, there are presets, undo, reset and a Compare (hear it dry) button, and each tab can be
+pulled out into its own window. Export Mix includes the effects.
 
 **Mixes.** Players hear their own monitor mix (saved only on their device) or the Owner's saved
 final mix. Solo is never saved.

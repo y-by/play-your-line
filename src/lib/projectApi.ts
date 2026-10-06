@@ -1,6 +1,6 @@
 import { supabase } from "./supabaseClient";
 import type { ProjectNote, Project, Track, Take, Clip, ChannelFx } from "../types/project";
-import { DEFAULT_CHANNEL_FX } from "../types/project";
+import { fxFromRow, fxToRow } from "./channelFx";
 import type { StoredFile } from "./orphans";
 
 function requireSupabase() {
@@ -68,15 +68,8 @@ export function mapTrack(row: any, clips: Clip[], assignedPlayerName: string | n
     volume: row.volume,
     muted: row.muted,
     pan: row.pan ?? 0,
-    fx: {
-      eqLow: row.eq_low ?? DEFAULT_CHANNEL_FX.eqLow,
-      eqMid: row.eq_mid ?? DEFAULT_CHANNEL_FX.eqMid,
-      eqHigh: row.eq_high ?? DEFAULT_CHANNEL_FX.eqHigh,
-      compAmount: row.comp_amount ?? DEFAULT_CHANNEL_FX.compAmount,
-      delayTimeMs: row.delay_time_ms ?? DEFAULT_CHANNEL_FX.delayTimeMs,
-      delayMix: row.delay_mix ?? DEFAULT_CHANNEL_FX.delayMix,
-      reverbMix: row.reverb_mix ?? DEFAULT_CHANNEL_FX.reverbMix,
-    },
+    fx: fxFromRow(row),
+    fxLocked: !!row.fx_locked,
   };
 }
 
@@ -375,15 +368,15 @@ export async function updateTrackMix(trackId: string, patch: Partial<{ volume: n
 /** The saved final mix's insert effects (EQ/Comp/Delay/Reverb). Owner/Mixer only, enforced by RLS. */
 export async function updateTrackFx(trackId: string, patch: Partial<ChannelFx>): Promise<void> {
   const client = requireSupabase();
-  const row: Record<string, number> = {};
-  if (patch.eqLow !== undefined) row.eq_low = patch.eqLow;
-  if (patch.eqMid !== undefined) row.eq_mid = patch.eqMid;
-  if (patch.eqHigh !== undefined) row.eq_high = patch.eqHigh;
-  if (patch.compAmount !== undefined) row.comp_amount = patch.compAmount;
-  if (patch.delayTimeMs !== undefined) row.delay_time_ms = patch.delayTimeMs;
-  if (patch.delayMix !== undefined) row.delay_mix = patch.delayMix;
-  if (patch.reverbMix !== undefined) row.reverb_mix = patch.reverbMix;
+  const row = fxToRow(patch);
   const { error } = await client.from("tracks").update(row).eq("id", trackId);
+  if (error) throw error;
+}
+
+/** The Owner or Mixer locks (or unlocks) a channel's effects against its player. Enforced by the database. */
+export async function setTrackFxLocked(trackId: string, locked: boolean): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("tracks").update({ fx_locked: locked }).eq("id", trackId);
   if (error) throw error;
 }
 

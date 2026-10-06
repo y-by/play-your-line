@@ -215,7 +215,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
           {canUseFx && (
             <button
               ref={fxButtonRef}
-              className={fxAnchor ? "fx-toggle on" : "fx-toggle"}
+              className={`fx-toggle${fxAnchor ? " on" : ""}${track.fx.fxOn ? " live" : ""}`}
               onClick={() => {
                 if (fxAnchor) {
                   setFxAnchor(null);
@@ -227,7 +227,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
                 const rect = fxButtonRef.current?.getBoundingClientRect();
                 if (rect) setFxAnchor({ top: rect.bottom + 4, left: rect.left });
               }}
-              title="EQ, Compressor, Delay and Reverb"
+              title={track.fx.fxOn ? "Effects are on — EQ, Compressor, Delay and Reverb" : "Effects are off — EQ, Compressor, Delay and Reverb"}
               aria-pressed={!!fxAnchor}
               aria-label="Channel effects"
             >

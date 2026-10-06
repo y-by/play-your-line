@@ -7,16 +7,8 @@ import { computeTakePlacement, measureClickLatencies, summarizeLatencies } from 
 import { audibleSegments, clipsEnd, type ClipData } from "./clips";
 import { scheduleSegment } from "./segmentPlayback";
 import { loopApplies, positionWithLoop, nextLoopPass, MIN_LOOP_SEC, type LoopRegion, type LoopPass } from "./loop";
-import {
-  compressorParamsFromAmount,
-  createReverbImpulse,
-  clampFx,
-  EQ_LOW_HZ,
-  EQ_MID_HZ,
-  EQ_MID_Q,
-  EQ_HIGH_HZ,
-  DELAY_FEEDBACK,
-} from "./channelFx";
+import { createReverbImpulse, clampFx, DEFAULT_CHANNEL_FX } from "./channelFx";
+import { createFxChain, type FxChain } from "./fxChain";
 import type { ChannelFx } from "../types/project";
 import pcmRecorderWorkletUrl from "../worklets/pcm-recorder-processor.js?url&no-inline";
 
@@ -56,21 +48,12 @@ export interface CalibrationResult {
 interface LoadedTrack {
   trackId: string;
   clips: ClipData[];
-  /** Fader (volume/mute). Feeds the FX chain below, in order: EQ -> Compressor -> Delay -> Reverb. */
+  /** Fader (volume/mute). Feeds the FX chain below (EQ -> Compressor -> Delay -> Reverb, each only when it is on). */
   gainNode: GainNode;
-  eqLow: BiquadFilterNode;
-  eqMid: BiquadFilterNode;
-  eqHigh: BiquadFilterNode;
-  compressor: DynamicsCompressorNode;
-  delayNode: DelayNode;
-  delayFeedback: GainNode;
-  delayDry: GainNode;
-  delayWet: GainNode;
-  delayOut: GainNode;
-  reverbConvolver: ConvolverNode;
-  reverbDry: GainNode;
-  reverbWet: GainNode;
-  reverbOut: GainNode;
+  /** The channel's effects; they sit between the fader and the pan. */
+  fx: FxChain;
+  /** The settings the effects are set to now. */
+  fxSettings: ChannelFx;
   /** Places the channel between left and right, after all effects. */
   panner: StereoPannerNode;
   /** Tapped off the channel's fully-processed output — a real per-channel level meter. */
@@ -88,6 +71,8 @@ export class AudioEngine {
   private masterGain: GainNode;
   /** One noise-based impulse response, shared by every channel's reverb (cheap; no sample to ship). */
   private reverbImpulse: AudioBuffer | null = null;
+  /** Channels currently heard without their effects (the Compare button). */
+  private fxCompare = new Set<string>();
   private tracks = new Map<string, LoadedTrack>();
   // Decoded audio of every take, by take id. Clips only point at these.
   private takeBuffers = new Map<string, AudioBuffer>();
@@ -317,86 +302,25 @@ export class AudioEngine {
 
       const gainNode = this.ctx.createGain();
 
-      // EQ: fixed low-shelf / mid-peak / high-shelf, in series.
-      const eqLow = this.ctx.createBiquadFilter();
-      eqLow.type = "lowshelf";
-      eqLow.frequency.value = EQ_LOW_HZ;
-      const eqMid = this.ctx.createBiquadFilter();
-      eqMid.type = "peaking";
-      eqMid.frequency.value = EQ_MID_HZ;
-      eqMid.Q.value = EQ_MID_Q;
-      const eqHigh = this.ctx.createBiquadFilter();
-      eqHigh.type = "highshelf";
-      eqHigh.frequency.value = EQ_HIGH_HZ;
-
-      // The Web Audio default (threshold -24dB, ratio 12:1) is NOT "off" — it
-      // compresses noticeably on its own. Start it matching amount 0 instead.
-      const compressor = this.ctx.createDynamicsCompressor();
-      compressor.threshold.value = 0;
-      compressor.ratio.value = 1;
-
-      // Delay: a feedback loop mixed with the dry signal.
-      const delayNode = this.ctx.createDelay(1);
-      const delayFeedback = this.ctx.createGain();
-      delayFeedback.gain.value = DELAY_FEEDBACK;
-      const delayDry = this.ctx.createGain();
-      const delayWet = this.ctx.createGain();
-      delayWet.gain.value = 0;
-      const delayOut = this.ctx.createGain();
-
-      // Reverb: a shared noise-decay impulse through a ConvolverNode, mixed with the dry signal.
-      const reverbConvolver = this.ctx.createConvolver();
-      reverbConvolver.normalize = true;
-      reverbConvolver.buffer = this.reverbImpulse;
-      const reverbDry = this.ctx.createGain();
-      const reverbWet = this.ctx.createGain();
-      reverbWet.gain.value = 0;
-      const reverbOut = this.ctx.createGain();
+      const fx = createFxChain(this.ctx, this.reverbImpulse);
 
       const panner = this.ctx.createStereoPanner();
 
       const analyser = this.ctx.createAnalyser();
       analyser.fftSize = 512;
 
-      // Wiring: fader -> EQ -> Compressor -> [dry|delay->wet] -> delayOut ->
-      // [dry|reverb->wet] -> reverbOut -> analyser & master.
-      gainNode.connect(eqLow);
-      eqLow.connect(eqMid);
-      eqMid.connect(eqHigh);
-      eqHigh.connect(compressor);
-      compressor.connect(delayDry);
-      compressor.connect(delayNode);
-      delayNode.connect(delayFeedback);
-      delayFeedback.connect(delayNode);
-      delayNode.connect(delayWet);
-      delayDry.connect(delayOut);
-      delayWet.connect(delayOut);
-      delayOut.connect(reverbDry);
-      delayOut.connect(reverbConvolver);
-      reverbConvolver.connect(reverbWet);
-      reverbDry.connect(reverbOut);
-      reverbWet.connect(reverbOut);
-      reverbOut.connect(analyser);
-      reverbOut.connect(panner);
+      // Wiring: fader -> effects -> analyser & pan -> master.
+      gainNode.connect(fx.input);
+      fx.output.connect(analyser);
+      fx.output.connect(panner);
       panner.connect(this.masterGain);
 
       track = {
         trackId,
         clips: [],
         gainNode,
-        eqLow,
-        eqMid,
-        eqHigh,
-        compressor,
-        delayNode,
-        delayFeedback,
-        delayDry,
-        delayWet,
-        delayOut,
-        reverbConvolver,
-        reverbDry,
-        reverbWet,
-        reverbOut,
+        fx,
+        fxSettings: { ...DEFAULT_CHANNEL_FX },
         panner,
         analyser,
         volume: 1,
@@ -404,38 +328,30 @@ export class AudioEngine {
         solo: false,
       };
       this.tracks.set(trackId, track);
-      this.updateTrackFx(trackId, {});
+      fx.apply(track.fxSettings);
       this.ensureTrackLevelLoop();
     }
     return track;
   }
 
-  /** Applies (a partial update to) a channel's EQ/Compressor/Delay/Reverb. Values outside range are clamped. */
+  /** Applies (a partial update to) a channel's effects. Values outside range are clamped. */
   updateTrackFx(trackId: string, fx: Partial<ChannelFx>) {
     const t = this.ensureTrack(trackId);
-    const clamped = clampFx(fx);
-    const now = this.ctx.currentTime;
+    t.fxSettings = { ...t.fxSettings, ...clampFx(fx) };
+    t.fx.apply(t.fxSettings, { smooth: true, bypassAll: this.fxCompare.has(trackId) });
+  }
 
-    if (clamped.eqLow !== undefined) t.eqLow.gain.setTargetAtTime(clamped.eqLow, now, 0.02);
-    if (clamped.eqMid !== undefined) t.eqMid.gain.setTargetAtTime(clamped.eqMid, now, 0.02);
-    if (clamped.eqHigh !== undefined) t.eqHigh.gain.setTargetAtTime(clamped.eqHigh, now, 0.02);
+  /** Hear a channel without its effects (a quick before/after) — nothing is changed or saved. */
+  setFxCompare(trackId: string, dry: boolean) {
+    if (dry) this.fxCompare.add(trackId);
+    else this.fxCompare.delete(trackId);
+    const t = this.tracks.get(trackId);
+    if (t) t.fx.apply(t.fxSettings, { smooth: true, bypassAll: dry });
+  }
 
-    if (clamped.compAmount !== undefined) {
-      const { thresholdDb, ratio } = compressorParamsFromAmount(clamped.compAmount);
-      t.compressor.threshold.setTargetAtTime(thresholdDb, now, 0.02);
-      t.compressor.ratio.setTargetAtTime(ratio, now, 0.02);
-    }
-
-    if (clamped.delayTimeMs !== undefined) t.delayNode.delayTime.setTargetAtTime(clamped.delayTimeMs / 1000, now, 0.02);
-    if (clamped.delayMix !== undefined) {
-      t.delayWet.gain.setTargetAtTime(clamped.delayMix, now, 0.02);
-      t.delayDry.gain.setTargetAtTime(1 - clamped.delayMix, now, 0.02);
-    }
-
-    if (clamped.reverbMix !== undefined) {
-      t.reverbWet.gain.setTargetAtTime(clamped.reverbMix, now, 0.02);
-      t.reverbDry.gain.setTargetAtTime(1 - clamped.reverbMix, now, 0.02);
-    }
+  /** How many dB the channel's compressor is pulling the level down right now (0 or negative). */
+  getCompressorReduction(trackId: string): number {
+    return this.tracks.get(trackId)?.fx.compressor.reduction ?? 0;
   }
 
   /**
@@ -451,7 +367,7 @@ export class AudioEngine {
     const mag = new Float32Array(freqHz.length);
     const phase = new Float32Array(freqHz.length);
     const totalMag = new Float32Array(freqHz.length).fill(1);
-    for (const filter of [t.eqLow, t.eqMid, t.eqHigh]) {
+    for (const filter of [t.fx.eqLow, t.fx.eqMid, t.fx.eqHigh]) {
       filter.getFrequencyResponse(freqHz, mag, phase);
       for (let i = 0; i < totalMag.length; i++) totalMag[i] *= mag[i];
     }
@@ -472,19 +388,12 @@ export class AudioEngine {
   private disconnectTrack(t: LoadedTrack) {
     for (const node of [
       t.gainNode,
-      t.eqLow,
-      t.eqMid,
-      t.eqHigh,
-      t.compressor,
-      t.delayNode,
-      t.delayFeedback,
-      t.delayDry,
-      t.delayWet,
-      t.delayOut,
-      t.reverbConvolver,
-      t.reverbDry,
-      t.reverbWet,
-      t.reverbOut,
+      t.fx.input,
+      t.fx.output,
+      t.fx.eqLow,
+      t.fx.eqMid,
+      t.fx.eqHigh,
+      t.fx.compressor,
       t.panner,
       t.analyser,
     ]) {

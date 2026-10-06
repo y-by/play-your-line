@@ -185,12 +185,19 @@ Good to know:
   Underneath the fader, a row of 5 signal lights shows the microphone level while that channel is
   armed, or the channel's own live output level the rest of the time.
 - **Channel FX** (EQ / Compressor / Delay / Reverb): click **FX** to open a small, draggable
-  plugin-style window — drag it by its title bar anywhere on screen. Pick one tool at a time from
-  the tabs at the top. Every knob is drag-to-turn (vertical drag, hold Shift to fine-tune, scroll
-  to nudge, double-click to reset). The EQ shows its real frequency-response curve, read straight
-  off the actual filter — not a decoration, it's exactly what the channel sounds like. The
-  Compressor has a live level meter. Volume and mute stay Owner/Mixer-only (the saved final mix);
-  FX is different — a channel's own player can shape their own channel's sound too.
+  plugin-style window. A **power switch** (off by default) turns the channel's effects on; each
+  effect also has its own bypass. The header holds a preset menu, Undo (this visit only), Reset and
+  **Compare** (hear it dry, local only, never saved); the Owner/Mixer also see a **lock**. Tabs can
+  be **detached** into their own draggable windows and docked back (Dock / Dock all). Every knob is
+  drag-to-turn (vertical drag, Shift to fine-tune, scroll to nudge, double-click to reset). The EQ
+  shows its real frequency-response curve; the Compressor has threshold, ratio, attack, release and
+  make-up, a live level meter and a gain-reduction meter. Effects that are off or neutral are taken
+  out of the signal path (`fxChain.ts`), and Export Mix builds the same chain, so a mix sounds the
+  same everywhere. Volume, mute and pan stay Owner/Mixer-only; FX is shared with the channel's own
+  player unless the Owner or Mixer locks the channel (enforced by the database).
+- **Notes** (`components/notes/`, `lib/notes.ts`): a tray, floating cards and ruler flags, with
+  @tags (`mentions` column), a pin to any bar, channel colours, and a "tagged you" badge and message.
+- **Chords and tuner** (`lib/chords.ts`, `lib/tuner.ts`): our own detectors, pure and tested.
 - **On a phone** (tested at 375 px wide, iPhone 13 mini): the bar sticks to the top while you
   scroll (the song header scrolls away). Row 1 is transport plus the number display; row 2
   is a sideways-sliding strip with everything else. Each channel strip is three short lines in
@@ -292,7 +299,9 @@ src/
     mix.ts                     which mix a listener hears (pure)
     dbFader.ts                 fader ↔ decibel conversion (pure)
     loop.ts                    loop-region timing (pure)
-    channelFx.ts               EQ/Comp/Delay/Reverb math: compressor curve, reverb impulse (pure where possible)
+    channelFx.ts               FX settings, presets, which effects run, database columns (pure)
+    fxChain.ts                 the effects audio graph, shared by playback and Export Mix
+    notes.ts, chords.ts, tuner.ts   notes and @tags, chord detector, pitch detector (pure)
     realtime.ts, remoteMerge.ts  live updates + who's here
     roles.ts                   Owner / Mixer / Player / Listener (pure)
     trackOrder.ts, trackColors.ts   channel order and colours (pure)
@@ -304,9 +313,9 @@ src/
     mixdown.ts, wav.ts         export and 32-bit float WAV encoding
     inputDevices.ts, outputDevices.ts
   worklets/pcm-recorder-processor.js   lossless capture on the audio thread
-supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0029)
+supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0034)
 scripts/test-timing.ts         checks for the latency math
-scripts/test-clips.ts          checks for clips, overlap, grid, mix, order, roles, cleanup, FX rules   (npm test runs both)
+scripts/test-clips.ts          checks for clips, overlap, grid, mix, order, roles, cleanup, FX rules, notes, chords, tuner   (npm test runs both)
 ```
 
 ## Audio timing principles

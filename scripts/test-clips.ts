@@ -10,7 +10,7 @@ import { findOrphanFiles, takeIdFromFileName, MIN_ORPHAN_AGE_MS } from "../src/l
 import { rolesOf, roleBadge, canMixFinal } from "../src/lib/roles.ts";
 import { loopApplies, positionWithLoop, nextLoopPass } from "../src/lib/loop.ts";
 import { gainToDb, dbToGain, MIN_DB, MAX_DB } from "../src/lib/dbFader.ts";
-import { compressorParamsFromAmount, clampFx } from "../src/lib/channelFx.ts";
+import { clampFx, activeStages, isNeutralFx, fxTailSec, fxFromRow, fxToRow, presetPatch, resetPatch, FX_PRESETS, DEFAULT_CHANNEL_FX } from "../src/lib/channelFx.ts";
 import { detectChords } from "../src/lib/chords.ts";
 import { detectPitch, noteFromHz } from "../src/lib/tuner.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
@@ -207,10 +207,24 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
 
 // ---- channel FX
 {
-  check("compressor amount 0 is effectively off (0dB threshold, 1:1 ratio)", (() => { const p = compressorParamsFromAmount(0); return p.thresholdDb === 0 && p.ratio === 1; })());
-  check("compressor amount 1 is the strongest setting", (() => { const p = compressorParamsFromAmount(1); return p.thresholdDb === -30 && p.ratio === 12; })());
-  check("compressor amount is clamped to 0..1", (() => { const lo = compressorParamsFromAmount(-5), hi = compressorParamsFromAmount(5); return lo.thresholdDb === 0 && hi.thresholdDb === -30; })());
-  check("clampFx clamps each field to its own range", (() => { const c = clampFx({ eqLow: 99, compAmount: -5, delayTimeMs: 5000 }); return c.eqLow === 12 && c.compAmount === 0 && c.delayTimeMs === 1000; })());
+  const on = { ...DEFAULT_CHANNEL_FX, fxOn: true };
+  check("a new channel has the effects switched OFF", DEFAULT_CHANNEL_FX.fxOn === false);
+  check("with the power switch off, no effect runs whatever the settings", activeStages({ ...on, fxOn: false, eqLow: 6, reverbMix: 0.5, compRatio: 8 }).length === 0);
+  check("with everything neutral, nothing runs even when switched on", activeStages(on).length === 0 && isNeutralFx(on));
+  check("only the effects that change the sound run, in order", activeStages({ ...on, reverbMix: 0.3, eqMid: 3, compRatio: 4 }).join() === "eq,comp,reverb");
+  check("a bypassed effect is left out", activeStages({ ...on, eqLow: 5, eqOn: false, delayMix: 0.4 }).join() === "delay");
+  check("Compare (hear dry) takes every effect out", activeStages({ ...on, eqLow: 5 }, true).length === 0);
+  check("make-up gain alone counts as an effect", activeStages({ ...on, compMakeupDb: 3 }).join() === "comp");
+  check("echoes and reverb get a tail in an export; a plain EQ does not", fxTailSec({ ...on, delayMix: 0.3, delayTimeMs: 400 }) === 3.2 && fxTailSec({ ...on, reverbMix: 0.2 }) === 2.5 && fxTailSec({ ...on, eqLow: 4 }) === 0);
+  check("clampFx clamps each field to its own range", (() => { const c = clampFx({ eqLow: 99, compRatio: -5, compThresholdDb: -999, delayTimeMs: 5000, compMakeupDb: 90 }); return c.eqLow === 12 && c.compRatio === 1 && c.compThresholdDb === -60 && c.delayTimeMs === 1000 && c.compMakeupDb === 24; })());
+  check("clampFx ignores junk and passes the switches through", (() => { const c = clampFx({ eqLow: NaN, fxOn: true, eqOn: false } as never); return c.eqLow === undefined && c.fxOn === true && c.eqOn === false; })());
+  check("a database row becomes FX fields, and back", (() => { const row = { fx_on: true, eq_low: 3, comp_ratio: 4, comp_on: false, delay_time_ms: 250 }; const fx = fxFromRow(row); const back = fxToRow(fx); return fx.fxOn && fx.eqLow === 3 && fx.compRatio === 4 && !fx.compOn && fx.delayTimeMs === 250 && back.comp_ratio === 4 && back.fx_on === true && Object.keys(back).length === 16; })());
+  check("a row missing the new columns falls back to the defaults (FX off)", (() => { const fx = fxFromRow({ eq_low: 2 }); return fx.fxOn === false && fx.eqLow === 2 && fx.compAttackMs === 10; })());
+  check("a live update only changes what it carries", fxFromRow({ reverb_mix: 0.4 }, { ...on, eqLow: 5 }).eqLow === 5);
+  check("every preset sits inside the allowed ranges", FX_PRESETS.every((p) => { const patch = presetPatch(p.id)!; const c = clampFx(patch); return Object.keys(c).every((k) => (c as Record<string, unknown>)[k] === (patch as Record<string, unknown>)[k]); }));
+  check("choosing a preset switches the effects on", FX_PRESETS.every((p) => presetPatch(p.id)!.fxOn === true));
+  check("the Flat preset changes nothing audible", isNeutralFx({ ...DEFAULT_CHANNEL_FX, ...presetPatch("flat")! }));
+  check("Reset makes everything neutral but keeps the switches", (() => { const cur = { ...on, eqLow: 6, reverbMix: 0.5, delayOn: false }; const r = { ...cur, ...resetPatch(cur) }; return isNeutralFx(r) && r.fxOn && !r.delayOn; })());
   check("clampFx leaves fields that weren't passed untouched (undefined)", clampFx({ eqLow: 3 }).eqMid === undefined);
 }
 

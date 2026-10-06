@@ -17,7 +17,7 @@ import { findOrphanFiles, takeIdFromFileName } from "../lib/orphans";
 import { upsertClip, removeClip } from "../lib/remoteMerge";
 import { orderTracks, moveId } from "../lib/trackOrder";
 import { prepareCoverImage } from "../lib/coverImage";
-import { clampFx } from "../lib/channelFx";
+import { clampFx, fxFromRow, presetPatch, resetPatch } from "../lib/channelFx";
 import { rolesOf, roleBadge, canMixFinal } from "../lib/roles";
 
 /** The useful part of a Supabase / network error, for showing to the person. */
@@ -178,11 +178,21 @@ interface ProjectState {
   /** Master mute: mutes every channel, or un-mutes them all. Follows the same rules as a single channel's M. */
   setAllMuted: (muted: boolean) => void;
   toggleChannelSolo: (trackId: string) => void;
-  /** Owner/Mixer only: EQ, Compressor, Delay and Reverb on the saved final mix. */
-  setChannelFx: (trackId: string, patch: Partial<ChannelFx>) => void;
-  /** Adjusts one FX field by `delta`, reading the current value fresh from the store — safe
-   *  to call several times in a row (e.g. rapid stepper clicks) without losing an update. */
-  nudgeChannelFx: (trackId: string, field: keyof ChannelFx, delta: number) => void;
+  /** EQ, Compressor, Delay and Reverb on the saved final mix: the Owner, the Mixer, and (unless it is locked) the channel's player. */
+  setChannelFx: (trackId: string, patch: Partial<ChannelFx>, opts?: { checkpoint?: boolean }) => void;
+  /** Steps the channel's effects back to how they were before the last change (kept for this visit only). */
+  undoChannelFx: (trackId: string) => void;
+  /** How many steps can be undone, per channel. */
+  fxUndoCount: Record<string, number>;
+  /** Every effect setting back to neutral (the power switch and bypasses stay as they are). Can be undone. */
+  resetChannelFx: (trackId: string) => void;
+  /** Sets the channel's effects from a starting point and switches FX on. Can be undone. */
+  applyFxPreset: (trackId: string, presetId: string) => void;
+  /** Hearing a channel without its effects, just on this device, to compare. Never saved or shared. */
+  fxCompare: Record<string, boolean>;
+  setFxCompare: (trackId: string, dry: boolean) => void;
+  /** Owner/Mixer: stop (or allow) the channel's player changing its effects. */
+  setFxLocked: (trackId: string, locked: boolean) => void;
 
   // Clip editing
   // Loop: a highlighted part of the song that repeats while playing. Personal
@@ -425,6 +435,9 @@ interface HistoryEntry {
 let undoStack: HistoryEntry[] = [];
 let redoStack: HistoryEntry[] = [];
 const pendingMixSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; patch: Partial<{ volume: number; muted: boolean }> }>();
+/** Undo steps for each channel's effects, and when each channel's current undo step was started. */
+const fxUndoStacks = new Map<string, ChannelFx[]>();
+const fxLastCheckpoint = new Map<string, number>();
 const pendingFxSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; patch: Partial<ChannelFx> }>();
 let countInTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -571,6 +584,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     pendingFxSaves.set(trackId, { timer, patch: merged });
   };
 
+  /** Changes the channel's effects on screen, in the sound, and (once it settles) in the database. */
+  const applyFxNow = (trackId: string, patch: Partial<ChannelFx>) => {
+    const project = get().project;
+    const track = project?.tracks.find((t) => t.id === trackId);
+    if (!project || !track) return;
+    const clean = clampFx(patch);
+    set({ project: { ...project, tracks: project.tracks.map((t) => (t.id === trackId ? { ...t, fx: { ...t.fx, ...clean } } : t)) } });
+    engine.updateTrackFx(trackId, clean);
+    scheduleFxSave(trackId, clean);
+  };
+
   // ---- Live changes from other people -------------------------------------
   // Their clips and channels appear without a refresh. Nothing here restarts
   // playback: an added or moved clip is heard from the next Play.
@@ -655,20 +679,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         color: row.color as string,
         assignedUserId,
         assignedPlayerName: name,
+        fxLocked: (row.fx_locked as boolean | undefined) ?? found.fxLocked,
         ...(savingMix ? {} : { volume: row.volume as number, muted: row.muted as boolean, pan: (row.pan as number) ?? found.pan }),
         ...(savingFx
           ? {}
-          : {
-              fx: {
-                eqLow: (row.eq_low as number) ?? found.fx.eqLow,
-                eqMid: (row.eq_mid as number) ?? found.fx.eqMid,
-                eqHigh: (row.eq_high as number) ?? found.fx.eqHigh,
-                compAmount: (row.comp_amount as number) ?? found.fx.compAmount,
-                delayTimeMs: (row.delay_time_ms as number) ?? found.fx.delayTimeMs,
-                delayMix: (row.delay_mix as number) ?? found.fx.delayMix,
-                reverbMix: (row.reverb_mix as number) ?? found.fx.reverbMix,
-              },
-            }),
+          : { fx: fxFromRow(row, found.fx) }),
         // The Owner's own order is what they just dragged; everyone else follows the saved default.
         ...(ownsOrder ? {} : { position: (row.position as number) ?? found.position }),
       };
@@ -884,7 +899,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const { project } = get();
       return !!project && canMixFinal(project, currentUserId());
     },
-    canUseFx: (track) => get().canMix() || get().canEditClips(track),
+    // The Owner and the Mixer always; the channel's own player unless the channel is locked.
+    canUseFx: (track) => get().canMix() || (get().canEditClips(track) && !track.fxLocked),
 
     roleLabel: () => {
       const { project } = get();
@@ -953,7 +969,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     loadProject: async (id) => {
-      set({ projectLoading: true, projectError: null, project: null, selectedClip: null, editError: null, loop: null, loopEnabled: false, armedTrackId: null, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null, noteChannelFilter: null, chords: {}, chordsShown: {} });
+      for (const id of Object.keys(get().fxCompare)) engine.setFxCompare(id, false);
+      fxUndoStacks.clear();
+      fxLastCheckpoint.clear();
+      set({ projectLoading: true, projectError: null, project: null, selectedClip: null, editError: null, loop: null, loopEnabled: false, armedTrackId: null, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null, noteChannelFilter: null, fxUndoCount: {}, fxCompare: {}, chords: {}, chordsShown: {} });
       try {
         const project = await api.getProject(id);
         await api.hydrateTakeBlobs(project);
@@ -1517,24 +1536,65 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     // Owner/Mixer only — EQ, Compressor, Delay and Reverb on the saved final mix.
-    setChannelFx: (trackId, patch) => {
+    setChannelFx: (trackId, patch, opts) => {
       const { project } = get();
       if (!project) return;
       const track = project.tracks.find((t) => t.id === trackId);
-      if (!track) return;
-      if (!get().canMix() && !get().canEditClips(track)) return;
-      const nextFx = { ...track.fx, ...patch };
-      set({ project: { ...project, tracks: project.tracks.map((t) => (t.id === trackId ? { ...t, fx: nextFx } : t)) } });
-      engine.updateTrackFx(trackId, patch);
-      scheduleFxSave(trackId, patch);
+      if (!track || !get().canUseFx(track)) return;
+      // A knob drag is many small changes: it counts as one undo step, started when the drag begins.
+      const now = Date.now();
+      if (opts?.checkpoint || now - (fxLastCheckpoint.get(trackId) ?? 0) > 1200) {
+        const stack = fxUndoStacks.get(trackId) ?? [];
+        stack.push(track.fx);
+        if (stack.length > 40) stack.shift();
+        fxUndoStacks.set(trackId, stack);
+        set({ fxUndoCount: { ...get().fxUndoCount, [trackId]: stack.length } });
+      }
+      fxLastCheckpoint.set(trackId, now);
+      applyFxNow(trackId, patch);
     },
 
-    nudgeChannelFx: (trackId, field, delta) => {
-      const { project } = get();
-      const track = project?.tracks.find((t) => t.id === trackId);
+    fxUndoCount: {},
+    undoChannelFx: (trackId) => {
+      const track = get().project?.tracks.find((t) => t.id === trackId);
+      const stack = fxUndoStacks.get(trackId);
+      if (!track || !stack?.length || !get().canUseFx(track)) return;
+      const previous = stack.pop()!;
+      fxLastCheckpoint.set(trackId, 0);
+      set({ fxUndoCount: { ...get().fxUndoCount, [trackId]: stack.length } });
+      applyFxNow(trackId, previous);
+    },
+    resetChannelFx: (trackId) => {
+      const track = get().project?.tracks.find((t) => t.id === trackId);
       if (!track) return;
-      const patch = clampFx({ [field]: track.fx[field] + delta } as Partial<ChannelFx>);
-      get().setChannelFx(trackId, patch);
+      get().setChannelFx(trackId, resetPatch(track.fx), { checkpoint: true });
+    },
+    applyFxPreset: (trackId, presetId) => {
+      const patch = presetPatch(presetId);
+      const track = get().project?.tracks.find((t) => t.id === trackId);
+      if (!patch || !track) return;
+      // A preset sets the effects but keeps which ones the player has bypassed.
+      get().setChannelFx(trackId, { ...patch, eqOn: track.fx.eqOn, compOn: track.fx.compOn, delayOn: track.fx.delayOn, reverbOn: track.fx.reverbOn }, { checkpoint: true });
+    },
+    fxCompare: {},
+    setFxCompare: (trackId, dry) => {
+      engine.setFxCompare(trackId, dry);
+      set({ fxCompare: { ...get().fxCompare, [trackId]: dry } });
+    },
+    setFxLocked: (trackId, locked) => {
+      const project = get().project;
+      if (!project || !get().canMix()) return;
+      const before = project.tracks.find((t) => t.id === trackId)?.fxLocked ?? false;
+      const apply = (value: boolean) => {
+        const latest = get().project;
+        if (latest) set({ project: { ...latest, tracks: latest.tracks.map((t) => (t.id === trackId ? { ...t, fxLocked: value } : t)) } });
+      };
+      apply(locked);
+      api.setTrackFxLocked(trackId, locked).catch((err) => {
+        console.error("Failed to lock the effects:", err);
+        apply(before);
+        set({ editError: `Couldn't ${locked ? "lock" : "unlock"} that channel's effects${errorDetail(err)}` });
+      });
     },
 
     // ---- Clip editing ---------------------------------------------------------
@@ -1861,7 +1921,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       engine.pause();
       engine.stopMonitoring();
       stopRealtime();
-      set({ realtimeStatus: "off", presentUsers: [], armedTrackId: null, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null });
+      set({ realtimeStatus: "off", presentUsers: [], armedTrackId: null, fxUndoCount: {}, fxCompare: {}, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null });
     },
 
     pause: () => engine.pause(),
