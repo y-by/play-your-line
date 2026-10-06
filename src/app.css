@@ -4228,10 +4228,14 @@
   position: relative;
 }
 
+/* Inside the button's own corner: the button group clips anything that sticks out of it */
 .notes-btn-dot {
   position: absolute;
-  top: -3px;
-  right: -3px;
+  top: 1px;
+  right: 1px;
+  z-index: 2;
+  pointer-events: none;
+  box-shadow: 0 0 0 1.5px var(--color-bg-elevated);
   min-width: 14px;
   height: 14px;
   padding: 0 3px;
@@ -5853,4 +5857,31 @@ select.note-opt {
 
 .eq-bands .eq-band {
   flex: 1;
+}
+
+/* The FX window, until it is dragged: below its button, leaning right; above it or leaning left when there is no room */
+@position-try --pl-fx-below-left {
+  position-area: bottom span-left;
+  justify-self: end;
+  margin: 4px 0 0;
+}
+
+@position-try --pl-fx-above-right {
+  position-area: top span-right;
+  justify-self: start;
+  margin: 0 0 4px;
+}
+
+@position-try --pl-fx-above-left {
+  position-area: top span-left;
+  justify-self: end;
+  margin: 0 0 4px;
+}
+
+.channel-fx-plugin.fx-anchored {
+  inset: auto;
+  position-area: bottom span-right;
+  justify-self: start;
+  margin: 4px 0 0;
+  position-try-fallbacks: --pl-fx-below-left, --pl-fx-above-right, --pl-fx-above-left;
 }

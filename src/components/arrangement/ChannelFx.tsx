@@ -4,6 +4,7 @@ import type { Track } from "../../types/project";
 import { activeStages, EQ_FREQ_RANGE, FX_PRESETS, DEFAULT_CHANNEL_FX, formatHz, hzToPos, posToHz } from "../../lib/channelFx";
 import { CloseIcon, LockIcon, TunerIcon, UndoIcon } from "../icons/Icons";
 import { HelpHint } from "../HelpHint";
+import { canAnchor, distrustAnchors, looksAnchored } from "../../lib/anchor";
 import { Knob } from "./Knob";
 import { EqCurve } from "./EqCurve";
 import { TunerPanel } from "./TunerPanel";
@@ -69,9 +70,14 @@ function ReductionMeter({ trackId, active }: { trackId: string; active: boolean 
   );
 }
 
-/** A window you can drag by its header. */
-function useDraggable(initial: { top: number; left: number }) {
-  const [pos, setPos] = useState(initial);
+type Pos = { top: number; left: number };
+
+/**
+ * A window you can drag by its header. It may start with no position (`null`): then the browser places it
+ * against its button (CSS anchor positioning) until the first drag or resize turns that into real coordinates.
+ */
+function usePlacement(initial: Pos | null) {
+  const [pos, setPos] = useState<Pos | null>(initial);
   const drag = useRef<{ startX: number; startY: number; startTop: number; startLeft: number } | null>(null);
   const headerProps = {
     onPointerDown: (e: React.PointerEvent) => {
@@ -82,7 +88,13 @@ function useDraggable(initial: { top: number; left: number }) {
       } catch {
         // Capture is only a convenience; dragging still works while the pointer stays over the header.
       }
-      drag.current = { startX: e.clientX, startY: e.clientY, startTop: pos.top, startLeft: pos.left };
+      let base = pos;
+      if (!base) {
+        const r = (e.currentTarget as HTMLElement).closest(".channel-fx-plugin")?.getBoundingClientRect();
+        base = r ? { top: r.top, left: r.left } : { top: 8, left: 8 };
+        setPos(base);
+      }
+      drag.current = { startX: e.clientX, startY: e.clientY, startTop: base.top, startLeft: base.left };
     },
     onPointerMove: (e: React.PointerEvent) => {
       if (!drag.current) return;
@@ -98,7 +110,7 @@ function useDraggable(initial: { top: number; left: number }) {
   };
   /** Carry on dragging this window with a pointer that is already down (a tab that was just pulled out). */
   const startWindowDrag = (clientX: number, clientY: number) => {
-    const start = { x: clientX, y: clientY, top: pos.top, left: pos.left };
+    const start = { x: clientX, y: clientY, top: pos?.top ?? 8, left: pos?.left ?? 8 };
     const move = (e: PointerEvent) =>
       setPos({
         top: Math.max(0, start.top + (e.clientY - start.y)),
@@ -113,7 +125,41 @@ function useDraggable(initial: { top: number; left: number }) {
     window.addEventListener("pointerup", up);
     window.addEventListener("pointercancel", up);
   };
-  return { pos, headerProps, startWindowDrag };
+  return { pos, setPos, headerProps, startWindowDrag };
+}
+
+/** The windows that always start at known coordinates. */
+function useDraggable(initial: Pos) {
+  const placement = usePlacement(initial);
+  return { ...placement, pos: placement.pos ?? initial };
+}
+
+/**
+ * Keeps a window on the screen. When it opens (or its size changes: another tab, a bigger window, a resized
+ * browser) and it runs past the bottom or the right edge, it is moved back so all of it can be seen.
+ * It does not fight you while you drag it: only a change of size or of the screen triggers it.
+ */
+function useKeepOnScreen(box: React.RefObject<HTMLDivElement | null>, setPos: React.Dispatch<React.SetStateAction<Pos | null>>, active = true) {
+  useEffect(() => {
+    const el = box.current;
+    if (!el || !active) return;
+    const fit = () => {
+      const r = el.getBoundingClientRect();
+      const margin = 8;
+      const dy = r.bottom > window.innerHeight - margin ? window.innerHeight - margin - r.bottom : 0;
+      const dx = r.right > window.innerWidth - margin ? window.innerWidth - margin - r.right : 0;
+      if (dx === 0 && dy === 0) return;
+      setPos((p) => (p ? { top: Math.max(margin, p.top + dy), left: Math.max(margin, p.left + dx) } : p));
+    };
+    const observer = new ResizeObserver(fit);
+    observer.observe(el);
+    window.addEventListener("resize", fit);
+    fit();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", fit);
+    };
+  }, [box, setPos, active]);
 }
 
 const SCALE_KEY = "pyl.fxScale";
@@ -121,7 +167,16 @@ const TUNER_SCALE_KEY = "pyl.tunerScale";
 const MAX_SCALE = 2;
 
 /** Grow a window by dragging its bottom-right corner, up to double its size (less on a narrow screen). */
-function useResizable(rememberAs: string | null) {
+function readStoredScale(key: string): number {
+  try {
+    const v = Number(localStorage.getItem(key));
+    return v >= 1 && v <= MAX_SCALE ? v : 1;
+  } catch {
+    return 1;
+  }
+}
+
+function useResizable(rememberAs: string | null, onBegin?: () => void) {
   const [scale, setScale] = useState(() => {
     if (!rememberAs) return 1;
     try {
@@ -138,6 +193,7 @@ function useResizable(rememberAs: string | null) {
       e.stopPropagation();
       const el = box.current;
       if (!el) return;
+      onBegin?.(); // a window placed by its button gets real coordinates before it grows
       const baseW = el.offsetWidth;
       const baseH = el.offsetHeight;
       const startX = e.clientX;
@@ -271,8 +327,9 @@ function ToolBody({ track, tool, canUse }: { track: Track; tool: Tool; canUse: b
 /** One effect pulled out of the main window into a window of its own. */
 function DetachedTool({ track, tool, canUse, start, grab, onDock }: { track: Track; tool: Tool; canUse: boolean; start: { top: number; left: number }; grab?: { x: number; y: number }; onDock: () => void }) {
   const setChannelFx = useProjectStore((s) => s.setChannelFx);
-  const { pos, headerProps, startWindowDrag } = useDraggable(start);
+  const { pos, setPos, headerProps, startWindowDrag } = useDraggable(start);
   const { box: sizeBox, grip: sizeGrip, style: sizeStyle } = useResizable(null);
+  useKeepOnScreen(sizeBox, setPos);
   const grabbed = useRef(false);
   useEffect(() => {
     // Pulled out by dragging its tab: keep following the pointer until it is let go.
@@ -306,8 +363,9 @@ function DetachedTool({ track, tool, canUse, start, grab, onDock }: { track: Tra
 
 /** The tuner in a window of its own. It never lives inside the FX box: it stays on screen when the box is closed, and its × closes it. */
 function TunerWindow({ track, start, onClose }: { track: Track; start: { top: number; left: number }; onClose: () => void }) {
-  const { pos, headerProps } = useDraggable(start);
+  const { pos, setPos, headerProps } = useDraggable(start);
   const { box, grip, style } = useResizable(TUNER_SCALE_KEY);
+  useKeepOnScreen(box, setPos);
   return (
     <div ref={box} className="channel-fx-plugin detached tuner-window" style={{ top: pos.top, left: pos.left, ...style }} onPointerDown={(e) => e.stopPropagation()}>
       <div className="fx-plugin-header" {...headerProps}>
@@ -337,9 +395,12 @@ export function ChannelFx({
   mainOpen,
   onMainOpen,
   onClose,
+  anchorName,
 }: {
   track: Track;
   initialAnchor: { top: number; left: number };
+  /** The CSS anchor name of the FX button, when the browser can place the window against it. */
+  anchorName?: string | null;
   /** Whether the main window is showing. Closing it leaves any tab that was dragged out where it is, on top. */
   mainOpen: boolean;
   onMainOpen: (open: boolean) => void;
@@ -363,8 +424,43 @@ export function ChannelFx({
   const [grabs, setGrabs] = useState<Partial<Record<Tool, { x: number; y: number }>>>({});
   const [tunerOpen, setTunerOpen] = useState(false);
   const justDragged = useRef(false);
-  const { pos, headerProps } = useDraggable(initialAnchor);
-  const { box: sizeBox, grip: sizeGrip, style: sizeStyle } = useResizable(SCALE_KEY);
+  // Placed by the browser against the FX button (below it, or above it when there is no room) until it is
+  // dragged or resized. Not when the window was left enlarged: its size would fool the browser's room check.
+  const [anchored] = useState(() => !!anchorName && canAnchor() && readStoredScale(SCALE_KEY) === 1);
+  const { pos, setPos, headerProps } = usePlacement(anchored ? null : initialAnchor);
+  const materialize = useRef<() => void>(() => {});
+  const { box: sizeBox, grip: sizeGrip, style: sizeStyle } = useResizable(SCALE_KEY, () => materialize.current());
+  useKeepOnScreen(sizeBox, setPos, mainOpen && pos !== null);
+  useEffect(() => {
+    materialize.current = () => {
+      const r = sizeBox.current?.getBoundingClientRect();
+      if (r) setPos((p) => p ?? { top: r.top, left: r.left });
+    };
+  }, [sizeBox, setPos]);
+  // Make sure the browser really put it by its button; if not, stop trusting that and use coordinates.
+  useEffect(() => {
+    if (!anchored || pos !== null || !mainOpen) return;
+    const frame = requestAnimationFrame(() => {
+      const r = sizeBox.current?.getBoundingClientRect();
+      const button = { left: initialAnchor.left, right: initialAnchor.left + 40, top: initialAnchor.top - 30, bottom: initialAnchor.top - 4 };
+      if (r && !looksAnchored(r, button, { width: window.innerWidth, height: window.innerHeight })) {
+        distrustAnchors();
+        setPos(initialAnchor);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [anchored, mainOpen]);
+  const [tunerStart, setTunerStart] = useState<Pos>({ top: 8, left: 8 });
+  const toggleTuner = () => {
+    if (!tunerOpen) {
+      const r = sizeBox.current?.getBoundingClientRect();
+      const top = r?.top ?? initialAnchor.top;
+      const left = r?.left ?? initialAnchor.left;
+      setTunerStart({ top, left: Math.min(Math.max(0, window.innerWidth - 300), left + 300) });
+    }
+    setTunerOpen((v) => !v);
+  };
 
   // Hearing the channel dry is only for the moment: closing the window puts the effects back.
   useEffect(() => () => useProjectStore.getState().setFxCompare(track.id, false), [track.id]);
@@ -391,7 +487,12 @@ export function ChannelFx({
   return (
     <>
       {mainOpen && (
-      <div ref={sizeBox} className={fx.fxOn ? "channel-fx-plugin" : "channel-fx-plugin off"} style={{ top: pos.top, left: pos.left, ...sizeStyle }} onPointerDown={(e) => e.stopPropagation()}>
+      <div
+        ref={sizeBox}
+        className={`${fx.fxOn ? "channel-fx-plugin" : "channel-fx-plugin off"}${pos ? "" : " fx-anchored"}`}
+        style={pos ? { top: pos.top, left: pos.left, ...sizeStyle } : ({ positionAnchor: anchorName, ...sizeStyle } as React.CSSProperties)}
+        onPointerDown={(e) => e.stopPropagation()}
+      >
         <div className="fx-plugin-header" {...headerProps}>
           <span className="fx-plugin-title">{track.instrument} — FX</span>
           <span className="fx-header-tools">
@@ -503,7 +604,7 @@ export function ChannelFx({
         <div className="fx-footer">
           <button
             className={tunerOpen ? "fx-tuner-btn on" : "fx-tuner-btn"}
-            onClick={() => setTunerOpen((v) => !v)}
+            onClick={toggleTuner}
             aria-pressed={tunerOpen}
             aria-label="Tuner"
             title={tunerOpen ? "Tuner — open in its own window (click to close it)" : "Tuner — opens in its own window and stays when this box is closed"}
@@ -514,9 +615,9 @@ export function ChannelFx({
         <Grip grip={sizeGrip} />
       </div>
       )}
-      {tunerOpen && <TunerWindow track={track} start={{ top: pos.top, left: Math.min(Math.max(0, window.innerWidth - 300), pos.left + 300) }} onClose={() => setTunerOpen(false)} />}
+      {tunerOpen && <TunerWindow track={track} start={tunerStart} onClose={() => setTunerOpen(false)} />}
       {detached.map((id) => (
-        <DetachedTool key={id} track={track} tool={id} canUse={canUse} start={starts[id] ?? { top: pos.top + 40, left: pos.left + 280 }} grab={grabs[id]} onDock={() => dock(id)} />
+        <DetachedTool key={id} track={track} tool={id} canUse={canUse} start={starts[id] ?? { top: 40, left: 40 }} grab={grabs[id]} onDock={() => dock(id)} />
       ))}
     </>
   );

@@ -7,6 +7,7 @@ import { ChannelMeter } from "./ChannelMeter";
 import { FaderScale } from "./FaderScale";
 import { PanKnob } from "./PanKnob";
 import { ChannelFx } from "./ChannelFx";
+import { canAnchor } from "../../lib/anchor";
 import { useProjectStore } from "../../store/useProjectStore";
 import { XmarkCircleIcon, MicIcon, NoteIcon } from "../icons/Icons";
 
@@ -217,6 +218,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
             <button
               ref={fxButtonRef}
               className={`fx-toggle${fxAnchor && fxMainOpen ? " on" : ""}${track.fx.fxOn ? " live" : ""}`}
+              style={canAnchor() ? ({ anchorName: `--fx-${track.id}` } as React.CSSProperties) : undefined}
               onClick={() => {
                 if (fxAnchor) {
                   // Open already: this shows or hides the main window. Tabs dragged out stay put either way.
@@ -239,7 +241,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
           )}
           </div>
         </div>
-        {fxAnchor && createPortal(<ChannelFx track={track} initialAnchor={fxAnchor} mainOpen={fxMainOpen} onMainOpen={setFxMainOpen} onClose={() => setFxAnchor(null)} />, document.body)}
+        {fxAnchor && createPortal(<ChannelFx track={track} initialAnchor={fxAnchor} mainOpen={fxMainOpen} onMainOpen={setFxMainOpen} onClose={() => setFxAnchor(null)} anchorName={canAnchor() ? `--fx-${track.id}` : null} />, document.body)}
       </div>
       )}
     </div>
