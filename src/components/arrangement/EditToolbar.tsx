@@ -1,6 +1,6 @@
 import { useProjectStore } from "../../store/useProjectStore";
 import { SNAP_OPTIONS, type SnapResolution } from "../../lib/grid";
-import { UndoIcon, CutIcon, DuplicateIcon, TrashIcon, MagnetIcon } from "../icons/Icons";
+import { UndoIcon, CutIcon, DuplicateIcon, TrashIcon, MagnetIcon, ChevronDownIcon } from "../icons/Icons";
 
 export function EditToolbar() {
   const pxPerBeat = useProjectStore((s) => s.pxPerBeat);
@@ -67,25 +67,28 @@ export function EditToolbar() {
             <button
               className={snapEnabled ? "lb on" : "lb"}
               onClick={() => setSnapEnabled(!snapEnabled)}
-              title={snapEnabled ? "Snap on — hold Alt to drag freely" : "Snap off"}
+              title={snapEnabled ? "Magnet on: clips snap to the grid. Hold Alt to drag freely." : "Magnet off: clips move freely. Click to snap to the grid."}
               aria-pressed={snapEnabled}
               aria-label="Snap to grid"
             >
-              <MagnetIcon size={14} />
+              <MagnetIcon size={18} />
             </button>
-            <select
-              className="snap-select"
-              value={snapResolution}
-              disabled={!snapEnabled}
-              onChange={(e) => setSnapResolution(e.target.value as SnapResolution)}
-              aria-label="Snap resolution"
-            >
-              {SNAP_OPTIONS.map((o) => (
-                <option key={o.value} value={o.value}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
+            <span className="snap-wrap">
+              <select
+                className="snap-select"
+                value={snapResolution}
+                disabled={!snapEnabled}
+                onChange={(e) => setSnapResolution(e.target.value as SnapResolution)}
+                aria-label="Snap resolution"
+              >
+                {SNAP_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>
+                    {o.label}
+                  </option>
+                ))}
+              </select>
+              <ChevronDownIcon size={12} />
+            </span>
           </div>
         </>
       )}

@@ -1,5 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { parseTip, type TipParts } from "../lib/tooltip";
+import { canAnchor, distrustAnchors, looksAnchored } from "../lib/anchor";
 
 interface Shown {
   tip: TipParts;
@@ -20,6 +22,7 @@ export function Tooltips() {
     let current: HTMLElement | null = null;
     let timer = 0;
     let observer: MutationObserver | null = null;
+    let previousAnchor = "";
 
     const textOf = (el: HTMLElement) => el.getAttribute("title") ?? el.dataset.tip ?? "";
     const release = () => {
@@ -27,6 +30,10 @@ export function Tooltips() {
       observer?.disconnect();
       observer = null;
       if (current) {
+        if (canAnchor()) {
+          if (previousAnchor) current.style.setProperty("anchor-name", previousAnchor);
+          else current.style.removeProperty("anchor-name");
+        }
         const text = current.dataset.tip;
         if (text && !current.hasAttribute("title")) current.setAttribute("title", text);
         delete current.dataset.tip;
@@ -46,6 +53,11 @@ export function Tooltips() {
       const text = textOf(el);
       if (!text) return;
       current = el;
+      if (canAnchor()) {
+        // The browser places the tip against the thing it explains; an element may already be an anchor for something else.
+        previousAnchor = el.style.getPropertyValue("anchor-name");
+        el.style.setProperty("anchor-name", previousAnchor ? `${previousAnchor}, --tip-anchor` : "--tip-anchor");
+      }
       el.dataset.tip = text;
       el.removeAttribute("title");
       // A hint that changes while it is up (a slider's dB value) is picked up and shown fresh.
@@ -107,7 +119,7 @@ export function Tooltips() {
 
   // Above the control, centred; below it if there is no room; always kept on screen.
   useLayoutEffect(() => {
-    if (!shown || !box.current) return;
+    if (canAnchor() || !shown || !box.current) return;
     const { width, height } = box.current.getBoundingClientRect();
     const r = shown.rect;
     const gap = 8;
@@ -117,15 +129,35 @@ export function Tooltips() {
     setPos({ left, top });
   }, [shown]);
 
+  // Placed by the browser: make sure it really landed beside its target. If not, stop trusting that and measure instead.
+  useEffect(() => {
+    if (!shown || !canAnchor()) return;
+    const frame = requestAnimationFrame(() => {
+      const r = box.current?.getBoundingClientRect();
+      if (r && !looksAnchored(r, shown.rect, { width: window.innerWidth, height: window.innerHeight })) {
+        distrustAnchors();
+        setShown({ ...shown });
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [shown]);
+
   if (!shown) return null;
   const { tip } = shown;
-  return (
-    <div ref={box} className="tip" role="tooltip" style={{ left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}>
+  // Put at the very end of the page each time: an anchored pop-up has to come after the thing it is anchored to.
+  return createPortal(
+    <div
+      ref={box}
+      className={canAnchor() ? "tip anchored" : "tip"}
+      role="tooltip"
+      style={canAnchor() ? undefined : { left: pos?.left ?? 0, top: pos?.top ?? 0, visibility: pos ? "visible" : "hidden" }}
+    >
       <span className="tip-main">
         <span className="tip-name">{tip.name}</span>
         {tip.hint && <span className="tip-hint">{tip.hint}</span>}
       </span>
       {tip.key && <span className="tip-key">{tip.key}</span>}
-    </div>
+    </div>,
+    document.body
   );
 }

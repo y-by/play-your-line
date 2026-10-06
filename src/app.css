@@ -5759,3 +5759,88 @@ select.note-opt {
   color: #fff;
   background: rgba(255, 255, 255, 0.1);
 }
+
+/* Help pop-up and tooltips placed by the browser against their button / target (CSS anchor positioning) */
+/* Centred on the anchor; if that runs off the screen, lean left or right of it, then try the other side. */
+@position-try --pl-t-left {
+  position-area: top span-left;
+  justify-self: end;
+  margin: 0 0 8px;
+}
+
+@position-try --pl-t-right {
+  position-area: top span-right;
+  justify-self: start;
+  margin: 0 0 8px;
+}
+
+@position-try --pl-b-left {
+  position-area: bottom span-left;
+  justify-self: end;
+  margin: 8px 0 0;
+}
+
+@position-try --pl-b-right {
+  position-area: bottom span-right;
+  justify-self: start;
+  margin: 8px 0 0;
+}
+
+.help-pop.anchored {
+  inset: auto;
+  margin: 8px 0 0;
+  width: 250px;
+  max-width: calc(100vw - 16px);
+  position-area: bottom;
+  justify-self: anchor-center;
+  position-try-fallbacks: --pl-b-left, --pl-b-right, flip-block, --pl-t-left, --pl-t-right;
+  overflow: visible;
+  box-sizing: border-box;
+}
+
+.help-pop.anchored.up {
+  position-area: top;
+  margin: 0 0 8px;
+  position-try-fallbacks: --pl-t-left, --pl-t-right, flip-block, --pl-b-left, --pl-b-right;
+}
+
+.tip.anchored {
+  position-anchor: --tip-anchor;
+  position-area: top;
+  justify-self: anchor-center;
+  margin: 0 0 8px;
+  position-try-fallbacks: --pl-t-left, --pl-t-right, flip-block, --pl-b-left, --pl-b-right;
+}
+
+.note-bubble.anchored {
+  position-anchor: --note-flag;
+  position-area: bottom span-right;
+  justify-self: start;
+  margin: 6px 0 0 -4px;
+  position-try-fallbacks: flip-inline, flip-block;
+}
+
+/* The grid-snap dropdown: our own arrow, with room after it */
+.snap-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+
+.snap-wrap > svg {
+  position: absolute;
+  right: 12px;
+  pointer-events: none;
+  color: var(--color-label-secondary);
+}
+
+.lg select.snap-select {
+  appearance: none;
+  -webkit-appearance: none;
+  padding: 0 32px 0 12px;
+  cursor: pointer;
+}
+
+.snap-wrap:has(select:disabled) > svg {
+  opacity: 0.4;
+}

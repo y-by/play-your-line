@@ -3,6 +3,7 @@ import { useProjectStore } from "../../store/useProjectStore";
 import { beatSec } from "../../lib/grid";
 import { pinLabel, pinnedOpenNotes } from "../../lib/notes";
 import { noteTint, useNoteTracks } from "./noteStyle";
+import { canAnchor, distrustAnchors, looksAnchored } from "../../lib/anchor";
 import { CheckIcon, FlagIcon } from "../icons/Icons";
 
 /** Flags on the ruler at each open, pinned note. Click one for its bubble. */
@@ -23,13 +24,29 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
   useEffect(() => {
     if (!openId) return;
     const close = () => setOpenFlag(null);
-    window.addEventListener("scroll", close, true);
+    // Anchored, the bubble follows its flag as the ruler scrolls; measured, it can't, so it closes.
+    if (!canAnchor()) window.addEventListener("scroll", close, true);
     window.addEventListener("resize", close);
     return () => {
       window.removeEventListener("scroll", close, true);
       window.removeEventListener("resize", close);
     };
   }, [openId, setOpenFlag]);
+
+  // Placed by the browser: make sure the bubble really landed by its flag; if not, measure instead.
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    if (!openId || !canAnchor()) return;
+    const frame = requestAnimationFrame(() => {
+      const bubble = document.querySelector(".note-bubble")?.getBoundingClientRect();
+      const flag = document.querySelector(".note-flag.open")?.getBoundingClientRect();
+      if (bubble && flag && !looksAnchored(bubble, flag, { width: window.innerWidth, height: window.innerHeight })) {
+        distrustAnchors();
+        setTick((t) => t + 1);
+      }
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [openId]);
 
   if (!visible) return null;
 
@@ -45,7 +62,7 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
         <button
           key={n.id}
           className={n.id === openId ? "note-flag open" : "note-flag"}
-          style={{ left: left(n.atBeat as number), color: noteTint(n, tracks) }}
+          style={{ left: left(n.atBeat as number), color: noteTint(n, tracks), ...(canAnchor() && n.id === openId ? { anchorName: "--note-flag" } : {}) } as React.CSSProperties}
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             setAnchor({ left: r.left, top: r.bottom });
@@ -59,8 +76,8 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
       ))}
       {open && anchor && (
         <div
-          className="note-bubble plugin-skin"
-          style={{ left: bubbleLeft, top: anchor.top + 6, width: BUBBLE, "--note-color": noteTint(open, tracks) } as React.CSSProperties}
+          className={canAnchor() ? "note-bubble plugin-skin anchored" : "note-bubble plugin-skin"}
+          style={{ ...(canAnchor() ? {} : { left: bubbleLeft, top: anchor.top + 6 }), width: BUBBLE, "--note-color": noteTint(open, tracks) } as React.CSSProperties}
         >
           <div className="note-meta">
             <b>{open.authorName ?? "Someone"}</b>

@@ -299,11 +299,13 @@ export function TrashIcon({ size = 14 }: IconProps) {
   );
 }
 
+/** A horseshoe magnet: a thick U with lighter pole tips, and little ticks of attraction between them. */
 export function MagnetIcon({ size = 14 }: IconProps) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 3v9a6 6 0 0 0 12 0V3" />
-      <path d="M6 8h4M14 8h4" />
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeLinecap="butt" strokeLinejoin="round">
+      <path d="M5.5 11.5v2.5a6.5 6.5 0 0 0 13 0v-2.5" strokeWidth="3.6" />
+      <path d="M5.5 11.5V7M18.5 11.5V7" strokeWidth="3.6" opacity="0.5" />
+      <path d="M12 2v3M8.6 3.2l1 2.4M15.4 3.2l-1 2.4" strokeWidth="1.7" strokeLinecap="round" />
     </svg>
   );
 }
@@ -344,6 +346,14 @@ export function TunerIcon({ size = 16 }: IconProps) {
       <path d="M8 3v7a4 4 0 0 0 8 0V3" />
       <path d="M12 14v7" />
       <path d="M10 21h4" />
+    </svg>
+  );
+}
+
+export function ChevronDownIcon({ size = 12 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6 9l6 6 6-6" />
     </svg>
   );
 }

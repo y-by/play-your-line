@@ -282,6 +282,61 @@ export class AudioEngine {
     if (this.clickAudioEl?.paused) this.clickAudioEl.play().catch(() => {});
   }
 
+  /**
+   * Runs `task` (opening a microphone, say) while the song is briefly turned down. The computer re-configures
+   * its audio hardware at that moment, which can click or crackle whatever is playing; with the output faded
+   * to silence just before and brought back just after, the glitch is not heard. Nothing is paused or lost.
+   */
+  async withQuietOutput<T>(task: () => Promise<T>, settleMs = 450): Promise<T> {
+    if (!this.playing) return task();
+    const gain = this.masterGain.gain;
+    const down = this.ctx.currentTime;
+    gain.cancelScheduledValues(down);
+    gain.setValueAtTime(gain.value, down);
+    gain.linearRampToValueAtTime(0, down + 0.04);
+    await new Promise((r) => setTimeout(r, 60));
+    try {
+      return await task();
+    } finally {
+      await new Promise((r) => setTimeout(r, settleMs));
+      const up = this.ctx.currentTime;
+      gain.cancelScheduledValues(up);
+      gain.setValueAtTime(0, up);
+      gain.linearRampToValueAtTime(1, up + 0.12);
+    }
+  }
+
+  /**
+   * Listens to a microphone stream for the tuner, on the SAME audio context the song plays on. A second context
+   * would open a second audio output with the system, which can make whatever is playing crackle.
+   * Returns the analyser to read from, and a function that disconnects it again.
+   */
+  async openInputAnalyser(stream: MediaStream, channelIndex: number | null, fftSize: number): Promise<{ analyser: AnalyserNode; sampleRate: number; close: () => void }> {
+    if (this.ctx.state === "suspended") await this.ctx.resume();
+    const source = this.ctx.createMediaStreamSource(stream);
+    const analyser = this.ctx.createAnalyser();
+    analyser.fftSize = fftSize;
+    const channels = Math.max(1, source.channelCount);
+    const wanted = channelIndex != null && channelIndex < channels ? channelIndex : 0;
+    let splitter: ChannelSplitterNode | null = null;
+    if (channels > 1) {
+      splitter = this.ctx.createChannelSplitter(channels);
+      source.connect(splitter);
+      splitter.connect(analyser, wanted);
+    } else {
+      source.connect(analyser);
+    }
+    return {
+      analyser,
+      sampleRate: this.ctx.sampleRate,
+      close: () => {
+        source.disconnect();
+        splitter?.disconnect();
+        analyser.disconnect();
+      },
+    };
+  }
+
   /** Decodes a take's audio once and keeps it; clips reference it by id. */
   async loadTake(takeId: string, blob: Blob): Promise<AudioBuffer> {
     const cached = this.takeBuffers.get(takeId);

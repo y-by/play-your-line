@@ -46,37 +46,39 @@ function useTuner(active: boolean, refA: number, targetMidi: number | null, cent
     }
     let stopped = false;
     let stream: MediaStream | null = null;
-    let ctx: AudioContext | null = null;
+    let close: (() => void) | null = null;
     let timer = 0;
     (async () => {
       try {
-        const { inputDeviceId, inputChannelIndex } = useProjectStore.getState();
-        const id = await resolveInputDeviceId(inputDeviceId);
-        stream = await navigator.mediaDevices.getUserMedia({ audio: buildAudioConstraints(id, inputChannelIndex) });
-        if (stopped) return stream.getTracks().forEach((t) => t.stop());
-        ctx = new AudioContext();
-        if (ctx.state === "suspended") await ctx.resume().catch(() => {});
-        const source = ctx.createMediaStreamSource(stream);
-        const analyser = ctx.createAnalyser();
-        analyser.fftSize = 8192;
-        const channels = Math.max(1, source.channelCount);
-        const wanted = inputChannelIndex != null && inputChannelIndex < channels ? inputChannelIndex : 0;
-        if (channels > 1) {
-          const splitter = ctx.createChannelSplitter(channels);
-          source.connect(splitter);
-          splitter.connect(analyser, wanted);
-        } else {
-          source.connect(analyser);
+        const { inputDeviceId, inputChannelIndex, engine } = useProjectStore.getState();
+        // Opening the microphone makes the computer re-configure its audio, which can crackle what is playing:
+        // turn the song down for that moment.
+        const input = await engine.withQuietOutput(async () => {
+          const id = await resolveInputDeviceId(inputDeviceId);
+          stream = await navigator.mediaDevices.getUserMedia({ audio: buildAudioConstraints(id, inputChannelIndex) });
+          if (stopped) {
+            stream.getTracks().forEach((t) => t.stop());
+            return null;
+          }
+          // Read it on the audio context the song already plays on, so opening the tuner opens no second audio output.
+          return engine.openInputAnalyser(stream, inputChannelIndex, 8192);
+        });
+        if (!input) return;
+        if (stopped) {
+          input.close();
+          return;
         }
-        const buf = new Float32Array(analyser.fftSize);
+        close = input.close;
+        const buf = new Float32Array(input.analyser.fftSize);
         const recent: number[] = [];
         let quiet = 0;
         let held: TunerReading | null = null;
+        let lastKey = "";
         timer = window.setInterval(() => {
-          analyser.getFloatTimeDomainData(buf);
+          input.analyser.getFloatTimeDomainData(buf);
           let peak = 0;
           for (let i = 0; i < buf.length; i += 8) peak = Math.max(peak, Math.abs(buf[i]));
-          const hz = detectPitch(buf, ctx!.sampleRate);
+          const hz = detectPitch(buf, input.sampleRate);
           if (hz) {
             recent.push(hz);
             if (recent.length > 5) recent.shift();
@@ -95,7 +97,13 @@ function useTuner(active: boolean, refA: number, targetMidi: number | null, cent
             recent.length = 0;
             centsRef.current = null;
           }
-          setLive({ reading: held, level: Math.min(1, peak * 2.5), error: false });
+          // Only redraw the panel when something you can see has changed.
+          const level = Math.min(1, peak * 2.5);
+          const key = `${held ? `${held.name}${held.octave}:${held.cents}` : "-"}|${Math.round(level * 20)}`;
+          if (key !== lastKey) {
+            lastKey = key;
+            setLive({ reading: held, level, error: false });
+          }
         }, 50);
       } catch (err) {
         console.error("The tuner couldn't open the microphone:", err);
@@ -105,8 +113,8 @@ function useTuner(active: boolean, refA: number, targetMidi: number | null, cent
     return () => {
       stopped = true;
       window.clearInterval(timer);
+      close?.();
       stream?.getTracks().forEach((t) => t.stop());
-      void ctx?.close();
       centsRef.current = null;
       setLive({ reading: null, level: 0, error: false });
     };

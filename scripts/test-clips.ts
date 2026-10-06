@@ -14,6 +14,7 @@ import { clampFx, eqResponseDb, hzToPos, posToHz, formatHz, EQ_FREQ_RANGE, activ
 import { detectChords } from "../src/lib/chords.ts";
 import { detectPitch, noteFromHz, centsFromTarget, hzOfMidi, strobeSpeed, INSTRUMENTS } from "../src/lib/tuner.ts";
 import { HELP_TOPICS, HELP_GROUPS, helpTopic } from "../src/lib/helpContent.ts";
+import { looksAnchored } from "../src/lib/anchor.ts";
 import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
@@ -360,6 +361,18 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("every instrument lists its strings low to high", INSTRUMENTS.filter((i) => i.id === "guitar" || i.id.startsWith("bass")).every((i) => i.strings.every((st, k) => k === 0 || st.midi > i.strings[k - 1].midi)));
   check("the strobe drifts right for sharp, left for flat, and stands still in tune", strobeSpeed(10, 1) > 0 && strobeSpeed(-10, 1) < 0 && strobeSpeed(0, 4) === 0);
   check("the strobe's speed is capped so it never flickers", Math.abs(strobeSpeed(50, 8)) <= 6);
+}
+
+// ---- anchored pop-ups
+{
+  const vp = { width: 1000, height: 700 };
+  const anchor = { left: 100, right: 130, top: 300, bottom: 320 };
+  check("a pop-up right under its anchor looks right", looksAnchored({ left: 80, right: 220, top: 328, bottom: 360 }, anchor, vp));
+  check("a pop-up right above its anchor looks right", looksAnchored({ left: 80, right: 220, top: 260, bottom: 292 }, anchor, vp));
+  check("a pop-up off the screen does not", !looksAnchored({ left: -300, right: -160, top: 328, bottom: 360 }, anchor, vp));
+  check("a pop-up far from its anchor does not", !looksAnchored({ left: 80, right: 220, top: 600, bottom: 640 }, anchor, vp));
+  check("a pop-up in the wrong column does not", !looksAnchored({ left: 700, right: 840, top: 328, bottom: 360 }, anchor, vp));
+  check("a pop-up that leans left of its anchor at the screen edge still looks right", looksAnchored({ left: 0, right: 140, top: 328, bottom: 360 }, anchor, vp));
 }
 
 // ---- help content

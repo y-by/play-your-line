@@ -197,6 +197,7 @@ Good to know:
   player unless the Owner or Mixer locks the channel (enforced by the database).
 - **Notes** (`components/notes/`, `lib/notes.ts`): a tray, floating cards and ruler flags, with
   @tags (`mentions` column), a pin to any bar, channel colours, and a "tagged you" badge and message.
+- **Anchored pop-ups** (`lib/anchor.ts`): the "?" help pop-up, tooltips and the note bubble are placed by the browser against what they belong to (CSS anchor positioning; the help pop-up is also a top-layer popover so a scaled or clipped window can't move it). They follow their anchor, flip to the other side or lean away from a screen edge on their own, and where the feature is missing the old measured placement runs instead. An anchored pop-up must come AFTER its anchor in the page, so tooltips are rendered at the end of the page each time.
 - **Help** (`pages/HelpPage.tsx`, `lib/helpContent.ts`, `components/HelpHint.tsx`): one list of questions and answers used by the Help page and by the small "?" pop-ups (which open straight under their button and can be dragged by their title if they cover the thing they explain).
 - **Chords and tuner** (`lib/chords.ts`, `lib/tuner.ts`, `TunerPanel.tsx`): our own detectors, pure and tested. The tuner opens from a tuning-fork button at the bottom of the FX window, in a window of its own that stays when the box is closed (a strobe display on a canvas, auto or per-string, bass-capable: 25 Hz to 1.3 kHz, within 1 cent in tests).
 - **On a phone** (tested at 375 px wide, iPhone 13 mini): the bar sticks to the top while you
