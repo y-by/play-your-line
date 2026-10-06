@@ -10,9 +10,10 @@ import { findOrphanFiles, takeIdFromFileName, MIN_ORPHAN_AGE_MS } from "../src/l
 import { rolesOf, roleBadge, canMixFinal } from "../src/lib/roles.ts";
 import { loopApplies, positionWithLoop, nextLoopPass } from "../src/lib/loop.ts";
 import { gainToDb, dbToGain, MIN_DB, MAX_DB } from "../src/lib/dbFader.ts";
-import { clampFx, activeStages, isNeutralFx, fxTailSec, fxFromRow, fxToRow, presetPatch, resetPatch, FX_PRESETS, DEFAULT_CHANNEL_FX } from "../src/lib/channelFx.ts";
+import { clampFx, eqResponseDb, hzToPos, posToHz, formatHz, EQ_FREQ_RANGE, activeStages, isNeutralFx, fxTailSec, fxFromRow, fxToRow, presetPatch, resetPatch, FX_PRESETS, DEFAULT_CHANNEL_FX } from "../src/lib/channelFx.ts";
 import { detectChords } from "../src/lib/chords.ts";
 import { detectPitch, noteFromHz, centsFromTarget, hzOfMidi, strobeSpeed, INSTRUMENTS } from "../src/lib/tuner.ts";
+import { HELP_TOPICS, HELP_GROUPS, helpTopic } from "../src/lib/helpContent.ts";
 import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
@@ -219,7 +220,17 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("echoes and reverb get a tail in an export; a plain EQ does not", fxTailSec({ ...on, delayMix: 0.3, delayTimeMs: 400 }) === 3.2 && fxTailSec({ ...on, reverbMix: 0.2 }) === 2.5 && fxTailSec({ ...on, eqLow: 4 }) === 0);
   check("clampFx clamps each field to its own range", (() => { const c = clampFx({ eqLow: 99, compRatio: -5, compThresholdDb: -999, delayTimeMs: 5000, compMakeupDb: 90 }); return c.eqLow === 12 && c.compRatio === 1 && c.compThresholdDb === -60 && c.delayTimeMs === 1000 && c.compMakeupDb === 24; })());
   check("clampFx ignores junk and passes the switches through", (() => { const c = clampFx({ eqLow: NaN, fxOn: true, eqOn: false } as never); return c.eqLow === undefined && c.fxOn === true && c.eqOn === false; })());
-  check("a database row becomes FX fields, and back", (() => { const row = { fx_on: true, eq_low: 3, comp_ratio: 4, comp_on: false, delay_time_ms: 250 }; const fx = fxFromRow(row); const back = fxToRow(fx); return fx.fxOn && fx.eqLow === 3 && fx.compRatio === 4 && !fx.compOn && fx.delayTimeMs === 250 && back.comp_ratio === 4 && back.fx_on === true && Object.keys(back).length === 16; })());
+  check("a database row becomes FX fields, and back", (() => { const row = { fx_on: true, eq_low: 3, comp_ratio: 4, comp_on: false, delay_time_ms: 250 }; const fx = fxFromRow(row); const back = fxToRow(fx); return fx.fxOn && fx.eqLow === 3 && fx.compRatio === 4 && !fx.compOn && fx.delayTimeMs === 250 && back.comp_ratio === 4 && back.fx_on === true && Object.keys(back).length === 19; })());
+  check("each EQ band's frequency knob is evenly spaced by ear and round-trips", [["low", 40], ["low", 200], ["mid", 1000], ["high", 5000], ["high", 16000]].every(([b, hz]) => { const r = EQ_FREQ_RANGE[b as "low" | "mid" | "high"]; const back = posToHz(hzToPos(hz as number, r[0], r[1]), r[0], r[1]); return Math.abs(back - (hz as number)) / (hz as number) < 0.03; }));
+  check("the frequency knob stays inside each band's range", posToHz(-5, 40, 800) === 40 && posToHz(500, 40, 800) === 800 && posToHz(100, 1500, 16000) === 16000);
+  check("frequencies are shown as 250, 1.2k, 12k", formatHz(250) === "250" && formatHz(1200) === "1.2k" && formatHz(12000) === "12k");
+  check("clampFx keeps each EQ frequency inside its band", (() => { const c = clampFx({ eqLowHz: 5, eqMidHz: 99999, eqHighHz: 10 }); return c.eqLowHz === 40 && c.eqMidHz === 8000 && c.eqHighHz === 1500; })());
+  const flat = { eqLow: 0, eqMid: 0, eqHigh: 0, eqLowHz: 200, eqMidHz: 1000, eqHighHz: 5000 };
+  check("a flat EQ draws a flat line", eqResponseDb(flat, [30, 200, 1000, 8000, 18000]).every((d) => Math.abs(d) < 0.01));
+  check("the mid band peaks by its gain at its own frequency", Math.abs(eqResponseDb({ ...flat, eqMid: 9, eqMidHz: 2500 }, [2500])[0] - 9) < 0.05);
+  check("moving the mid frequency moves the peak", (() => { const f = Array.from({ length: 200 }, (_, i) => 20 * Math.pow(1000, i / 199)); const peak = (hz: number) => { const db = eqResponseDb({ ...flat, eqMid: 9, eqMidHz: hz }, f); return f[db.indexOf(Math.max(...db))]; }; return Math.abs(peak(500) / 500 - 1) < 0.06 && Math.abs(peak(4000) / 4000 - 1) < 0.06; })());
+  check("the low shelf lifts everything below its corner and leaves the top alone", (() => { const r = eqResponseDb({ ...flat, eqLow: 9, eqLowHz: 80 }, [20, 10000]); return Math.abs(r[0] - 9) < 0.5 && Math.abs(r[1]) < 0.1; })());
+  check("the high shelf lifts everything above its corner and leaves the bottom alone", (() => { const r = eqResponseDb({ ...flat, eqHigh: -9, eqHighHz: 6000 }, [20, 18000]); return Math.abs(r[0]) < 0.1 && Math.abs(r[1] + 9) < 1; })());
   check("a row missing the new columns falls back to the defaults (FX off)", (() => { const fx = fxFromRow({ eq_low: 2 }); return fx.fxOn === false && fx.eqLow === 2 && fx.compAttackMs === 10; })());
   check("a live update only changes what it carries", fxFromRow({ reverb_mix: 0.4 }, { ...on, eqLow: 5 }).eqLow === 5);
   check("every preset sits inside the allowed ranges", FX_PRESETS.every((p) => { const patch = presetPatch(p.id)!; const c = clampFx(patch); return Object.keys(c).every((k) => (c as Record<string, unknown>)[k] === (patch as Record<string, unknown>)[k]); }));
@@ -349,6 +360,15 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("every instrument lists its strings low to high", INSTRUMENTS.filter((i) => i.id === "guitar" || i.id.startsWith("bass")).every((i) => i.strings.every((st, k) => k === 0 || st.midi > i.strings[k - 1].midi)));
   check("the strobe drifts right for sharp, left for flat, and stands still in tune", strobeSpeed(10, 1) > 0 && strobeSpeed(-10, 1) < 0 && strobeSpeed(0, 4) === 0);
   check("the strobe's speed is capped so it never flickers", Math.abs(strobeSpeed(50, 8)) <= 6);
+}
+
+// ---- help content
+{
+  check("every help question has a unique id", new Set(HELP_TOPICS.map((t) => t.id)).size === HELP_TOPICS.length);
+  check("every help question belongs to a known group, and every group has questions", HELP_TOPICS.every((t) => (HELP_GROUPS as readonly string[]).includes(t.group)) && HELP_GROUPS.every((g) => HELP_TOPICS.some((t) => t.group === g)));
+  check("every help answer says something", HELP_TOPICS.every((t) => t.question.trim().length > 5 && t.answer.length > 0 && t.answer.every((p) => p.trim().length > 20)));
+  check("the topics the '?' buttons point to exist (fx, tuner, notes)", ["fx", "tuner", "notes"].every((id) => !!helpTopic(id)));
+  check("ids are safe to use in a web address", HELP_TOPICS.every((t) => /^[a-z-]+$/.test(t.id)));
 }
 
 // ---- tooltip text

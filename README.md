@@ -53,17 +53,19 @@ a person with `@`, pin it to any bar, attach it to a channel (it then wears that
 and see it three ways: a tray along the bottom, floating cards, and flags on the bar ruler. Marking
 a note done archives it. A person you tag gets an orange `@` badge on the notes button and a message.
 
+**Help.** The menu has a Help page with short answers, grouped by what you are doing. Small "?" buttons in the FX box, the Tuner and the Notes tray open the short answer for that tool, with a link to the full page. (The answers live in `src/lib/helpContent.ts`.)
+
 **Chords.** The ♪ button next to FX listens to a channel and suggests the chords along the top of
 its lane. It is a suggestion, not a guarantee; click a chord to jump there.
 
-**Tuner.** The Tuner tab in a channel's FX window is a strobe tuner in the spirit of a Peterson: rings of
+**Tuner.** The tuning-fork button at the bottom of a channel's FX box opens a strobe tuner in its own window (it never lives inside the box: it stays when the box is closed, and its × closes it) in the spirit of a Peterson: rings of
 stripes drift left when the note is flat, right when it is sharp, and stand still (and turn green) when
 it is in tune, with the note, the cents and a needle. It reads from your first note down to a 5-string
 bass's low B. Pick Guitar, Bass (4), Bass (5) or Ukulele and tap a string to tune to it, or leave it on
 "Any note". The reference pitch (A = 440) can be moved.
 
 **Effects.** FX is **off** for a channel until its power switch is turned on. Each effect has its
-own bypass, there are presets, undo, reset and a Compare (hear it dry) button, and each tab can be
+own bypass, each EQ band has a frequency knob under its gain knob, there are presets, undo, reset and a Compare (hear it dry) button, and each tab can be
 dragged out into its own window (and docked back with its Dock button). Close the main FX window and any tab you pulled out stays on screen, on top. Drag the bottom-right corner of an FX window to make it bigger, up to double (double-click the corner for normal size); the main window remembers its size. Export Mix includes the effects.
 
 **Mixes.** Players hear their own monitor mix (saved only on their device) or the Owner's saved

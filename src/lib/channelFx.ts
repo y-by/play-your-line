@@ -14,6 +14,9 @@ export const DEFAULT_CHANNEL_FX: ChannelFx = {
   eqLow: 0,
   eqMid: 0,
   eqHigh: 0,
+  eqLowHz: 200,
+  eqMidHz: 1000,
+  eqHighHz: 5000,
   compThresholdDb: 0,
   compRatio: 1,
   compAttackMs: 10,
@@ -24,11 +27,38 @@ export const DEFAULT_CHANNEL_FX: ChannelFx = {
   reverbMix: 0,
 };
 
-/** Fixed EQ band centres — kept simple: one shelf, one peak, one shelf. */
+/** The EQ: one shelf, one peak, one shelf. Each has its own frequency knob; these are the starting points. */
 export const EQ_LOW_HZ = 200;
 export const EQ_MID_HZ = 1000;
 export const EQ_MID_Q = 1;
 export const EQ_HIGH_HZ = 5000;
+
+/** How far each band's frequency knob can go. */
+export const EQ_FREQ_RANGE = {
+  low: [40, 800],
+  mid: [200, 8000],
+  high: [1500, 16000],
+} as const;
+
+/** A frequency as a position on its knob (0..100), evenly spaced the way hearing works (logarithmic). */
+export function hzToPos(hz: number, min: number, max: number): number {
+  const clamped = Math.min(max, Math.max(min, hz));
+  return (Math.log(clamped / min) / Math.log(max / min)) * 100;
+}
+
+/** The knob position back to a tidy frequency (rounded so saved values read as 250 Hz, not 247.318). */
+export function posToHz(pos: number, min: number, max: number): number {
+  const hz = min * Math.pow(max / min, Math.min(100, Math.max(0, pos)) / 100);
+  const step = hz < 100 ? 1 : hz < 1000 ? 5 : hz < 10000 ? 50 : 500;
+  return Math.min(max, Math.max(min, Math.round(hz / step) * step));
+}
+
+/** "250" Hz, "1.2k", "12k". */
+export function formatHz(hz: number): string {
+  if (hz < 1000) return `${Math.round(hz)}`;
+  const k = hz / 1000;
+  return `${k >= 10 ? Math.round(k) : Math.round(k * 10) / 10}k`;
+}
 
 /** How long the feedback delay's own repeats decay by themselves. */
 export const DELAY_FEEDBACK = 0.35;
@@ -87,6 +117,9 @@ const RANGES = {
   eqLow: [-12, 12],
   eqMid: [-12, 12],
   eqHigh: [-12, 12],
+  eqLowHz: EQ_FREQ_RANGE.low,
+  eqMidHz: EQ_FREQ_RANGE.mid,
+  eqHighHz: EQ_FREQ_RANGE.high,
   compThresholdDb: [-60, 0],
   compRatio: [1, 20],
   compAttackMs: [0, 200],
@@ -120,6 +153,9 @@ const COLUMNS: Record<keyof ChannelFx, string> = {
   eqLow: "eq_low",
   eqMid: "eq_mid",
   eqHigh: "eq_high",
+  eqLowHz: "eq_low_hz",
+  eqMidHz: "eq_mid_hz",
+  eqHighHz: "eq_high_hz",
   compThresholdDb: "comp_threshold_db",
   compRatio: "comp_ratio",
   compAttackMs: "comp_attack_ms",
@@ -195,4 +231,75 @@ export function presetPatch(id: string): Partial<ChannelFx> | null {
 /** Every effect setting back to neutral, leaving the power switch and each bypass as they are. */
 export function resetPatch(current: ChannelFx): Partial<ChannelFx> {
   return { ...DEFAULT_CHANNEL_FX, fxOn: current.fxOn, eqOn: current.eqOn, compOn: current.compOn, delayOn: current.delayOn, reverbOn: current.reverbOn };
+}
+
+// ---- The EQ curve, worked out from the settings ----------------------------------------------------
+// The drawn curve is calculated from the knob values (the standard biquad formulas the browser's own
+// filters use), not read back from the audio nodes, so it is right even while the EQ is bypassed.
+
+interface Biquad {
+  b0: number;
+  b1: number;
+  b2: number;
+  a0: number;
+  a1: number;
+  a2: number;
+}
+
+function biquad(kind: "lowshelf" | "peaking" | "highshelf", freq: number, gainDb: number, sampleRate: number): Biquad {
+  const A = Math.pow(10, gainDb / 40);
+  const w0 = (2 * Math.PI * Math.min(freq, sampleRate * 0.49)) / sampleRate;
+  const cos = Math.cos(w0);
+  const sin = Math.sin(w0);
+  if (kind === "peaking") {
+    const alpha = sin / (2 * EQ_MID_Q);
+    return { b0: 1 + alpha * A, b1: -2 * cos, b2: 1 - alpha * A, a0: 1 + alpha / A, a1: -2 * cos, a2: 1 - alpha / A };
+  }
+  const alpha = (sin / 2) * Math.SQRT2; // shelf slope 1
+  const k = 2 * Math.sqrt(A) * alpha;
+  if (kind === "lowshelf") {
+    return {
+      b0: A * (A + 1 - (A - 1) * cos + k),
+      b1: 2 * A * (A - 1 - (A + 1) * cos),
+      b2: A * (A + 1 - (A - 1) * cos - k),
+      a0: A + 1 + (A - 1) * cos + k,
+      a1: -2 * (A - 1 + (A + 1) * cos),
+      a2: A + 1 + (A - 1) * cos - k,
+    };
+  }
+  return {
+    b0: A * (A + 1 + (A - 1) * cos + k),
+    b1: -2 * A * (A - 1 + (A + 1) * cos),
+    b2: A * (A + 1 + (A - 1) * cos - k),
+    a0: A + 1 - (A - 1) * cos + k,
+    a1: 2 * (A - 1 - (A + 1) * cos),
+    a2: A + 1 - (A - 1) * cos - k,
+  };
+}
+
+function magnitudeDb(f: Biquad, hz: number, sampleRate: number): number {
+  const w = (2 * Math.PI * hz) / sampleRate;
+  const c1 = Math.cos(w);
+  const s1 = Math.sin(w);
+  const c2 = Math.cos(2 * w);
+  const s2 = Math.sin(2 * w);
+  const nr = f.b0 + f.b1 * c1 + f.b2 * c2;
+  const ni = -(f.b1 * s1 + f.b2 * s2);
+  const dr = f.a0 + f.a1 * c1 + f.a2 * c2;
+  const di = -(f.a1 * s1 + f.a2 * s2);
+  return 10 * Math.log10((nr * nr + ni * ni) / (dr * dr + di * di));
+}
+
+/** The EQ's combined response, in dB, at each frequency in `freqs`, for the current settings. */
+export function eqResponseDb(
+  fx: Pick<ChannelFx, "eqLow" | "eqMid" | "eqHigh" | "eqLowHz" | "eqMidHz" | "eqHighHz">,
+  freqs: ArrayLike<number>,
+  sampleRate = 48000
+): number[] {
+  const bands = [
+    biquad("lowshelf", fx.eqLowHz, fx.eqLow, sampleRate),
+    biquad("peaking", fx.eqMidHz, fx.eqMid, sampleRate),
+    biquad("highshelf", fx.eqHighHz, fx.eqHigh, sampleRate),
+  ];
+  return Array.from({ length: freqs.length }, (_, i) => bands.reduce((sum, b) => sum + magnitudeDb(b, freqs[i], sampleRate), 0));
 }

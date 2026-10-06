@@ -190,14 +190,15 @@ Good to know:
   **Compare** (hear it dry, local only, never saved); the Owner/Mixer also see a **lock**. Tabs can
   be **dragged out** of the tab strip into their own draggable windows and docked back (Dock / Dock all). Closing the main window leaves any tab that was dragged out open and on top; the FX button on the strip shows or hides the main window again. Every FX window has a resize corner (a `transform: scale`, 1x to 2x, capped on narrow screens; the main window remembers it in `pyl.fxScale`). Every knob is
   drag-to-turn (vertical drag, Shift to fine-tune, scroll to nudge, double-click to reset). The EQ
-  shows its real frequency-response curve; the Compressor has threshold, ratio, attack, release and
+  has a gain knob and a frequency knob per band (low shelf 40-800 Hz, mid peak 200 Hz-8 kHz, high shelf 1.5-16 kHz, log-spaced) and shows its frequency-response curve, calculated from the settings with the filters' own formulas (`eqResponseDb`, checked against the browser's filter to 0.000 dB) so it stays right even while the EQ is bypassed; the Compressor has threshold, ratio, attack, release and
   make-up, a live level meter and a gain-reduction meter. Effects that are off or neutral are taken
   out of the signal path (`fxChain.ts`), and Export Mix builds the same chain, so a mix sounds the
   same everywhere. Volume, mute and pan stay Owner/Mixer-only; FX is shared with the channel's own
   player unless the Owner or Mixer locks the channel (enforced by the database).
 - **Notes** (`components/notes/`, `lib/notes.ts`): a tray, floating cards and ruler flags, with
   @tags (`mentions` column), a pin to any bar, channel colours, and a "tagged you" badge and message.
-- **Chords and tuner** (`lib/chords.ts`, `lib/tuner.ts`, `TunerPanel.tsx`): our own detectors, pure and tested. The tuner is a tab of the FX window (a strobe display on a canvas, auto or per-string, bass-capable: 25 Hz to 1.3 kHz, within 1 cent in tests).
+- **Help** (`pages/HelpPage.tsx`, `lib/helpContent.ts`, `components/HelpHint.tsx`): one list of questions and answers used by the Help page and by the small "?" pop-ups (which open straight under their button and can be dragged by their title if they cover the thing they explain).
+- **Chords and tuner** (`lib/chords.ts`, `lib/tuner.ts`, `TunerPanel.tsx`): our own detectors, pure and tested. The tuner opens from a tuning-fork button at the bottom of the FX window, in a window of its own that stays when the box is closed (a strobe display on a canvas, auto or per-string, bass-capable: 25 Hz to 1.3 kHz, within 1 cent in tests).
 - **On a phone** (tested at 375 px wide, iPhone 13 mini): the bar sticks to the top while you
   scroll. Row 1 is transport plus the number display; row 2
   is a sideways-sliding strip with everything else. Each channel strip is three short lines in
@@ -313,7 +314,7 @@ src/
     mixdown.ts, wav.ts         export and 32-bit float WAV encoding
     inputDevices.ts, outputDevices.ts
   worklets/pcm-recorder-processor.js   lossless capture on the audio thread
-supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0034)
+supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0036)
 scripts/test-timing.ts         checks for the latency math
 scripts/test-clips.ts          checks for clips, overlap, grid, mix, order, roles, cleanup, FX rules, notes, chords, tuner   (npm test runs both)
 ```

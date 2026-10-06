@@ -5,6 +5,7 @@ import { HomePage } from "./pages/HomePage";
 import { SongPage } from "./pages/SongPage";
 import { SongsListPage } from "./pages/SongsListPage";
 import { InvitePage } from "./pages/InvitePage";
+import { HelpPage } from "./pages/HelpPage";
 import { JoinPage } from "./pages/JoinPage";
 import { Tooltips } from "./components/Tooltips";
 import { SignInGate } from "./components/SignInGate";
@@ -31,6 +32,7 @@ export default function App() {
           }
         />
         <Route path="/songs" element={<SongsListPage />} />
+        <Route path="/help" element={<HelpPage />} />
         <Route path="/invite/:token" element={<InvitePage />} />
         <Route path="/join/:token" element={<JoinPage />} />
       </Routes>

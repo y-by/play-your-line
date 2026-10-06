@@ -3,7 +3,7 @@ import { NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
 import { createProject } from "../lib/projectApi";
 import { errorMessage } from "../lib/errorMessage";
-import { GlobeIcon, HomeIcon, PlusCircleIcon, UserIcon, WaveformIcon } from "./icons/Icons";
+import { GlobeIcon, HelpIcon, HomeIcon, PlusCircleIcon, UserIcon, WaveformIcon } from "./icons/Icons";
 
 /**
  * The frame around the project lists: a side menu on desktop, a tab bar at the bottom on phones.
@@ -53,6 +53,10 @@ export function AppShell({ title, children }: { title: string; children: React.R
             <GlobeIcon size={18} />
             Published
           </NavLink>
+          <NavLink to="/help" className={({ isActive }) => (isActive ? "shell-link active" : "shell-link")}>
+            <HelpIcon size={18} />
+            Help
+          </NavLink>
         </nav>
         <button className="export-btn shell-new" onClick={handleCreate} disabled={creating}>
           <PlusCircleIcon size={14} />
@@ -81,6 +85,9 @@ export function AppShell({ title, children }: { title: string; children: React.R
         <div className="shell-sheet-backdrop" onClick={() => setYouOpen(false)}>
           <div className="shell-sheet" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Account">
             <span className="shell-user-name">{name}</span>
+            <NavLink to="/help" className="link-btn" onClick={() => setYouOpen(false)}>
+              Help
+            </NavLink>
             <button className="link-btn" onClick={signOut}>
               Sign out
             </button>

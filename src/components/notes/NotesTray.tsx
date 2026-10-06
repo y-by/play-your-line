@@ -1,3 +1,4 @@
+import { HelpHint } from "../HelpHint";
 import { useState } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
 import { notesForTray } from "../../lib/notes";
@@ -37,6 +38,7 @@ export function NotesTray() {
             {open ? "▾" : "▴"}
           </span>
         </button>
+        <HelpHint topic="notes" up />
         {!open && newest && (
           <span className="notes-preview">
             <b>{newest.authorName ?? "Someone"}:</b> {newest.body}

@@ -5587,3 +5587,175 @@ select.note-opt {
 .clip-fade-tip.right {
   right: 14px;
 }
+
+/* EQ: each band has its gain knob with its frequency knob under it */
+.eq-bands {
+  display: flex;
+  justify-content: space-around;
+  gap: 6px;
+  width: 100%;
+}
+
+.eq-band {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 2px;
+}
+
+/* The Tuner button at the bottom of the FX box, and the tuner's own window */
+.fx-footer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+
+.fx-tuner-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 28px;
+  border: 1px solid var(--pl-header-border);
+  border-radius: 6px;
+  background: var(--pl-field);
+  color: var(--pl-muted);
+  cursor: pointer;
+}
+
+.fx-tuner-btn:hover {
+  color: #fff;
+}
+
+.fx-tuner-btn.on {
+  background: var(--pl-switch);
+  border-color: var(--pl-switch);
+  color: #fff;
+}
+
+.channel-fx-plugin.tuner-window {
+  width: 280px;
+}
+
+/* ---- Help: the "?" pop-up next to a tool, and the Help page ---- */
+
+.help-hint {
+  position: relative;
+  display: inline-flex;
+}
+
+.help-q {
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid var(--pl-header-border);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--pl-muted);
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.help-q:hover,
+.help-q[aria-expanded="true"] {
+  color: #fff;
+  border-color: var(--pl-accent);
+}
+
+.help-pop {
+  position: fixed;
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 250px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--lcd-bg);
+  border: 2px solid var(--lcd-border);
+  color: var(--lcd-text);
+  font-size: 12px;
+  font-weight: 400;
+  line-height: 1.45;
+  text-align: left;
+  text-transform: none;
+  letter-spacing: 0;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.5);
+}
+
+.help-pop b {
+  font-size: 13px;
+}
+
+.help-pop a {
+  color: var(--pl-accent);
+  font-weight: 600;
+}
+
+.help-page {
+  max-width: 760px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  padding-bottom: 40px;
+}
+
+.help-group h3 {
+  margin: 0 0 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.help-item {
+  border-top: 1px solid var(--color-separator);
+  padding: 2px 0;
+}
+
+.help-item summary {
+  cursor: pointer;
+  padding: 10px 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--color-label);
+}
+
+.help-item p {
+  margin: 0 0 10px;
+  font-size: 14px;
+  line-height: 1.55;
+  color: var(--color-label-secondary);
+}
+
+.help-pop-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  cursor: move;
+  touch-action: none;
+}
+
+.help-pop-x {
+  flex: none;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--lcd-dim);
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.help-pop-x:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}

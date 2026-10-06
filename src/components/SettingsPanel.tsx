@@ -338,6 +338,16 @@ export function SettingsPanel() {
           </section>
         )}
 
+        <section className="settings-section">
+          <h3>Help</h3>
+          <p className="settings-note">
+            <a href="/help" target="_blank" rel="noreferrer">
+              Questions and answers
+            </a>{" "}
+            about recording, effects, notes and sharing. It opens in a new tab, so your project stays as it is.
+          </p>
+        </section>
+
         {isOwner && projectTitle !== null && (
           <section className="settings-section danger-zone">
             <h3>Danger zone</h3>

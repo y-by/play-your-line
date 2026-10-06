@@ -51,6 +51,9 @@ export interface ChannelFx {
   eqLow: number; // dB, -12..+12
   eqMid: number; // dB, -12..+12
   eqHigh: number; // dB, -12..+12
+  eqLowHz: number; // low shelf corner, 40..800
+  eqMidHz: number; // mid peak centre, 200..8000
+  eqHighHz: number; // high shelf corner, 1500..16000
   compThresholdDb: number; // -60..0
   compRatio: number; // 1..20 (1 = no compression)
   compAttackMs: number; // 0..200

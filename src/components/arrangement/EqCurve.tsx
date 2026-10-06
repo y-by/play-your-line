@@ -1,5 +1,6 @@
 import { useMemo } from "react";
-import { useProjectStore } from "../../store/useProjectStore";
+import type { ChannelFx } from "../../types/project";
+import { eqResponseDb } from "../../lib/channelFx";
 
 const WIDTH = 220;
 const HEIGHT = 74;
@@ -18,17 +19,15 @@ const xForFreq = (hz: number) => (Math.log10(hz / MIN_HZ) / Math.log10(MAX_HZ / 
 const yForDb = (db: number) => HEIGHT / 2 - (Math.max(-MAX_DB, Math.min(MAX_DB, db)) / MAX_DB) * (HEIGHT / 2 - 4);
 
 /**
- * The EQ's real, current frequency response, read straight off the actual
- * filter nodes — recomputes whenever a knob moves, so the curve is always
- * exactly what the channel actually sounds like, not a decorative sketch.
+ * The EQ's frequency response, calculated from the knob values with the same filter formulas the audio
+ * uses, so the curve is what the channel sounds like, not a decorative sketch.
  */
-export function EqCurve({ trackId, eqLow, eqMid, eqHigh }: { trackId: string; eqLow: number; eqMid: number; eqHigh: number }) {
-  const engine = useProjectStore((s) => s.engine);
+export function EqCurve({ fx }: { fx: Pick<ChannelFx, "eqLow" | "eqMid" | "eqHigh" | "eqLowHz" | "eqMidHz" | "eqHighHz"> }) {
+  const { eqLow, eqMid, eqHigh, eqLowHz, eqMidHz, eqHighHz } = fx;
   const path = useMemo(() => {
-    const db = engine.getEqCurveDb(trackId, FREQS);
+    const db = eqResponseDb({ eqLow, eqMid, eqHigh, eqLowHz, eqMidHz, eqHighHz }, FREQS);
     return FREQS.reduce((d, hz, i) => `${d}${i === 0 ? "M" : "L"} ${xForFreq(hz).toFixed(1)} ${yForDb(db[i]).toFixed(1)} `, "");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [engine, trackId, eqLow, eqMid, eqHigh]);
+  }, [eqLow, eqMid, eqHigh, eqLowHz, eqMidHz, eqHighHz]);
 
   const gridFreqs = [100, 1000, 10000];
 

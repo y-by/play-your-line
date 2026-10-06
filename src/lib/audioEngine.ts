@@ -355,27 +355,6 @@ export class AudioEngine {
   }
 
   /**
-   * The EQ's true combined response at each of `freqHz`, in dB — read directly
-   * off the real `BiquadFilterNode`s (`getFrequencyResponse`), not an
-   * approximation, so the drawn curve is exactly what's actually happening to
-   * the sound.
-   */
-  getEqCurveDb(trackId: string, freqHz: Float32Array<ArrayBuffer>): Float32Array<ArrayBuffer> {
-    const t = this.tracks.get(trackId);
-    const out = new Float32Array(freqHz.length);
-    if (!t) return out;
-    const mag = new Float32Array(freqHz.length);
-    const phase = new Float32Array(freqHz.length);
-    const totalMag = new Float32Array(freqHz.length).fill(1);
-    for (const filter of [t.fx.eqLow, t.fx.eqMid, t.fx.eqHigh]) {
-      filter.getFrequencyResponse(freqHz, mag, phase);
-      for (let i = 0; i < totalMag.length; i++) totalMag[i] *= mag[i];
-    }
-    for (let i = 0; i < out.length; i++) out[i] = 20 * Math.log10(Math.max(1e-6, totalMag[i]));
-    return out;
-  }
-
-  /**
    * Replaces the list of clips that plays on a channel. If the song is
    * playing (and we're not mid-recording) it re-schedules from the current
    * position so an edit is heard straight away.

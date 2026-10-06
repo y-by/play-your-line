@@ -336,3 +336,24 @@ export function SettingsSlidersIcon({ size = 16 }: IconProps) {
     </svg>
   );
 }
+
+/** A tuning fork. */
+export function TunerIcon({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M8 3v7a4 4 0 0 0 8 0V3" />
+      <path d="M12 14v7" />
+      <path d="M10 21h4" />
+    </svg>
+  );
+}
+
+export function HelpIcon({ size = 18 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <circle cx="12" cy="12" r="9" />
+      <path d="M9.5 9.2a2.6 2.6 0 0 1 5 .9c0 1.7-2.5 2.2-2.5 3.7" />
+      <path d="M12 17.2h.01" />
+    </svg>
+  );
+}

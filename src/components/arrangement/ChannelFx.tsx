@@ -1,23 +1,21 @@
 import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
 import type { Track } from "../../types/project";
-import { FX_PRESETS } from "../../lib/channelFx";
-import { CloseIcon, LockIcon, UndoIcon } from "../icons/Icons";
+import { activeStages, EQ_FREQ_RANGE, FX_PRESETS, DEFAULT_CHANNEL_FX, formatHz, hzToPos, posToHz } from "../../lib/channelFx";
+import { CloseIcon, LockIcon, TunerIcon, UndoIcon } from "../icons/Icons";
+import { HelpHint } from "../HelpHint";
 import { Knob } from "./Knob";
 import { EqCurve } from "./EqCurve";
 import { TunerPanel } from "./TunerPanel";
 
-type Tool = "eq" | "comp" | "delay" | "reverb" | "tuner";
+type Tool = "eq" | "comp" | "delay" | "reverb";
 const TOOLS: { id: Tool; label: string; name: string }[] = [
   { id: "eq", label: "EQ", name: "EQ" },
   { id: "comp", label: "Comp", name: "Compressor" },
   { id: "delay", label: "Delay", name: "Delay" },
   { id: "reverb", label: "Reverb", name: "Reverb" },
-  { id: "tuner", label: "Tuner", name: "Tuner" },
 ];
 const ON_FIELD = { eq: "eqOn", comp: "compOn", delay: "delayOn", reverb: "reverbOn" } as const;
-/** The tuner is not an effect: it has no bypass and does not depend on the power switch. */
-const isEffect = (tool: Tool): tool is keyof typeof ON_FIELD => tool !== "tuner";
 
 /** A small on/off switch. */
 function Switch({ on, onChange, label, disabled, title }: { on: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean; title?: string }) {
@@ -43,20 +41,21 @@ function VuMeter({ trackId }: { trackId: string }) {
 }
 
 /** How much the compressor is turning the level down right now — it reads from the real compressor. */
-function ReductionMeter({ trackId }: { trackId: string }) {
+function ReductionMeter({ trackId, active }: { trackId: string; active: boolean }) {
   const fill = useRef<HTMLSpanElement>(null);
   const text = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     let frame = 0;
     const tick = () => {
-      const db = Math.min(0, useProjectStore.getState().engine.getCompressorReduction(trackId));
+      // A compressor that is out of the signal path is not working, whatever it last read.
+      const db = active ? Math.min(0, useProjectStore.getState().engine.getCompressorReduction(trackId)) : 0;
       if (fill.current) fill.current.style.width = `${Math.min(100, (-db / 24) * 100)}%`;
       if (text.current) text.current.textContent = `${db.toFixed(1)} dB`;
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [trackId]);
+  }, [trackId, active]);
   return (
     <div className="gr-meter" title="Gain reduction: how many dB the compressor is turning the sound down">
       <span className="gr-label">reduction</span>
@@ -118,14 +117,15 @@ function useDraggable(initial: { top: number; left: number }) {
 }
 
 const SCALE_KEY = "pyl.fxScale";
+const TUNER_SCALE_KEY = "pyl.tunerScale";
 const MAX_SCALE = 2;
 
 /** Grow a window by dragging its bottom-right corner, up to double its size (less on a narrow screen). */
-function useResizable(remember: boolean) {
+function useResizable(rememberAs: string | null) {
   const [scale, setScale] = useState(() => {
-    if (!remember) return 1;
+    if (!rememberAs) return 1;
     try {
-      const v = Number(localStorage.getItem(SCALE_KEY));
+      const v = Number(localStorage.getItem(rememberAs));
       return v >= 1 && v <= MAX_SCALE ? v : 1;
     } catch {
       return 1;
@@ -154,9 +154,9 @@ function useResizable(remember: boolean) {
         window.removeEventListener("pointermove", move);
         window.removeEventListener("pointerup", up);
         window.removeEventListener("pointercancel", up);
-        if (remember) {
+        if (rememberAs) {
           try {
-            localStorage.setItem(SCALE_KEY, String(Math.round(latest * 100) / 100));
+            localStorage.setItem(rememberAs, String(Math.round(latest * 100) / 100));
           } catch {
             // storage unavailable — the size just won't be remembered
           }
@@ -180,18 +180,38 @@ function Grip({ grip }: { grip: ReturnType<typeof useResizable>["grip"] }) {
 /** The controls of one effect. */
 function ToolBody({ track, tool, canUse }: { track: Track; tool: Tool; canUse: boolean }) {
   const setChannelFx = useProjectStore((s) => s.setChannelFx);
-  if (tool === "tuner") return <TunerPanel />;
+  const compare = useProjectStore((s) => !!s.fxCompare[track.id]);
   const fx = track.fx;
   const set = (patch: Parameters<typeof setChannelFx>[1]) => setChannelFx(track.id, patch);
   const pct = (field: "delayMix" | "reverbMix") => (v: number) => set({ [field]: v / 100 });
   if (tool === "eq") {
     return (
       <div className="fx-section fx-section-eq">
-        <EqCurve trackId={track.id} eqLow={fx.eqLow} eqMid={fx.eqMid} eqHigh={fx.eqHigh} />
-        <div className="fx-knob-row">
-          <Knob label="low" value={fx.eqLow} unit="dB" min={-12} max={12} sensitivity={0.15} defaultValue={0} disabled={!canUse} size={56} onChange={(v) => set({ eqLow: v })} />
-          <Knob label="mid" value={fx.eqMid} unit="dB" min={-12} max={12} sensitivity={0.15} defaultValue={0} disabled={!canUse} size={56} onChange={(v) => set({ eqMid: v })} />
-          <Knob label="high" value={fx.eqHigh} unit="dB" min={-12} max={12} sensitivity={0.15} defaultValue={0} disabled={!canUse} size={56} onChange={(v) => set({ eqHigh: v })} />
+        <EqCurve fx={fx} />
+        <div className="eq-bands">
+          {(
+            [
+              { id: "low", gain: fx.eqLow, gainKey: "eqLow", hz: fx.eqLowHz, hzKey: "eqLowHz", def: DEFAULT_CHANNEL_FX.eqLowHz, range: EQ_FREQ_RANGE.low },
+              { id: "mid", gain: fx.eqMid, gainKey: "eqMid", hz: fx.eqMidHz, hzKey: "eqMidHz", def: DEFAULT_CHANNEL_FX.eqMidHz, range: EQ_FREQ_RANGE.mid },
+              { id: "high", gain: fx.eqHigh, gainKey: "eqHigh", hz: fx.eqHighHz, hzKey: "eqHighHz", def: DEFAULT_CHANNEL_FX.eqHighHz, range: EQ_FREQ_RANGE.high },
+            ] as const
+          ).map((band) => (
+            <div key={band.id} className="eq-band">
+              <Knob label={band.id} value={band.gain} unit="dB" min={-12} max={12} sensitivity={0.15} defaultValue={0} disabled={!canUse} size={56} onChange={(v) => set({ [band.gainKey]: v })} />
+              <Knob
+                label="freq"
+                value={hzToPos(band.hz, band.range[0], band.range[1])}
+                min={0}
+                max={100}
+                sensitivity={0.5}
+                defaultValue={hzToPos(band.def, band.range[0], band.range[1])}
+                format={(pos) => `${formatHz(posToHz(pos, band.range[0], band.range[1]))}Hz`}
+                disabled={!canUse}
+                size={44}
+                onChange={(pos) => set({ [band.hzKey]: posToHz(pos, band.range[0], band.range[1]) })}
+              />
+            </div>
+          ))}
         </div>
       </div>
     );
@@ -200,7 +220,7 @@ function ToolBody({ track, tool, canUse }: { track: Track; tool: Tool; canUse: b
     return (
       <div className="fx-section fx-section-comp">
         <VuMeter trackId={track.id} />
-        <ReductionMeter trackId={track.id} />
+        <ReductionMeter trackId={track.id} active={activeStages(fx).includes("comp") && !compare} />
         <div className="fx-knob-row wrap">
           <Knob label="threshold" value={fx.compThresholdDb} unit="dB" min={-60} max={0} sensitivity={0.4} defaultValue={0} disabled={!canUse} size={52} onChange={(v) => set({ compThresholdDb: v })} />
           <Knob label="ratio" value={fx.compRatio} unit=":1" min={1} max={20} sensitivity={0.1} defaultValue={1} decimals={1} disabled={!canUse} size={52} onChange={(v) => set({ compRatio: v })} />
@@ -237,7 +257,7 @@ function ToolBody({ track, tool, canUse }: { track: Track; tool: Tool; canUse: b
 function DetachedTool({ track, tool, canUse, start, grab, onDock }: { track: Track; tool: Tool; canUse: boolean; start: { top: number; left: number }; grab?: { x: number; y: number }; onDock: () => void }) {
   const setChannelFx = useProjectStore((s) => s.setChannelFx);
   const { pos, headerProps, startWindowDrag } = useDraggable(start);
-  const { box: sizeBox, grip: sizeGrip, style: sizeStyle } = useResizable(false);
+  const { box: sizeBox, grip: sizeGrip, style: sizeStyle } = useResizable(null);
   const grabbed = useRef(false);
   useEffect(() => {
     // Pulled out by dragging its tab: keep following the pointer until it is let go.
@@ -247,7 +267,7 @@ function DetachedTool({ track, tool, canUse, start, grab, onDock }: { track: Tra
     }
   });
   const info = TOOLS.find((t) => t.id === tool)!;
-  const field = isEffect(tool) ? ON_FIELD[tool] : null;
+  const field = ON_FIELD[tool];
   const live = !field || (track.fx.fxOn && track.fx[field]);
   return (
     <div ref={sizeBox} className={live ? "channel-fx-plugin detached" : "channel-fx-plugin detached off"} style={{ top: pos.top, left: pos.left, ...sizeStyle }} onPointerDown={(e) => e.stopPropagation()}>
@@ -265,6 +285,27 @@ function DetachedTool({ track, tool, canUse, start, grab, onDock }: { track: Tra
       {field && !track.fx.fxOn && <p className="fx-offnote">FX is off for this channel — switch it on in the main window to hear this.</p>}
       <ToolBody track={track} tool={tool} canUse={canUse} />
       <Grip grip={sizeGrip} />
+    </div>
+  );
+}
+
+/** The tuner in a window of its own. It never lives inside the FX box: it stays on screen when the box is closed, and its × closes it. */
+function TunerWindow({ track, start, onClose }: { track: Track; start: { top: number; left: number }; onClose: () => void }) {
+  const { pos, headerProps } = useDraggable(start);
+  const { box, grip, style } = useResizable(TUNER_SCALE_KEY);
+  return (
+    <div ref={box} className="channel-fx-plugin detached tuner-window" style={{ top: pos.top, left: pos.left, ...style }} onPointerDown={(e) => e.stopPropagation()}>
+      <div className="fx-plugin-header" {...headerProps}>
+        <span className="fx-plugin-title">{track.instrument} — Tuner</span>
+        <span className="fx-header-tools">
+          <HelpHint topic="tuner" />
+          <button className="fx-close" onClick={onClose} aria-label="Close the tuner" title="Close the tuner">
+            <CloseIcon size={14} />
+          </button>
+        </span>
+      </div>
+      <TunerPanel />
+      <Grip grip={grip} />
     </div>
   );
 }
@@ -305,9 +346,10 @@ export function ChannelFx({
   const [detached, setDetached] = useState<Tool[]>([]);
   const [starts, setStarts] = useState<Partial<Record<Tool, { top: number; left: number }>>>({});
   const [grabs, setGrabs] = useState<Partial<Record<Tool, { x: number; y: number }>>>({});
+  const [tunerOpen, setTunerOpen] = useState(false);
   const justDragged = useRef(false);
   const { pos, headerProps } = useDraggable(initialAnchor);
-  const { box: sizeBox, grip: sizeGrip, style: sizeStyle } = useResizable(true);
+  const { box: sizeBox, grip: sizeGrip, style: sizeStyle } = useResizable(SCALE_KEY);
 
   // Hearing the channel dry is only for the moment: closing the window puts the effects back.
   useEffect(() => () => useProjectStore.getState().setFxCompare(track.id, false), [track.id]);
@@ -326,8 +368,8 @@ export function ChannelFx({
     onMainOpen(true); // docking puts it back in the main window, so that has to be showing
   };
   useEffect(() => {
-    if (!mainOpen && detached.length === 0) onClose();
-  }, [mainOpen, detached.length, onClose]);
+    if (!mainOpen && detached.length === 0 && !tunerOpen) onClose();
+  }, [mainOpen, detached.length, tunerOpen, onClose]);
   const fx = track.fx;
   const locked = track.fxLocked;
 
@@ -338,6 +380,7 @@ export function ChannelFx({
         <div className="fx-plugin-header" {...headerProps}>
           <span className="fx-plugin-title">{track.instrument} — FX</span>
           <span className="fx-header-tools">
+            <HelpHint topic="fx" />
             <span className="fx-power-label">{fx.fxOn ? "On" : "Off"}</span>
             <Switch on={fx.fxOn} disabled={!canUse} label="Effects on" title={fx.fxOn ? "Effects are on — click to hear this channel dry" : "Effects are off — click to turn them on"} onChange={(on) => setChannelFx(track.id, { fxOn: on }, { checkpoint: true })} />
             <button className="fx-close" onClick={() => onMainOpen(false)} aria-label="Close">
@@ -380,7 +423,7 @@ export function ChannelFx({
           )}
         </div>
         {!canUse && <p className="fx-offnote">{locked ? "The owner or mixer has locked this channel's effects." : "You can look, but not change these."}</p>}
-        {canUse && !fx.fxOn && shown !== "tuner" && <p className="fx-offnote">Effects are off — switch them on (top right) to hear what you set.</p>}
+        {canUse && !fx.fxOn && <p className="fx-offnote">Effects are off — switch them on (top right) to hear what you set.</p>}
 
         {docked.length > 0 ? (
           <>
@@ -417,7 +460,7 @@ export function ChannelFx({
                   aria-selected={shown === t.id}
                   title="Click to open. Drag it out to open in its own window."
                 >
-                  {isEffect(t.id) && <span className={fx[ON_FIELD[t.id]] ? "fx-tab-dot on" : "fx-tab-dot"} />}
+                  <span className={fx[ON_FIELD[t.id]] ? "fx-tab-dot on" : "fx-tab-dot"} />
                   {t.label}
                 </button>
               ))}
@@ -427,7 +470,7 @@ export function ChannelFx({
                 <div className="fx-tool-head">
                   <span className="fx-section-label">{TOOLS.find((t) => t.id === shown)!.name}</span>
                   <span className="fx-header-tools">
-                    {isEffect(shown) && <Switch on={fx[ON_FIELD[shown]]} disabled={!canUse} label={`${shown} on`} title={fx[ON_FIELD[shown]] ? "On — click to bypass just this effect" : "Bypassed — click to turn this effect on"} onChange={(on) => setChannelFx(track.id, { [ON_FIELD[shown]]: on }, { checkpoint: true })} />}
+                    <Switch on={fx[ON_FIELD[shown]]} disabled={!canUse} label={`${shown} on`} title={fx[ON_FIELD[shown]] ? "On — click to bypass just this effect" : "Bypassed — click to turn this effect on"} onChange={(on) => setChannelFx(track.id, { [ON_FIELD[shown]]: on }, { checkpoint: true })} />
                   </span>
                 </div>
                 <ToolBody track={track} tool={shown} canUse={canUse} />
@@ -442,9 +485,21 @@ export function ChannelFx({
             Dock all tabs
           </button>
         )}
+        <div className="fx-footer">
+          <button
+            className={tunerOpen ? "fx-tuner-btn on" : "fx-tuner-btn"}
+            onClick={() => setTunerOpen((v) => !v)}
+            aria-pressed={tunerOpen}
+            aria-label="Tuner"
+            title={tunerOpen ? "Tuner — open in its own window (click to close it)" : "Tuner — opens in its own window and stays when this box is closed"}
+          >
+            <TunerIcon size={16} />
+          </button>
+        </div>
         <Grip grip={sizeGrip} />
       </div>
       )}
+      {tunerOpen && <TunerWindow track={track} start={{ top: pos.top, left: Math.min(Math.max(0, window.innerWidth - 300), pos.left + 300) }} onClose={() => setTunerOpen(false)} />}
       {detached.map((id) => (
         <DetachedTool key={id} track={track} tool={id} canUse={canUse} start={starts[id] ?? { top: pos.top + 40, left: pos.left + 280 }} grab={grabs[id]} onDock={() => dock(id)} />
       ))}

@@ -15,6 +15,8 @@ interface KnobProps {
   defaultValue: number;
   /** How many decimal places to show — 0 for whole numbers. */
   decimals?: number;
+  /** Shows the value in some other way (for example a frequency as "1.2k"). Replaces the number and unit. */
+  format?: (value: number) => string;
   size?: number;
 }
 
@@ -22,7 +24,7 @@ const SWEEP_DEG = 270; // total rotation from fully-left to fully-right, centred
 const START_DEG = 135; // pointing down-left at the minimum
 
 /** A real, drag-to-turn knob (vertical drag, like every DAW/plugin), rendered as SVG. */
-export function Knob({ label, value, unit = "", min, max, sensitivity, disabled, onChange, defaultValue, decimals = 0, size = 44 }: KnobProps) {
+export function Knob({ label, value, unit = "", min, max, sensitivity, disabled, onChange, defaultValue, decimals = 0, format, size = 44 }: KnobProps) {
   const [dragging, setDragging] = useState(false);
   const drag = useRef<{ startY: number; startValue: number } | null>(null);
 
@@ -98,8 +100,7 @@ export function Knob({ label, value, unit = "", min, max, sensitivity, disabled,
         <line x1={cx} y1={cy} x2={pointerX} y2={pointerY} className="knob-pointer" />
       </svg>
       <span className="knob-value">
-        {value.toFixed(decimals)}
-        {unit}
+        {format ? format(value) : `${value.toFixed(decimals)}${unit}`}
       </span>
       <span className="knob-label">{label}</span>
     </div>

@@ -2,33 +2,53 @@
 -- compressor (threshold / ratio / attack / release / make-up), and a lock so the Owner or Mixer can
 -- stop a player changing their channel's FX.
 --
--- Channels that already have FX set keep sounding exactly as they do now: their power switch is
--- turned ON and the old single "amount" knob is converted to the matching threshold and ratio.
--- New channels start with FX OFF. Safe to run more than once.
+-- !! WARNING — read before running this a second time !!
+-- On its FIRST run this file switches the new power switch (fx_on) ON for every channel that already had
+-- effects set, so they keep sounding exactly as before, and converts the old single "amount" knob into the
+-- new threshold and ratio. The columns and the lock rule are safe to repeat, but those two data steps are
+-- written to run only once (they check whether fx_on already exists). If you ever copy this file's data
+-- steps into another script and run them again by hand, they would switch FX back ON for channels where
+-- someone turned it off on purpose while leaving settings in place.
+--
+-- New channels start with FX OFF.
 
-alter table tracks
-  add column if not exists fx_on boolean not null default false,
-  add column if not exists eq_on boolean not null default true,
-  add column if not exists comp_on boolean not null default true,
-  add column if not exists delay_on boolean not null default true,
-  add column if not exists reverb_on boolean not null default true,
-  add column if not exists comp_threshold_db double precision not null default 0,
-  add column if not exists comp_ratio double precision not null default 1,
-  add column if not exists comp_attack_ms double precision not null default 10,
-  add column if not exists comp_release_ms double precision not null default 150,
-  add column if not exists comp_makeup_db double precision not null default 0,
-  add column if not exists fx_locked boolean not null default false;
+-- The new columns, and the one-time carry-over of old settings. All in one block so "is this the first run?"
+-- is decided BEFORE the columns exist: if fx_on is already there, the data steps are skipped.
+do $$
+declare
+  first_run boolean;
+begin
+  first_run := not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'tracks' and column_name = 'fx_on'
+  );
 
--- Carry the old settings over (only while the new compressor columns are still untouched).
-update tracks
-set comp_threshold_db = -comp_amount * 30,
-    comp_ratio = 1 + comp_amount * 11
-where comp_amount > 0 and comp_threshold_db = 0 and comp_ratio = 1;
+  alter table tracks
+    add column if not exists fx_on boolean not null default false,
+    add column if not exists eq_on boolean not null default true,
+    add column if not exists comp_on boolean not null default true,
+    add column if not exists delay_on boolean not null default true,
+    add column if not exists reverb_on boolean not null default true,
+    add column if not exists comp_threshold_db double precision not null default 0,
+    add column if not exists comp_ratio double precision not null default 1,
+    add column if not exists comp_attack_ms double precision not null default 10,
+    add column if not exists comp_release_ms double precision not null default 150,
+    add column if not exists comp_makeup_db double precision not null default 0,
+    add column if not exists fx_locked boolean not null default false;
 
-update tracks
-set fx_on = true
-where fx_on = false
-  and (eq_low <> 0 or eq_mid <> 0 or eq_high <> 0 or comp_amount > 0 or delay_mix > 0 or reverb_mix > 0);
+  if first_run then
+    -- The old single "amount" knob becomes the matching threshold and ratio.
+    update tracks
+    set comp_threshold_db = -comp_amount * 30,
+        comp_ratio = 1 + comp_amount * 11
+    where comp_amount > 0;
+
+    -- Channels that already had effects set keep sounding the same: their power switch is turned ON.
+    update tracks
+    set fx_on = true
+    where eq_low <> 0 or eq_mid <> 0 or eq_high <> 0 or comp_amount > 0 or delay_mix > 0 or reverb_mix > 0;
+  end if;
+end $$;
 
 alter table tracks
   drop constraint if exists tracks_comp_threshold_db_range,
