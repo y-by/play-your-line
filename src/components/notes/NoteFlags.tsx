@@ -59,7 +59,7 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
       ))}
       {open && anchor && (
         <div
-          className="note-bubble"
+          className="note-bubble plugin-skin"
           style={{ left: bubbleLeft, top: anchor.top + 6, width: BUBBLE, "--note-color": noteTint(open, tracks) } as React.CSSProperties}
         >
           <div className="note-meta">

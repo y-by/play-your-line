@@ -356,6 +356,27 @@ function readStoredSnapEnabled(): boolean {
 const NOTES_VISIBLE_KEY = "pyl.notesVisible";
 const noteCardsKey = (projectId: string) => `pyl.noteCards.${projectId}`;
 
+/** Which channels of a project have their chords switched on. Saved on this device, so they come back next visit. */
+const chordsKey = (projectId: string) => `pyl.chords.${projectId}`;
+function readChordsWanted(projectId: string): string[] {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(chordsKey(projectId)) ?? "[]");
+    return Array.isArray(parsed) ? parsed.filter((v): v is string => typeof v === "string") : [];
+  } catch {
+    return [];
+  }
+}
+function writeChordsWanted(projectId: string, trackId: string, wanted: boolean) {
+  try {
+    const rest = readChordsWanted(projectId).filter((id) => id !== trackId);
+    const next = wanted ? [...rest, trackId] : rest;
+    if (next.length) localStorage.setItem(chordsKey(projectId), JSON.stringify(next));
+    else localStorage.removeItem(chordsKey(projectId));
+  } catch {
+    // storage unavailable — the choice just won't be remembered
+  }
+}
+
 function readNotesVisible(): boolean {
   try {
     return localStorage.getItem(NOTES_VISIBLE_KEY) === "on"; // off by default
@@ -1008,6 +1029,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         syncMixToEngine();
         set({ noteCards: readNoteCards(project.id) });
         void refreshNotes(project.id);
+        // Bring back the chords the person had switched on here last time.
+        void (async () => {
+          for (const trackId of readChordsWanted(project.id)) {
+            const track = get().project?.tracks.find((t) => t.id === trackId);
+            if (get().project?.id !== project.id) return;
+            if (track && track.clips.length > 0 && !get().chordsShown[trackId]) await get().toggleChords(trackId);
+          }
+        })();
         startRealtime(project.id);
         void cleanUpUnusedFiles(project);
       } catch (err) {
@@ -1753,7 +1782,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const track = project?.tracks.find((t) => t.id === trackId);
       if (!project || !track) return;
       if (chords[trackId]) {
-        set({ chordsShown: { ...chordsShown, [trackId]: !chordsShown[trackId] } });
+        const nowShown = !chordsShown[trackId];
+        set({ chordsShown: { ...chordsShown, [trackId]: nowShown } });
+        writeChordsWanted(project.id, trackId, nowShown);
         return;
       }
       if (get().detectingChords) return;
@@ -1776,6 +1807,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         found.sort((a, b) => a.startBeat - b.startBeat);
         if (get().project?.id !== project.id) return;
         set({ chords: { ...get().chords, [trackId]: found }, chordsShown: { ...get().chordsShown, [trackId]: true } });
+        writeChordsWanted(project.id, trackId, true);
       } catch (err) {
         console.error("Failed to detect the chords:", err);
         set({ editError: `Couldn't work out the chords${errorDetail(err)}` });

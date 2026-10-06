@@ -15,7 +15,7 @@ export function NoteAlert() {
 
   if (!alert) return null;
   return (
-    <div className="note-alert" role="status">
+    <div className="note-alert plugin-skin" role="status">
       <span>
         <b>{alert.from}</b> tagged you in a note
       </span>

@@ -28,7 +28,7 @@ export function NotesTray() {
   const newest = notesForTray(notes, { done: false, trackId: null })[0];
 
   return (
-    <aside className={open ? "notes-tray open" : "notes-tray"} aria-label="Notes">
+    <aside className={open ? "notes-tray open plugin-skin" : "notes-tray plugin-skin"} aria-label="Notes">
       <div className="notes-bar">
         <button className="notes-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
           <span className="notes-title">Notes</span>

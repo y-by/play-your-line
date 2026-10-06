@@ -16,7 +16,7 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
   const drag = useRef<{ dx: number; dy: number } | null>(null);
 
   return (
-    <div className="note-card" style={{ left: x, top: y, "--note-color": noteTint(note, tracks) } as React.CSSProperties}>
+    <div className="note-card plugin-skin" style={{ left: x, top: y, "--note-color": noteTint(note, tracks) } as React.CSSProperties}>
       <div
         className="note-card-head"
         onPointerDown={(e) => {
@@ -89,7 +89,7 @@ export function NoteCards() {
           {minimised.map((n) => (
             <button
               key={n.id}
-              className="note-dock-chip"
+              className="note-dock-chip plugin-skin"
               style={{ "--note-color": noteTint(n, tracks) } as React.CSSProperties}
               onClick={() => minimizeNoteCard(n.id, false)}
               title={n.body}

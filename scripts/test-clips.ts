@@ -13,6 +13,7 @@ import { gainToDb, dbToGain, MIN_DB, MAX_DB } from "../src/lib/dbFader.ts";
 import { clampFx, activeStages, isNeutralFx, fxTailSec, fxFromRow, fxToRow, presetPatch, resetPatch, FX_PRESETS, DEFAULT_CHANNEL_FX } from "../src/lib/channelFx.ts";
 import { detectChords } from "../src/lib/chords.ts";
 import { detectPitch, noteFromHz } from "../src/lib/tuner.ts";
+import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
 
@@ -314,6 +315,18 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   const sharp = noteFromHz(440 * Math.pow(2, 20 / 1200));
   check("tuner reports 20 cents sharp", sharp.name === "A" && sharp.cents === 20);
   check("tuner gives nothing for silence", detectPitch(new Float32Array(4096), sr) === null);
+}
+
+// ---- tooltip text
+{
+  const j = (t: string) => JSON.stringify(parseTip(t));
+  check("'Play (Space)' becomes a name and a key", j("Play (Space)") === '{"name":"Play","hint":null,"key":"Space"}');
+  check("a single letter in brackets is a key", parseTip("Record on Guitar (R)").key === "R" && parseTip("Record on Guitar (R)").name === "Record on Guitar");
+  check("'Name — hint' splits into a name and a hint", j("Effects are off — EQ, Compressor, Delay and Reverb") === '{"name":"Effects are off","hint":"EQ, Compressor, Delay and Reverb","key":null}');
+  check("'Name: hint' splits when the name is short", parseTip("Loop: repeat a highlighted part").name === "Loop" && parseTip("Loop: repeat a highlighted part").hint === "repeat a highlighted part");
+  check("a long explanation in brackets is not a key", parseTip("Solo (only you hear this — never saved)").key === null);
+  check("a plain hint stays one line", j("Back to start") === '{"name":"Back to start","hint":null,"key":null}');
+  check("a shortcut with a modifier is a key", parseTip("Undo (⌘/Ctrl+Z)").key === "⌘/Ctrl+Z");
 }
 
 process.exit(fail ? 1 : 0);

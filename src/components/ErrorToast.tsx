@@ -20,7 +20,7 @@ export function ErrorToast() {
 
   if (!message) return null;
   return (
-    <div className={isNotice ? "toast notice" : "toast"} role={isNotice ? "status" : "alert"}>
+    <div className={isNotice ? "toast notice plugin-skin" : "toast"} role={isNotice ? "status" : "alert"}>
       <span className="toast-text">{message}</span>
       <button
         className="toast-close"

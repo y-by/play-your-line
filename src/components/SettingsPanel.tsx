@@ -126,10 +126,10 @@ export function SettingsPanel() {
 
   return (
     <div className="settings-backdrop" onClick={closeSettings}>
-      <div className="settings-panel" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Audio settings">
+      <div className="settings-panel plugin-skin" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Audio settings">
         <div className="settings-header">
-          <h2>Audio Settings</h2>
-          <button className="settings-close" onClick={closeSettings} aria-label="Close settings">
+          <h2>Audio settings</h2>
+          <button className="plugin-close" onClick={closeSettings} aria-label="Close settings">
             <CloseIcon />
           </button>
         </div>

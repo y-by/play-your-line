@@ -238,10 +238,10 @@ export function Transport({ panel, onPanel }: Props) {
       {panel && (
         <>
           <div className="cb-popup-catcher" onClick={() => onPanel(null)} />
-          <div className="cb-popup" role="dialog" aria-label={panel === "add" ? "Channels" : "People"}>
-            <header className="cb-popup-head">
+          <div className="cb-popup plugin-skin" role="dialog" aria-label={panel === "add" ? "Channels" : "People"}>
+            <header className="plugin-head">
               <h2>{panel === "add" ? "Channels" : "People"}</h2>
-              <button className="settings-close" onClick={() => onPanel(null)} aria-label="Close">
+              <button className="plugin-close" onClick={() => onPanel(null)} aria-label="Close">
                 <CloseIcon />
               </button>
             </header>
