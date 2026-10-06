@@ -424,6 +424,7 @@ export class AudioEngine {
       t.gainNode,
       t.fx.input,
       t.fx.output,
+      t.fx.eqCut,
       t.fx.eqLow,
       t.fx.eqMid,
       t.fx.eqHigh,

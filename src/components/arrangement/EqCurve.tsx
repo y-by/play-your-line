@@ -22,12 +22,12 @@ const yForDb = (db: number) => HEIGHT / 2 - (Math.max(-MAX_DB, Math.min(MAX_DB, 
  * The EQ's frequency response, calculated from the knob values with the same filter formulas the audio
  * uses, so the curve is what the channel sounds like, not a decorative sketch.
  */
-export function EqCurve({ fx }: { fx: Pick<ChannelFx, "eqLow" | "eqMid" | "eqHigh" | "eqLowHz" | "eqMidHz" | "eqHighHz"> }) {
-  const { eqLow, eqMid, eqHigh, eqLowHz, eqMidHz, eqHighHz } = fx;
+export function EqCurve({ fx }: { fx: Pick<ChannelFx, "eqLowCutHz" | "eqLow" | "eqMid" | "eqHigh" | "eqLowHz" | "eqMidHz" | "eqHighHz"> }) {
+  const { eqLowCutHz, eqLow, eqMid, eqHigh, eqLowHz, eqMidHz, eqHighHz } = fx;
   const path = useMemo(() => {
-    const db = eqResponseDb({ eqLow, eqMid, eqHigh, eqLowHz, eqMidHz, eqHighHz }, FREQS);
+    const db = eqResponseDb({ eqLowCutHz, eqLow, eqMid, eqHigh, eqLowHz, eqMidHz, eqHighHz }, FREQS);
     return FREQS.reduce((d, hz, i) => `${d}${i === 0 ? "M" : "L"} ${xForFreq(hz).toFixed(1)} ${yForDb(db[i]).toFixed(1)} `, "");
-  }, [eqLow, eqMid, eqHigh, eqLowHz, eqMidHz, eqHighHz]);
+  }, [eqLowCutHz, eqLow, eqMid, eqHigh, eqLowHz, eqMidHz, eqHighHz]);
 
   const gridFreqs = [100, 1000, 10000];
 

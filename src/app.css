@@ -5844,3 +5844,13 @@ select.note-opt {
 .snap-wrap:has(select:disabled) > svg {
   opacity: 0.4;
 }
+
+/* The low cut sits on the left of the EQ, lined up with the frequency knobs of the bands */
+.eq-cut-spacer {
+  display: block;
+  height: 83px; /* the height of a band's gain knob and its text, so the cut lines up with the frequency knobs */
+}
+
+.eq-bands .eq-band {
+  flex: 1;
+}

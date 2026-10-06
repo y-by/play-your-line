@@ -3,13 +3,14 @@
 // Effects that are off (or set to change nothing) are taken out of the signal path altogether.
 
 import type { ChannelFx } from "../types/project";
-import { activeStages, clampFx, DEFAULT_CHANNEL_FX, DELAY_FEEDBACK, EQ_HIGH_HZ, EQ_LOW_HZ, EQ_MID_HZ, EQ_MID_Q, type FxStage } from "./channelFx";
+import { activeStages, clampFx, DEFAULT_CHANNEL_FX, DELAY_FEEDBACK, EQ_CUT_Q_DB, EQ_HIGH_HZ, lowCutOn, EQ_LOW_HZ, EQ_MID_HZ, EQ_MID_Q, type FxStage } from "./channelFx";
 
 export interface FxChain {
   /** Feed the channel's (fader) signal in here. */
   input: GainNode;
   /** The processed signal comes out here. */
   output: GainNode;
+  eqCut: BiquadFilterNode;
   eqLow: BiquadFilterNode;
   eqMid: BiquadFilterNode;
   eqHigh: BiquadFilterNode;
@@ -30,7 +31,10 @@ export function createFxChain(ctx: BaseAudioContext, impulse: AudioBuffer): FxCh
   const input = ctx.createGain();
   const output = ctx.createGain();
 
-  // EQ: fixed low-shelf / mid-peak / high-shelf, in series.
+  // EQ: a low cut (high-pass), then low-shelf / mid-peak / high-shelf, in series.
+  const eqCut = ctx.createBiquadFilter();
+  eqCut.type = "highpass";
+  eqCut.Q.value = EQ_CUT_Q_DB;
   const eqLow = ctx.createBiquadFilter();
   eqLow.type = "lowshelf";
   eqLow.frequency.value = EQ_LOW_HZ;
@@ -41,6 +45,7 @@ export function createFxChain(ctx: BaseAudioContext, impulse: AudioBuffer): FxCh
   const eqHigh = ctx.createBiquadFilter();
   eqHigh.type = "highshelf";
   eqHigh.frequency.value = EQ_HIGH_HZ;
+  eqCut.connect(eqLow);
   eqLow.connect(eqMid);
   eqMid.connect(eqHigh);
 
@@ -81,7 +86,7 @@ export function createFxChain(ctx: BaseAudioContext, impulse: AudioBuffer): FxCh
   reverbWet.connect(reverbOut);
 
   const stages: Record<FxStage, Stage> = {
-    eq: { input: eqLow, output: eqHigh },
+    eq: { input: eqCut, output: eqHigh },
     comp: { input: compressor, output: makeup },
     delay: { input: delayIn, output: delayOut },
     reverb: { input: reverbIn, output: reverbOut },
@@ -119,6 +124,8 @@ export function createFxChain(ctx: BaseAudioContext, impulse: AudioBuffer): FxCh
         param.value = value;
       }
     };
+    // Off = parked at 10 Hz, below anything you can hear.
+    set("eq", eqCut.frequency, lowCutOn(fx.eqLowCutHz) ? fx.eqLowCutHz : 10);
     set("eq", eqLow.gain, fx.eqLow);
     set("eq", eqMid.gain, fx.eqMid);
     set("eq", eqHigh.gain, fx.eqHigh);
@@ -138,5 +145,5 @@ export function createFxChain(ctx: BaseAudioContext, impulse: AudioBuffer): FxCh
     route(nowActive);
   };
 
-  return { input, output, eqLow, eqMid, eqHigh, compressor, apply };
+  return { input, output, eqCut, eqLow, eqMid, eqHigh, compressor, apply };
 }

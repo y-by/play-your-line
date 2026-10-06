@@ -51,6 +51,7 @@ export interface ChannelFx {
   eqLow: number; // dB, -12..+12
   eqMid: number; // dB, -12..+12
   eqHigh: number; // dB, -12..+12
+  eqLowCutHz: number; // low cut (high-pass) corner, 20..400; 20 = off
   eqLowHz: number; // low shelf corner, 40..800
   eqMidHz: number; // mid peak centre, 200..8000
   eqHighHz: number; // high shelf corner, 1500..16000

@@ -65,7 +65,7 @@ bass's low B. Pick Guitar, Bass (4), Bass (5) or Ukulele and tap a string to tun
 "Any note". The reference pitch (A = 440) can be moved.
 
 **Effects.** FX is **off** for a channel until its power switch is turned on. Each effect has its
-own bypass, each EQ band has a frequency knob under its gain knob, there are presets, undo, reset and a Compare (hear it dry) button, and each tab can be
+own bypass, each EQ band has a frequency knob under its gain knob, and a separate Low cut (a high-pass filter, off at the bottom of its knob) sits to the left of them, there are presets, undo, reset and a Compare (hear it dry) button, and each tab can be
 dragged out into its own window (and docked back with its Dock button). Close the main FX window and any tab you pulled out stays on screen, on top. Drag the bottom-right corner of an FX window to make it bigger, up to double (double-click the corner for normal size); the main window remembers its size. Export Mix includes the effects.
 
 **Mixes.** Players hear their own monitor mix (saved only on their device) or the Owner's saved

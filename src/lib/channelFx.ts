@@ -14,6 +14,7 @@ export const DEFAULT_CHANNEL_FX: ChannelFx = {
   eqLow: 0,
   eqMid: 0,
   eqHigh: 0,
+  eqLowCutHz: 20,
   eqLowHz: 200,
   eqMidHz: 1000,
   eqHighHz: 5000,
@@ -31,10 +32,14 @@ export const DEFAULT_CHANNEL_FX: ChannelFx = {
 export const EQ_LOW_HZ = 200;
 export const EQ_MID_HZ = 1000;
 export const EQ_MID_Q = 1;
+/** The low cut's resonance in dB (-3.01 dB is the flat, Butterworth shape). */
+export const EQ_CUT_Q_DB = -3.0103;
 export const EQ_HIGH_HZ = 5000;
 
 /** How far each band's frequency knob can go. */
 export const EQ_FREQ_RANGE = {
+  /** The low cut (a high-pass filter): at the bottom of its knob it is off. */
+  cut: [20, 400],
   low: [40, 800],
   mid: [200, 8000],
   high: [1500, 16000],
@@ -63,6 +68,11 @@ export function formatHz(hz: number): string {
 /** How long the feedback delay's own repeats decay by themselves. */
 export const DELAY_FEEDBACK = 0.35;
 
+/** The low cut is on once its knob is turned up from the bottom. */
+export function lowCutOn(hz: number): boolean {
+  return hz > EQ_FREQ_RANGE.cut[0] + 1;
+}
+
 export type FxStage = "eq" | "comp" | "delay" | "reverb";
 export const FX_STAGES: FxStage[] = ["eq", "comp", "delay", "reverb"];
 
@@ -73,7 +83,7 @@ export const FX_STAGES: FxStage[] = ["eq", "comp", "delay", "reverb"];
 export function activeStages(fx: ChannelFx, bypassAll = false): FxStage[] {
   if (!fx.fxOn || bypassAll) return [];
   const out: FxStage[] = [];
-  if (fx.eqOn && Math.abs(fx.eqLow) + Math.abs(fx.eqMid) + Math.abs(fx.eqHigh) > 0.05) out.push("eq");
+  if (fx.eqOn && (Math.abs(fx.eqLow) + Math.abs(fx.eqMid) + Math.abs(fx.eqHigh) > 0.05 || lowCutOn(fx.eqLowCutHz))) out.push("eq");
   if (fx.compOn && (fx.compRatio > 1.02 || fx.compMakeupDb > 0.05)) out.push("comp");
   if (fx.delayOn && fx.delayMix > 0.001) out.push("delay");
   if (fx.reverbOn && fx.reverbMix > 0.001) out.push("reverb");
@@ -117,6 +127,7 @@ const RANGES = {
   eqLow: [-12, 12],
   eqMid: [-12, 12],
   eqHigh: [-12, 12],
+  eqLowCutHz: EQ_FREQ_RANGE.cut,
   eqLowHz: EQ_FREQ_RANGE.low,
   eqMidHz: EQ_FREQ_RANGE.mid,
   eqHighHz: EQ_FREQ_RANGE.high,
@@ -153,6 +164,7 @@ const COLUMNS: Record<keyof ChannelFx, string> = {
   eqLow: "eq_low",
   eqMid: "eq_mid",
   eqHigh: "eq_high",
+  eqLowCutHz: "eq_lowcut_hz",
   eqLowHz: "eq_low_hz",
   eqMidHz: "eq_mid_hz",
   eqHighHz: "eq_high_hz",
@@ -246,11 +258,16 @@ interface Biquad {
   a2: number;
 }
 
-function biquad(kind: "lowshelf" | "peaking" | "highshelf", freq: number, gainDb: number, sampleRate: number): Biquad {
+function biquad(kind: "highpass" | "lowshelf" | "peaking" | "highshelf", freq: number, gainDb: number, sampleRate: number): Biquad {
   const A = Math.pow(10, gainDb / 40);
   const w0 = (2 * Math.PI * Math.min(freq, sampleRate * 0.49)) / sampleRate;
   const cos = Math.cos(w0);
   const sin = Math.sin(w0);
+  if (kind === "highpass") {
+    // Q is given in dB, as the browser's filter takes it; the cut is a plain 12 dB per octave (Butterworth) one.
+    const alpha = sin / (2 * Math.pow(10, EQ_CUT_Q_DB / 20));
+    return { b0: (1 + cos) / 2, b1: -(1 + cos), b2: (1 + cos) / 2, a0: 1 + alpha, a1: -2 * cos, a2: 1 - alpha };
+  }
   if (kind === "peaking") {
     const alpha = sin / (2 * EQ_MID_Q);
     return { b0: 1 + alpha * A, b1: -2 * cos, b2: 1 - alpha * A, a0: 1 + alpha / A, a1: -2 * cos, a2: 1 - alpha / A };
@@ -292,11 +309,12 @@ function magnitudeDb(f: Biquad, hz: number, sampleRate: number): number {
 
 /** The EQ's combined response, in dB, at each frequency in `freqs`, for the current settings. */
 export function eqResponseDb(
-  fx: Pick<ChannelFx, "eqLow" | "eqMid" | "eqHigh" | "eqLowHz" | "eqMidHz" | "eqHighHz">,
+  fx: Pick<ChannelFx, "eqLowCutHz" | "eqLow" | "eqMid" | "eqHigh" | "eqLowHz" | "eqMidHz" | "eqHighHz">,
   freqs: ArrayLike<number>,
   sampleRate = 48000
 ): number[] {
   const bands = [
+    ...(lowCutOn(fx.eqLowCutHz) ? [biquad("highpass", fx.eqLowCutHz, 0, sampleRate)] : []),
     biquad("lowshelf", fx.eqLowHz, fx.eqLow, sampleRate),
     biquad("peaking", fx.eqMidHz, fx.eqMid, sampleRate),
     biquad("highshelf", fx.eqHighHz, fx.eqHigh, sampleRate),

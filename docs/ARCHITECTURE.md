@@ -190,7 +190,7 @@ Good to know:
   **Compare** (hear it dry, local only, never saved); the Owner/Mixer also see a **lock**. Tabs can
   be **dragged out** of the tab strip into their own draggable windows and docked back (Dock / Dock all). Closing the main window leaves any tab that was dragged out open and on top; the FX button on the strip shows or hides the main window again. Every FX window has a resize corner (a `transform: scale`, 1x to 2x, capped on narrow screens; the main window remembers it in `pyl.fxScale`). Every knob is
   drag-to-turn (vertical drag, Shift to fine-tune, scroll to nudge, double-click to reset). The EQ
-  has a gain knob and a frequency knob per band (low shelf 40-800 Hz, mid peak 200 Hz-8 kHz, high shelf 1.5-16 kHz, log-spaced) and shows its frequency-response curve, calculated from the settings with the filters' own formulas (`eqResponseDb`, checked against the browser's filter to 0.000 dB) so it stays right even while the EQ is bypassed; the Compressor has threshold, ratio, attack, release and
+  has a separate Low cut (12 dB per octave high-pass, 20-400 Hz, off at 20) and a gain knob and a frequency knob per band (low shelf 40-800 Hz, mid peak 200 Hz-8 kHz, high shelf 1.5-16 kHz, log-spaced) and shows its frequency-response curve, calculated from the settings with the filters' own formulas (`eqResponseDb`, checked against the browser's filter to 0.000 dB) so it stays right even while the EQ is bypassed; the Compressor has threshold, ratio, attack, release and
   make-up, a live level meter and a gain-reduction meter. Effects that are off or neutral are taken
   out of the signal path (`fxChain.ts`), and Export Mix builds the same chain, so a mix sounds the
   same everywhere. Volume, mute and pan stay Owner/Mixer-only; FX is shared with the channel's own
@@ -315,7 +315,7 @@ src/
     mixdown.ts, wav.ts         export and 32-bit float WAV encoding
     inputDevices.ts, outputDevices.ts
   worklets/pcm-recorder-processor.js   lossless capture on the audio thread
-supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0036)
+supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0037)
 scripts/test-timing.ts         checks for the latency math
 scripts/test-clips.ts          checks for clips, overlap, grid, mix, order, roles, cleanup, FX rules, notes, chords, tuner   (npm test runs both)
 ```

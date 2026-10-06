@@ -189,6 +189,21 @@ function ToolBody({ track, tool, canUse }: { track: Track; tool: Tool; canUse: b
       <div className="fx-section fx-section-eq">
         <EqCurve fx={fx} />
         <div className="eq-bands">
+          <div className="eq-band eq-cut">
+            <span className="eq-cut-spacer" aria-hidden="true" />
+            <Knob
+              label="low cut"
+              value={hzToPos(fx.eqLowCutHz, EQ_FREQ_RANGE.cut[0], EQ_FREQ_RANGE.cut[1])}
+              min={0}
+              max={100}
+              sensitivity={0.5}
+              defaultValue={0}
+              format={(pos) => (pos < 1 ? "Off" : `${formatHz(posToHz(pos, EQ_FREQ_RANGE.cut[0], EQ_FREQ_RANGE.cut[1]))}Hz`)}
+              disabled={!canUse}
+              size={44}
+              onChange={(pos) => set({ eqLowCutHz: pos < 1 ? EQ_FREQ_RANGE.cut[0] : posToHz(pos, EQ_FREQ_RANGE.cut[0], EQ_FREQ_RANGE.cut[1]) })}
+            />
+          </div>
           {(
             [
               { id: "low", gain: fx.eqLow, gainKey: "eqLow", hz: fx.eqLowHz, hzKey: "eqLowHz", def: DEFAULT_CHANNEL_FX.eqLowHz, range: EQ_FREQ_RANGE.low },
