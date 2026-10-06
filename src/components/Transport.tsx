@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { useAuthStore } from "../store/useAuthStore";
 import { useProjectStore } from "../store/useProjectStore";
 import { formatTime } from "../lib/format";
 import { barAndBeat, BEATS_PER_BAR } from "../lib/grid";
@@ -25,6 +26,8 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
   const notesVisible = useProjectStore((s) => s.notesVisible);
   const setNotesVisible = useProjectStore((s) => s.setNotesVisible);
   const openNotes = useProjectStore((s) => s.notes.filter((n) => !n.done).length);
+  const uid = useAuthStore((s) => s.userId);
+  const forMe = useProjectStore((s) => (uid ? s.notes.filter((n) => !n.done && n.mentions.includes(uid)).length : 0));
   const hasNotesToShow = useProjectStore((s) => s.canWriteNotes() || s.notes.length > 0);
   return (
     <div className={`lg ${className}`}>
@@ -50,7 +53,11 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
           aria-label="Notes"
         >
           <NoteIcon size={16} />
-          {openNotes > 0 && <span className="notes-btn-dot">{openNotes > 9 ? "9+" : openNotes}</span>}
+          {forMe > 0 ? (
+            <span className="notes-btn-dot for-me" title={`${forMe} open note${forMe === 1 ? "" : "s"} tagging you`}>@{forMe > 9 ? "9+" : forMe}</span>
+          ) : (
+            openNotes > 0 && <span className="notes-btn-dot">{openNotes > 9 ? "9+" : openNotes}</span>
+          )}
         </button>
       )}
       {isParticipant && (

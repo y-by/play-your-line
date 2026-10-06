@@ -1,11 +1,12 @@
 import { useRef } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
 import { pinLabel } from "../../lib/notes";
-import { authorInitial, authorTint } from "./noteStyle";
+import { authorInitial, noteTint, useNoteTracks } from "./noteStyle";
 import { CheckIcon, CloseIcon } from "../icons/Icons";
 import type { ProjectNote } from "../../types/project";
 
 function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
+  const tracks = useNoteTracks();
   const moveNoteCard = useProjectStore((s) => s.moveNoteCard);
   const minimizeNoteCard = useProjectStore((s) => s.minimizeNoteCard);
   const unfloatNote = useProjectStore((s) => s.unfloatNote);
@@ -15,7 +16,7 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
   const drag = useRef<{ dx: number; dy: number } | null>(null);
 
   return (
-    <div className="note-card" style={{ left: x, top: y, "--note-color": authorTint(note.authorId) } as React.CSSProperties}>
+    <div className="note-card" style={{ left: x, top: y, "--note-color": noteTint(note, tracks) } as React.CSSProperties}>
       <div
         className="note-card-head"
         onPointerDown={(e) => {
@@ -67,6 +68,7 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
 /** Notes popped out of the tray: floating cards you can drag anywhere, and a row of minimised ones along the bottom. */
 export function NoteCards() {
   const visible = useProjectStore((s) => s.notesVisible);
+  const tracks = useNoteTracks();
   const cards = useProjectStore((s) => s.noteCards);
   const notes = useProjectStore((s) => s.notes);
   const minimizeNoteCard = useProjectStore((s) => s.minimizeNoteCard);
@@ -88,7 +90,7 @@ export function NoteCards() {
             <button
               key={n.id}
               className="note-dock-chip"
-              style={{ "--note-color": authorTint(n.authorId) } as React.CSSProperties}
+              style={{ "--note-color": noteTint(n, tracks) } as React.CSSProperties}
               onClick={() => minimizeNoteCard(n.id, false)}
               title={n.body}
             >

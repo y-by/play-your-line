@@ -244,6 +244,10 @@ interface ProjectState {
   setNotesVisible: (visible: boolean) => void;
   notesTrayOpen: boolean;
   setNotesTrayOpen: (open: boolean) => void;
+  /** A note that just tagged me (shown as a message at the top until dismissed or opened). */
+  noteAlert: { id: string; from: string } | null;
+  dismissNoteAlert: () => void;
+  openNoteAlert: () => void;
   /** Notes popped out as floating cards, with where they sit and whether they are minimised to the bottom row. */
   noteCards: Record<string, { x: number; y: number; min: boolean }>;
   floatNote: (id: string) => void;
@@ -799,8 +803,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     const authorId = row.author_id as string;
     const name = nameForUser(authorId);
     const note = api.mapNote(row, name);
+    const previous = get().notes.find((n) => n.id === note.id);
     const rest = get().notes.filter((n) => n.id !== note.id);
     set({ notes: sortNotes([...rest, note]) });
+    // Someone just tagged me: tell me, once.
+    const uid = currentUserId();
+    if (uid && authorId !== uid && !note.done && note.mentions.includes(uid) && !previous?.mentions.includes(uid)) {
+      set({ noteAlert: { id: note.id, from: name ?? "Someone" } });
+    }
     if (!name) {
       void api.fetchDisplayName(authorId).then((fetched) => {
         if (fetched) set({ notes: get().notes.map((n) => (n.authorId === authorId && !n.authorName ? { ...n, authorName: fetched } : n)) });
@@ -943,7 +953,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     loadProject: async (id) => {
-      set({ projectLoading: true, projectError: null, project: null, selectedClip: null, editError: null, loop: null, loopEnabled: false, armedTrackId: null, notes: [], notesTrayOpen: false, noteCards: {}, openFlagId: null, noteChannelFilter: null, chords: {}, chordsShown: {} });
+      set({ projectLoading: true, projectError: null, project: null, selectedClip: null, editError: null, loop: null, loopEnabled: false, armedTrackId: null, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null, noteChannelFilter: null, chords: {}, chordsShown: {} });
       try {
         const project = await api.getProject(id);
         await api.hydrateTakeBlobs(project);
@@ -1727,6 +1737,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
     notesTrayOpen: false,
     setNotesTrayOpen: (open) => set({ notesTrayOpen: open }),
+    noteAlert: null,
+    dismissNoteAlert: () => set({ noteAlert: null }),
+    openNoteAlert: () => {
+      get().setNotesVisible(true);
+      set({ notesTrayOpen: true, noteChannelFilter: null, noteAlert: null });
+    },
     noteCards: {},
     floatNote: (id) => {
       const project = get().project;
@@ -1845,7 +1861,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       engine.pause();
       engine.stopMonitoring();
       stopRealtime();
-      set({ realtimeStatus: "off", presentUsers: [], armedTrackId: null, notes: [], notesTrayOpen: false, noteCards: {}, openFlagId: null });
+      set({ realtimeStatus: "off", presentUsers: [], armedTrackId: null, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null });
     },
 
     pause: () => engine.pause(),

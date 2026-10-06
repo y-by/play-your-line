@@ -2,12 +2,13 @@ import { useEffect, useState } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
 import { beatSec } from "../../lib/grid";
 import { pinLabel, pinnedOpenNotes } from "../../lib/notes";
-import { authorTint } from "./noteStyle";
+import { noteTint, useNoteTracks } from "./noteStyle";
 import { CheckIcon, FlagIcon } from "../icons/Icons";
 
 /** Flags on the ruler at each open, pinned note. Click one for its bubble. */
 export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
   const visible = useProjectStore((s) => s.notesVisible);
+  const tracks = useNoteTracks();
   const notes = useProjectStore((s) => s.notes);
   const bpm = useProjectStore((s) => s.project?.bpm ?? 120);
   const openId = useProjectStore((s) => s.openFlagId);
@@ -44,7 +45,7 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
         <button
           key={n.id}
           className={n.id === openId ? "note-flag open" : "note-flag"}
-          style={{ left: left(n.atBeat as number), color: authorTint(n.authorId) }}
+          style={{ left: left(n.atBeat as number), color: noteTint(n, tracks) }}
           onClick={(e) => {
             const r = e.currentTarget.getBoundingClientRect();
             setAnchor({ left: r.left, top: r.bottom });
@@ -59,7 +60,7 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
       {open && anchor && (
         <div
           className="note-bubble"
-          style={{ left: bubbleLeft, top: anchor.top + 6, width: BUBBLE, "--note-color": authorTint(open.authorId) } as React.CSSProperties}
+          style={{ left: bubbleLeft, top: anchor.top + 6, width: BUBBLE, "--note-color": noteTint(open, tracks) } as React.CSSProperties}
         >
           <div className="note-meta">
             <b>{open.authorName ?? "Someone"}</b>

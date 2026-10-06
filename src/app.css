@@ -4914,3 +4914,30 @@ button.tuner-cell.on .lcd-l {
 .tuner-note.ok {
   color: #5fe08a;
 }
+
+/* ---- Tagged-in-a-note alert and badge ---- */
+
+.notes-btn-dot.for-me {
+  background: #ff9f0a;
+  color: #1c1c1e;
+  min-width: 20px;
+}
+
+.note-alert {
+  position: fixed;
+  top: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  max-width: calc(100vw - 24px);
+  padding: 8px 10px 8px 14px;
+  border-radius: 12px;
+  background: var(--color-bg-elevated);
+  color: var(--color-label);
+  border: 1px solid #ff9f0a;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  font-size: 14px;
+}

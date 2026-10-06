@@ -7,7 +7,7 @@ import { BEATS_PER_BAR } from "../../lib/grid";
 import { MentionTextarea } from "./MentionTextarea";
 import { BarPin } from "./BarPin";
 import { useMembers } from "./useMembers";
-import { authorInitial, authorTint } from "./noteStyle";
+import { authorInitial, noteTint, useNoteTracks } from "./noteStyle";
 import { CheckIcon, NoteIcon, TrashIcon } from "../icons/Icons";
 
 /** The current time, refreshed every minute, so "5 min ago" keeps up. */
@@ -23,6 +23,7 @@ function useNow(): number {
 /** One note in the tray: who, when, where it is pinned, the text, and what you can do with it. */
 export function NoteRow({ note }: { note: ProjectNote }) {
   const uid = useAuthStore((s) => s.userId);
+  const tracks = useNoteTracks();
   const isOwner = useProjectStore((s) => s.isInitiator());
   const canWrite = useProjectStore((s) => s.canWriteNotes());
   const channel = useProjectStore((s) => s.project?.tracks.find((t) => t.id === note.trackId)?.instrument ?? null);
@@ -45,7 +46,7 @@ export function NoteRow({ note }: { note: ProjectNote }) {
   const canEdit = mine || isOwner;
 
   return (
-    <div className={`note-row${note.done ? " done" : ""}${forMe && !note.done ? " for-me" : ""}`} style={{ "--note-color": authorTint(note.authorId) } as React.CSSProperties}>
+    <div className={`note-row${note.done ? " done" : ""}${forMe && !note.done ? " for-me" : ""}`} style={{ "--note-color": noteTint(note, tracks) } as React.CSSProperties}>
       <span className="note-avatar" aria-hidden="true">
         {authorInitial(note.authorName)}
       </span>

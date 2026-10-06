@@ -4,6 +4,7 @@ import { useProjectStore } from "../store/useProjectStore";
 import { Arrangement } from "../components/arrangement/Arrangement";
 import { Transport, type SongPanel } from "../components/Transport";
 import { NotesTray } from "../components/notes/NotesTray";
+import { NoteAlert } from "../components/notes/NoteAlert";
 import { NoteCards } from "../components/notes/NoteCards";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { ErrorToast } from "../components/ErrorToast";
@@ -180,6 +181,7 @@ export function SongPage() {
       <SettingsPanel />
       <NotesTray />
       <NoteCards />
+      <NoteAlert />
       <ErrorToast />
     </div>
   );
