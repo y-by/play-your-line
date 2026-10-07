@@ -55,6 +55,10 @@ a note done archives it. A person you tag gets an orange `@` badge on the notes 
 
 **Help.** The menu has a Help page with short answers, grouped by what you are doing. Small "?" buttons in the FX box, the Tuner and the Notes tray open the short answer for that tool, with a link to the full page. (The answers live in `src/lib/helpContent.ts`.)
 
+**Quantise.** Select a drum or bass clip on your own channel and press Quantise in the toolbar: it finds each hit (shown as yellow marks on the clip), cuts the clip there and moves each piece toward the 1/8, 1/16 or 1/32 grid, as strongly as you set (100% = exactly on the grid). It never changes the recording, and Undo puts everything back. Raise Sensitivity if soft notes are missed.
+
+**Time signature.** The Owner picks it in the number display (2/4 to 7/4). Bars, the click's strong beat, the count-in and note pins follow it.
+
 **Chords.** The ♪ button next to FX listens to a channel and suggests the chords along the top of
 its lane. It is a suggestion, not a guarantee; click a chord to jump there.
 
@@ -119,7 +123,7 @@ The design notes, diagrams, audio timing rules, design system and code layout ar
 
 ## Known limits
 
-- 4/4 time only. Recording is mono per channel. Choosing a separate output device works only in
+- Time signatures from 2/4 to 7/4 (quarter-note beats); 6/8 and other eighth-note meters are not supported. Recording is mono per channel. Choosing a separate output device works only in
   Chrome / Edge. Editing is desktop-first.
 - No designed error pages yet, and not installable as an app yet.
 

@@ -10,7 +10,7 @@ interface Props {
 
 /** Pin a note to any bar: a toggle, and the bar number once it is on. */
 export function BarPin({ pinned, bar, onPinned, onBar }: Props) {
-  const bars = useProjectStore((s) => Math.max(1, Math.ceil(s.durationSec / barSec(s.project?.bpm ?? 120) - 0.001)));
+  const bars = useProjectStore((s) => Math.max(1, Math.ceil(s.durationSec / barSec(s.project?.bpm ?? 120, s.project?.beatsPerBar ?? 4) - 0.001)));
   return (
     <span className="bar-pin">
       <button

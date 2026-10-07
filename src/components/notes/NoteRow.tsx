@@ -3,7 +3,6 @@ import type { ProjectNote } from "../../types/project";
 import { useProjectStore } from "../../store/useProjectStore";
 import { useAuthStore } from "../../store/useAuthStore";
 import { agoLabel, pinLabel, barOfBeat, mentionedIds, splitMentions } from "../../lib/notes";
-import { BEATS_PER_BAR } from "../../lib/grid";
 import { MentionTextarea } from "./MentionTextarea";
 import { BarPin } from "./BarPin";
 import { useMembers } from "./useMembers";
@@ -26,6 +25,7 @@ export function NoteRow({ note }: { note: ProjectNote }) {
   const tracks = useNoteTracks();
   const isOwner = useProjectStore((s) => s.isInitiator());
   const canWrite = useProjectStore((s) => s.canWriteNotes());
+  const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
   const channel = useProjectStore((s) => s.project?.tracks.find((t) => t.id === note.trackId)?.instrument ?? null);
   const floating = useProjectStore((s) => !!s.noteCards[note.id]);
   const setNoteDone = useProjectStore((s) => s.setNoteDone);
@@ -38,7 +38,7 @@ export function NoteRow({ note }: { note: ProjectNote }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note.body);
   const [pinned, setPinned] = useState(note.atBeat !== null);
-  const [bar, setBar] = useState(barOfBeat(note.atBeat ?? 0));
+  const [bar, setBar] = useState(barOfBeat(note.atBeat ?? 0, beatsPerBar));
   const members = useMembers();
   const forMe = !!uid && note.mentions.includes(uid);
   const myName = members.find((m) => m.id === uid)?.name ?? "\u0000";
@@ -56,7 +56,7 @@ export function NoteRow({ note }: { note: ProjectNote }) {
           <span>{agoLabel(note.createdAt, now)}</span>
           {note.atBeat !== null && (
             <button className="note-chip" onClick={() => jumpToNote(note.id)} title="Move the playhead here">
-              {pinLabel(note.atBeat)}
+              {pinLabel(note.atBeat, beatsPerBar)}
             </button>
           )}
           {forMe && <span className="note-chip me" title="You were tagged in this note">For you</span>}
@@ -72,7 +72,7 @@ export function NoteRow({ note }: { note: ProjectNote }) {
                 className="note-send"
                 disabled={!draft.trim()}
                 onClick={() => {
-                  void editNote(note.id, { body: draft.trim(), mentions: mentionedIds(draft, members), atBeat: pinned ? (bar - 1) * BEATS_PER_BAR : null });
+                  void editNote(note.id, { body: draft.trim(), mentions: mentionedIds(draft, members), atBeat: pinned ? (bar - 1) * beatsPerBar : null });
                   setEditing(false);
                 }}
               >
@@ -83,7 +83,7 @@ export function NoteRow({ note }: { note: ProjectNote }) {
                 onClick={() => {
                   setDraft(note.body);
                   setPinned(note.atBeat !== null);
-                  setBar(barOfBeat(note.atBeat ?? 0));
+                  setBar(barOfBeat(note.atBeat ?? 0, beatsPerBar));
                   setEditing(false);
                 }}
               >

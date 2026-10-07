@@ -71,6 +71,8 @@ export interface Project {
   id: string;
   title: string;
   bpm: number;
+  /** Quarter-note beats in a bar: 4 for 4/4, 3 for 3/4. */
+  beatsPerBar: number;
   initiatorId: string; // the Owner: sets the tempo, adds channels, invites, publishes
   /** The one optional Mixer, who may set the final mix (volume, mute). */
   mixerId: string | null;

@@ -22,11 +22,13 @@ const MAX_WAVE_COLUMNS = 4096;
 export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Props) {
   const engine = useProjectStore((s) => s.engine);
   const bpm = useProjectStore((s) => s.project?.bpm ?? 120);
+  const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
   const snapEnabled = useProjectStore((s) => s.snapEnabled);
   const snapResolution = useProjectStore((s) => s.snapResolution);
   const takesVersion = useProjectStore((s) => s.takesVersion);
   const selectClip = useProjectStore((s) => s.selectClip);
   const commitClips = useProjectStore((s) => s.commitClips);
+  const marks = useProjectStore((s) => (s.quantiseMarks?.clipId === clip.id ? s.quantiseMarks.times : null));
 
   // While dragging, the clip follows the pointer locally; nothing is saved until you let go.
   const [preview, setPreview] = useState<Clip | null>(null);
@@ -64,7 +66,7 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
     }
   }, [engine, clip.takeId, shown.sourceStartSec, shown.durationSec, columns, takesVersion, track.color]);
 
-  const step = stepSec(bpm, snapResolution);
+  const step = stepSec(bpm, snapResolution, beatsPerBar);
   // Holding Alt while dragging ignores snapping (free placement).
   const snap = (sec: number, free: boolean) => (snapEnabled && !free ? snapTo(sec, step) : sec);
 
@@ -156,6 +158,7 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
           )}
         </svg>
       )}
+      {marks && marks.map((t, i) => <span key={i} className="clip-hit" style={{ left: (t - shown.startSec) * pxPerSec }} />)}
       <div className="clip-name">{track.assignedPlayerName ?? track.instrument}</div>
       {dragging === "fade-in" && <div className="clip-fade-tip left">{shown.fadeInSec.toFixed(2)} s</div>}
       {dragging === "fade-out" && <div className="clip-fade-tip right">{shown.fadeOutSec.toFixed(2)} s</div>}

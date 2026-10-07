@@ -43,7 +43,7 @@ length · stacking order*.
 │   Unclaimed  │  Waiting for a player to join this channel           │
 │   Bass       │                                                      │
 └──────────────┴──────────────────────────────────────────────────────┘
-   Info column                       4/4 bar grid  (playhead runs across all lanes)
+   Info column                       bar grid  (playhead runs across all lanes)
    (stays put when
     you scroll)
 ```
@@ -62,7 +62,7 @@ letting the upload fail with a raw storage error.
 
 | Rule | What it means |
 | --- | --- |
-| **Time signature** | 4/4 only for now (one constant, `BEATS_PER_BAR`, in `src/lib/grid.ts`) |
+| **Time signature** | 2/4 to 7/4, a project setting (`beats_per_bar`, migration 0039) that the Owner changes in the number display; the grid functions in `src/lib/grid.ts` take `beatsPerBar` (default 4) |
 | **Snap** | Toggle in the toolbar (magnet). Choose Bar, 1/4, 1/8 or 1/16 — default **on, 1/16**. Hold **Alt** while dragging to place freely. |
 | **Tempo lock** | The tempo locks the moment the song has any clip (moving it would drag every recording off the beat). Delete all clips to unlock. |
 | **Overlap** | Where two clips overlap, the **newest plays** and the older one is silent underneath — but keeps playing wherever it isn't covered. |
@@ -197,6 +197,7 @@ Good to know:
   player unless the Owner or Mixer locks the channel (enforced by the database).
 - **Notes** (`components/notes/`, `lib/notes.ts`): a tray, floating cards and ruler flags, with
   @tags (`mentions` column), a pin to any bar, channel colours, and a "tagged you" badge and message.
+- **Quantise** (`lib/onsets.ts`, `lib/quantise.ts`, `components/QuantisePanel.tsx`): hits are found from the samples (a rise in loudness, put on the exact start of the sound with a sharp-part view), the clip is cut where a hit has to move, and each piece is placed on the grid by the chosen strength; the previous piece is shortened or faded where pieces would overlap or leave a gap. All of it is ordinary clips, so it goes through `commitClips` (undo, live sharing). Pure and tested with made-up drums and bass. Limits: no time-stretch; pure sustained notes with no attack are hard to find.
 - **Anchored pop-ups** (`lib/anchor.ts`): the "?" help pop-up, tooltips and the note bubble are placed by the browser against what they belong to (CSS anchor positioning; the help pop-up is also a top-layer popover so a scaled or clipped window can't move it). They follow their anchor, flip to the other side or lean away from a screen edge on their own, and where the feature is missing the old measured placement runs instead. An anchored pop-up must come AFTER its anchor in the page, so tooltips are rendered at the end of the page each time.
 - **FX window placement:** a channel's FX window first opens placed by the browser against its FX button (below it, or above it when there is no room; `fx-anchored`), and turns into plain coordinates at the first drag or resize. A window left enlarged opens by coordinates instead, and every FX window is kept on the screen (`useKeepOnScreen`).
 - **Help** (`pages/HelpPage.tsx`, `lib/helpContent.ts`, `components/HelpHint.tsx`): one list of questions and answers used by the Help page and by the small "?" pop-ups (which open straight under their button and can be dragged by their title if they cover the thing they explain).
@@ -318,7 +319,7 @@ src/
     takeCache.ts               recordings kept on the device (Cache Storage), so each is downloaded once
     inputDevices.ts, outputDevices.ts
   worklets/pcm-recorder-processor.js   lossless capture on the audio thread
-supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0037)
+supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0039)
 scripts/test-timing.ts         checks for the latency math
 scripts/test-clips.ts          checks for clips, overlap, grid, mix, order, roles, cleanup, FX rules, notes, chords, tuner   (npm test runs both)
 ```

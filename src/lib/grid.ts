@@ -1,7 +1,11 @@
 // The song grid: bars and beats derived from the tempo. Pure functions only.
-// 4/4 for now — BEATS_PER_BAR is the single place a time signature would change.
+// A bar has `beatsPerBar` quarter-note beats (4 for 4/4, 3 for 3/4). The functions below take it as a last
+// argument that defaults to 4, so a call that does not know the time signature still works as 4/4.
 
 export const BEATS_PER_BAR = 4;
+
+/** The time signatures a project can use: beats per bar over a quarter-note beat. */
+export const TIME_SIGNATURES = [2, 3, 4, 5, 6, 7];
 
 export type SnapResolution = "bar" | "beat" | "eighth" | "sixteenth";
 
@@ -16,16 +20,16 @@ export function beatSec(bpm: number): number {
   return 60 / bpm;
 }
 
-export function barSec(bpm: number): number {
-  return beatSec(bpm) * BEATS_PER_BAR;
+export function barSec(bpm: number, beatsPerBar = BEATS_PER_BAR): number {
+  return beatSec(bpm) * beatsPerBar;
 }
 
 /** Length in seconds of one snap step at the given resolution. */
-export function stepSec(bpm: number, resolution: SnapResolution): number {
+export function stepSec(bpm: number, resolution: SnapResolution, beatsPerBar = BEATS_PER_BAR): number {
   const beat = beatSec(bpm);
   switch (resolution) {
     case "bar":
-      return beat * BEATS_PER_BAR;
+      return beat * beatsPerBar;
     case "beat":
       return beat;
     case "eighth":
@@ -41,14 +45,14 @@ export function snapTo(sec: number, step: number): number {
 }
 
 /** 1-based bar and beat at a song position, e.g. { bar: 3, beat: 2 }. */
-export function barAndBeat(sec: number, bpm: number): { bar: number; beat: number } {
+export function barAndBeat(sec: number, bpm: number, beatsPerBar = BEATS_PER_BAR): { bar: number; beat: number } {
   const safe = Math.max(0, sec) + 1e-9;
-  const bar = Math.floor(safe / barSec(bpm)) + 1;
-  const beat = Math.floor((safe % barSec(bpm)) / beatSec(bpm)) + 1;
+  const bar = Math.floor(safe / barSec(bpm, beatsPerBar)) + 1;
+  const beat = Math.floor((safe % barSec(bpm, beatsPerBar)) / beatSec(bpm)) + 1;
   return { bar, beat };
 }
 
-export function formatBarsBeats(sec: number, bpm: number): string {
-  const { bar, beat } = barAndBeat(sec, bpm);
+export function formatBarsBeats(sec: number, bpm: number, beatsPerBar = BEATS_PER_BAR): string {
+  const { bar, beat } = barAndBeat(sec, bpm, beatsPerBar);
   return `${bar}.${beat}`;
 }

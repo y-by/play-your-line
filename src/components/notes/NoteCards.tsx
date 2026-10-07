@@ -13,6 +13,7 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
   const setNoteDone = useProjectStore((s) => s.setNoteDone);
   const jumpToNote = useProjectStore((s) => s.jumpToNote);
   const canWrite = useProjectStore((s) => s.canWriteNotes());
+  const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
 
   return (
@@ -44,7 +45,7 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
         <b>{note.authorName ?? "Someone"}</b>
         {note.atBeat !== null && (
           <button className="note-chip" onClick={() => jumpToNote(note.id)} title="Move the playhead here">
-            {pinLabel(note.atBeat)}
+            {pinLabel(note.atBeat, beatsPerBar)}
           </button>
         )}
         <span className="note-card-grow" />

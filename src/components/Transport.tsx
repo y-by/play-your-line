@@ -2,16 +2,17 @@ import { useEffect } from "react";
 import { useAuthStore } from "../store/useAuthStore";
 import { useProjectStore } from "../store/useProjectStore";
 import { formatTime } from "../lib/format";
-import { barAndBeat, BEATS_PER_BAR } from "../lib/grid";
+import { barAndBeat, TIME_SIGNATURES } from "../lib/grid";
 import { BackToStartIcon, PlayIcon, PauseIcon, StopIcon, LoopIcon, MetronomeIcon, PlusCircleIcon, UserPlusIcon, GearIcon } from "./icons/Icons";
 import { TempoControl } from "./TempoControl";
 import { EditToolbar } from "./arrangement/EditToolbar";
 import { AddChannelPanel } from "./AddChannelPanel";
 import { PeoplePanel } from "./PeoplePanel";
+import { QuantisePanel } from "./QuantisePanel";
 import { ProjectName, ProjectStatus } from "./ProjectBar";
 import { CloseIcon, NoteIcon } from "./icons/Icons";
 
-export type SongPanel = "add" | "people" | null;
+export type SongPanel = "add" | "people" | "quantise" | null;
 
 interface Props {
   panel: SongPanel;
@@ -80,6 +81,7 @@ function ModeButtons({ className }: { className: string }) {
   const loopEnabled = useProjectStore((s) => s.loopEnabled);
   const toggleLoop = useProjectStore((s) => s.toggleLoop);
   const countInEnabled = useProjectStore((s) => s.countInEnabled);
+  const countInBeats = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
   const setCountInEnabled = useProjectStore((s) => s.setCountInEnabled);
   const metronomeEnabled = useProjectStore((s) => s.metronomeEnabled);
   const toggleMetronome = useProjectStore((s) => s.toggleMetronome);
@@ -99,10 +101,10 @@ function ModeButtons({ className }: { className: string }) {
       <button
         className={countInEnabled ? "lb wide brand" : "lb wide"}
         onClick={() => setCountInEnabled(!countInEnabled)}
-        title="Count in 4 clicks before recording"
+        title={`Count in ${countInBeats} clicks (one bar) before recording`}
         aria-pressed={countInEnabled}
       >
-        1234
+        {Array.from({ length: countInBeats }, (_, i) => i + 1).join("")}
       </button>
       <button
         className={metronomeEnabled ? "lb on" : "lb"}
@@ -139,6 +141,9 @@ export function Transport({ panel, onPanel }: Props) {
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const recordingPhase = useProjectStore((s) => s.recordingPhase);
   const bpm = useProjectStore((s) => s.project?.bpm ?? 120);
+  const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
+  const isOwner = useProjectStore((s) => s.isInitiator());
+  const setTimeSignature = useProjectStore((s) => s.setTimeSignature);
   const hasChannels = useProjectStore((s) => (s.project?.tracks.length ?? 0) > 0);
   const armedId = useProjectStore((s) => s.effectiveArmedId());
   const armedName = useProjectStore((s) => s.project?.tracks.find((t) => t.id === s.effectiveArmedId())?.instrument ?? null);
@@ -154,7 +159,7 @@ export function Transport({ panel, onPanel }: Props) {
     return () => window.removeEventListener("keydown", onKey);
   }, [panel, onPanel]);
 
-  const { bar, beat } = barAndBeat(positionSec, bpm);
+  const { bar, beat } = barAndBeat(positionSec, bpm, beatsPerBar);
   const recActive = !!recordingTrackId && recordingPhase !== "uploading";
   const busy = !!recordingTrackId;
   // Same action as the Space key: stop a recording if one's running, otherwise stop playback.
@@ -218,7 +223,23 @@ export function Transport({ panel, onPanel }: Props) {
               <span className="lcd-l">bpm</span>
             </div>
             <div className="lcd-cell">
-              <span className="lcd-n s">{BEATS_PER_BAR}/4</span>
+              {isOwner ? (
+                <select
+                  className="lcd-n s sig-select"
+                  value={beatsPerBar}
+                  onChange={(e) => void setTimeSignature(Number(e.target.value))}
+                  aria-label="Time signature"
+                  title="Time signature: how many beats in a bar"
+                >
+                  {TIME_SIGNATURES.map((n) => (
+                    <option key={n} value={n}>
+                      {n}/4
+                    </option>
+                  ))}
+                </select>
+              ) : (
+                <span className="lcd-n s">{beatsPerBar}/4</span>
+              )}
               <span className="lcd-l">signature</span>
             </div>
           </div>
@@ -232,21 +253,21 @@ export function Transport({ panel, onPanel }: Props) {
         <div className="tools-scroll">
           <PanelButtons panel={panel} onPanel={onPanel} className="" />
           <ModeButtons className="only-m" />
-          {hasChannels && <EditToolbar />}
+          {hasChannels && <EditToolbar panel={panel} onPanel={onPanel} />}
         </div>
       </div>
 
       {panel && (
         <>
           <div className="cb-popup-catcher" onClick={() => onPanel(null)} />
-          <div className="cb-popup plugin-skin" role="dialog" aria-label={panel === "add" ? "Channels" : "People"}>
+          <div className={panel === "quantise" ? "cb-popup right plugin-skin" : "cb-popup plugin-skin"} role="dialog" aria-label={panel === "add" ? "Channels" : panel === "people" ? "People" : "Quantise"}>
             <header className="plugin-head">
-              <h2>{panel === "add" ? "Channels" : "People"}</h2>
+              <h2>{panel === "add" ? "Channels" : panel === "people" ? "People" : "Quantise"}</h2>
               <button className="plugin-close" onClick={() => onPanel(null)} aria-label="Close">
                 <CloseIcon />
               </button>
             </header>
-            {panel === "add" ? <AddChannelPanel /> : <PeoplePanel />}
+            {panel === "add" ? <AddChannelPanel /> : panel === "people" ? <PeoplePanel /> : <QuantisePanel onClose={() => onPanel(null)} />}
           </div>
         </>
       )}

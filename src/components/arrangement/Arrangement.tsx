@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
-import { barSec, beatSec, BEATS_PER_BAR } from "../../lib/grid";
+import { barSec, beatSec } from "../../lib/grid";
 import { clipsEnd } from "../../lib/clips";
 import { defaultOrder, orderTracks } from "../../lib/trackOrder";
 import { ChannelLane } from "./ChannelLane";
@@ -73,12 +73,13 @@ export function Arrangement() {
 
   const bpm = project?.bpm ?? 120;
   const pxPerSec = pxPerBeat / beatSec(bpm);
-  const barPx = pxPerBeat * BEATS_PER_BAR;
+  const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
+  const barPx = pxPerBeat * beatsPerBar;
 
   const songEnd = project ? project.tracks.reduce((m, t) => Math.max(m, clipsEnd(t.clips)), 0) : 0;
   // While recording, the grid keeps growing ahead of the playhead, so it never runs out under a long take.
   const reachSec = recordingTrackId ? Math.max(songEnd, positionSec) : songEnd;
-  const totalBars = Math.max(MIN_BARS, Math.ceil(reachSec / barSec(bpm)) + 4);
+  const totalBars = Math.max(MIN_BARS, Math.ceil(reachSec / barSec(bpm, beatsPerBar)) + 4);
   const timelinePx = totalBars * barPx;
 
   // While playing, keep the playhead in view.

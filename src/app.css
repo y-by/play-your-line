@@ -5885,3 +5885,122 @@ select.note-opt {
   margin: 4px 0 0;
   position-try-fallbacks: --pl-fx-below-left, --pl-fx-above-right, --pl-fx-above-left;
 }
+
+/* The time signature in the number display is a plain select that looks like the number beside it */
+select.sig-select {
+  appearance: none;
+  -webkit-appearance: none;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: center;
+  text-align-last: center;
+  padding: 0;
+  cursor: pointer;
+}
+
+select.sig-select option {
+  color: #111;
+}
+
+/* ---- Quantise ---- */
+.cb-popup.right {
+  left: auto;
+  right: 12px;
+  width: min(380px, calc(100vw - 24px));
+}
+
+@media (max-width: 700px) {
+  .cb-popup.right {
+    left: 8px;
+    right: 8px;
+    width: auto;
+  }
+}
+
+.quantise-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.quantise-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+  color: var(--color-label-secondary);
+}
+
+.quantise-row > span {
+  width: 78px;
+  flex: none;
+}
+
+.quantise-row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+
+.quantise-row b {
+  width: 52px;
+  text-align: right;
+  font-weight: 600;
+  color: var(--color-label);
+}
+
+.quantise-grids {
+  display: flex;
+  gap: 6px;
+}
+
+.quantise-opt {
+  min-width: 52px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--pl-header-border);
+  border-radius: 6px;
+  background: var(--pl-field);
+  color: var(--pl-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.quantise-opt.on {
+  background: var(--pl-switch);
+  border-color: var(--pl-switch);
+  color: #fff;
+}
+
+.quantise-found {
+  margin: 0;
+  min-height: 18px;
+  font-size: 13px;
+  color: var(--pl-accent);
+}
+
+.quantise-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.quantise-actions .help-hint {
+  margin-left: auto;
+}
+
+/* The hits the quantiser found, drawn on the selected clip */
+.clip-hit {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: #ffd60a;
+  box-shadow: 0 0 4px rgba(255, 214, 10, 0.8);
+  pointer-events: none;
+  z-index: 2;
+}

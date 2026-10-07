@@ -18,6 +18,7 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
   const jumpToNote = useProjectStore((s) => s.jumpToNote);
   const floatNote = useProjectStore((s) => s.floatNote);
   const canWrite = useProjectStore((s) => s.canWriteNotes());
+  const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
   // Where the clicked flag is on screen, so the bubble can sit under it and stay inside the window.
   const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
 
@@ -69,7 +70,7 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
             setOpenFlag(n.id === openId ? null : n.id);
           }}
           title={`${n.authorName ?? "Someone"}: ${n.body}`}
-          aria-label={`Note at ${pinLabel(n.atBeat as number)}`}
+          aria-label={`Note at ${pinLabel(n.atBeat as number, beatsPerBar)}`}
         >
           <FlagIcon size={14} />
         </button>
@@ -81,7 +82,7 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
         >
           <div className="note-meta">
             <b>{open.authorName ?? "Someone"}</b>
-            <span>{pinLabel(open.atBeat as number)}</span>
+            <span>{pinLabel(open.atBeat as number, beatsPerBar)}</span>
           </div>
           <p className="note-body">{open.body}</p>
           <div className="note-bubble-actions">

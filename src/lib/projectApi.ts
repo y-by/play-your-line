@@ -15,6 +15,7 @@ function mapProject(row: any, tracks: Track[], takes: Record<string, Take>): Pro
     id: row.id,
     title: row.title,
     bpm: row.bpm,
+    beatsPerBar: row.beats_per_bar ?? 4,
     initiatorId: row.initiator_id,
     mixerId: row.mixer_id ?? null,
     mixerName: null,
@@ -220,6 +221,13 @@ export async function createProject(title: string, initiatorId: string): Promise
   const { data, error } = await client.from("projects").select("*").eq("id", id).single();
   if (error) throw error;
   return mapProject(data, [], {});
+}
+
+/** The Owner changes the time signature (beats per bar over a quarter note). */
+export async function setBeatsPerBar(projectId: string, beatsPerBar: number): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("projects").update({ beats_per_bar: beatsPerBar, updated_at: new Date().toISOString() }).eq("id", projectId);
+  if (error) throw error;
 }
 
 export async function setTempo(projectId: string, bpm: number): Promise<void> {

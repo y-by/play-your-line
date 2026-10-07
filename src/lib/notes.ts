@@ -1,22 +1,22 @@
 // Small pure helpers for notes (so they can be tested without a browser).
 import type { ProjectNote } from "../types/project";
 
-const BEATS_PER_BAR = 4; // same as grid.ts; kept here so this file needs no imports
+const BEATS_PER_BAR = 4; // the default (4/4); same as grid.ts, kept here so this file needs no imports
 
 /** The 1-based bar a beat falls in. */
-export function barOfBeat(atBeat: number): number {
-  return Math.floor(atBeat / BEATS_PER_BAR) + 1;
+export function barOfBeat(atBeat: number, beatsPerBar = BEATS_PER_BAR): number {
+  return Math.floor(atBeat / beatsPerBar) + 1;
 }
 
 /** The 1-based beat inside its bar. */
-export function beatInBar(atBeat: number): number {
-  return Math.floor(atBeat % BEATS_PER_BAR) + 1;
+export function beatInBar(atBeat: number, beatsPerBar = BEATS_PER_BAR): number {
+  return Math.floor(atBeat % beatsPerBar) + 1;
 }
 
 /** "Bar 9", or "Bar 9 · beat 3" when it isn't on the first beat. */
-export function pinLabel(atBeat: number): string {
-  const beat = beatInBar(atBeat);
-  return beat === 1 ? `Bar ${barOfBeat(atBeat)}` : `Bar ${barOfBeat(atBeat)} · beat ${beat}`;
+export function pinLabel(atBeat: number, beatsPerBar = BEATS_PER_BAR): string {
+  const beat = beatInBar(atBeat, beatsPerBar);
+  return beat === 1 ? `Bar ${barOfBeat(atBeat, beatsPerBar)}` : `Bar ${barOfBeat(atBeat, beatsPerBar)} · beat ${beat}`;
 }
 
 /** "just now", "5 min ago", "2 h ago", "3 d ago". */

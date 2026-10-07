@@ -162,6 +162,8 @@ export class AudioEngine {
   private pendingGridClicks = new Set<OscillatorNode>();
   private pendingCountInClicks = new Set<OscillatorNode>();
   private bpm = 120;
+  /** Beats in a bar, for the click's accent on the first beat (4 for 4/4, 3 for 3/4). */
+  private beatsPerBar = 4;
   private metronomeEnabled = false;
   private metronomeTimerId: number | null = null;
   private nextClickBeatIndex = 0;
@@ -596,7 +598,7 @@ export class AudioEngine {
     if (this.activeLoop && this.metronomeEnabled) {
       const beat = 60 / this.bpm;
       for (let k = Math.ceil(from / beat - 1e-9); k * beat < to - 1e-9; k++) {
-        this.scheduleClick(ctxStart + (k * beat - from), k % 4 === 0, "grid");
+        this.scheduleClick(ctxStart + (k * beat - from), k % this.beatsPerBar === 0, "grid");
       }
     }
   }
@@ -1112,6 +1114,12 @@ export class AudioEngine {
     this.levelListeners.forEach((l) => l(0, 0));
   }
 
+  setBeatsPerBar(beatsPerBar: number) {
+    this.beatsPerBar = Math.max(1, Math.round(beatsPerBar));
+    if (this.activeLoop && this.playing) this.play(this.getPositionSec());
+    else if (this.metronomeEnabled && this.playing) this.restartMetronomeScheduler();
+  }
+
   setBpm(bpm: number) {
     this.bpm = bpm;
     if (this.activeLoop && this.playing) this.play(this.getPositionSec());
@@ -1161,7 +1169,7 @@ export class AudioEngine {
     const beatDurationSec = 60 / this.bpm;
     while (this.contextTimeForPosition(this.nextClickBeatIndex * beatDurationSec) < this.ctx.currentTime + this.scheduleAheadSec) {
       const beatTimeCtx = this.contextTimeForPosition(this.nextClickBeatIndex * beatDurationSec);
-      const accent = this.nextClickBeatIndex % 4 === 0;
+      const accent = this.nextClickBeatIndex % this.beatsPerBar === 0;
       this.scheduleClick(beatTimeCtx, accent, "grid");
       this.nextClickBeatIndex++;
     }

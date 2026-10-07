@@ -2,7 +2,7 @@ import { useCallback, useRef } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
 import { FollowIcon } from "../icons/Icons";
 import { NoteFlags } from "../notes/NoteFlags";
-import { BEATS_PER_BAR, beatSec, stepSec, snapTo } from "../../lib/grid";
+import { beatSec, stepSec, snapTo } from "../../lib/grid";
 
 interface Props {
   totalBars: number;
@@ -28,6 +28,7 @@ type LoopDrag = { mode: "new" | "move" | "left" | "right"; anchorSec: number; st
  */
 export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
   const seek = useProjectStore((s) => s.seek);
+  const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
   const locked = useProjectStore((s) => s.recordingTrackId !== null);
   const loop = useProjectStore((s) => s.loop);
   const loopEnabled = useProjectStore((s) => s.loopEnabled);
@@ -54,7 +55,7 @@ export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
     const s = useProjectStore.getState();
     const raw = Math.max(0, (e.clientX - rect.left) / pxPerSec);
     if (!s.snapEnabled || e.altKey) return raw;
-    return snapTo(raw, stepSec(s.project?.bpm ?? 120, s.snapResolution));
+    return snapTo(raw, stepSec(s.project?.bpm ?? 120, s.snapResolution, s.project?.beatsPerBar ?? 4));
   };
 
   const stripDown = (e: React.PointerEvent<HTMLElement>, mode: LoopDrag["mode"]) => {
@@ -143,7 +144,7 @@ export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
         <NoteFlags pxPerSec={pxPerSec} />
         <div
           className={locked ? "arr-ruler locked" : "arr-ruler"}
-          style={{ "--beat-px": `${barPx / BEATS_PER_BAR}px` } as React.CSSProperties}
+          style={{ "--beat-px": `${barPx / beatsPerBar}px` } as React.CSSProperties}
           onPointerDown={(e) => {
             if (locked) return;
             capture(e);

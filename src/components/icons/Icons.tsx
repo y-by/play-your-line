@@ -376,3 +376,16 @@ export function HelpIcon({ size = 18 }: IconProps) {
     </svg>
   );
 }
+
+/** Quantise: hits (short bars) being pulled onto grid lines. */
+export function QuantiseIcon({ size = 14 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 3v18M12 3v18M20 3v18" opacity="0.45" />
+      <path d="M7.5 8.5h-3M7.5 8.5l1.5-1.5M7.5 8.5L9 10" />
+      <path d="M12 15.5v0" />
+      <rect x="8" y="12.5" width="4" height="6" rx="1" fill="currentColor" stroke="none" />
+      <path d="M16.5 8.5h3M16.5 8.5L15 7M16.5 8.5L15 10" />
+    </svg>
+  );
+}

@@ -1,8 +1,9 @@
 import { useProjectStore } from "../../store/useProjectStore";
 import { SNAP_OPTIONS, type SnapResolution } from "../../lib/grid";
-import { UndoIcon, CutIcon, DuplicateIcon, TrashIcon, MagnetIcon, ChevronDownIcon } from "../icons/Icons";
+import type { SongPanel } from "../Transport";
+import { UndoIcon, CutIcon, QuantiseIcon, DuplicateIcon, TrashIcon, MagnetIcon, ChevronDownIcon } from "../icons/Icons";
 
-export function EditToolbar() {
+export function EditToolbar({ panel, onPanel }: { panel: SongPanel; onPanel: (panel: SongPanel) => void }) {
   const pxPerBeat = useProjectStore((s) => s.pxPerBeat);
   const setPxPerBeat = useProjectStore((s) => s.setPxPerBeat);
   const project = useProjectStore((s) => s.project);
@@ -61,6 +62,16 @@ export function EditToolbar() {
             </button>
             <button className="lb" onClick={deleteSelected} disabled={!clipTools} title="Delete (⌫)" aria-label="Delete">
               <TrashIcon size={14} />
+            </button>
+            <button
+              className={panel === "quantise" ? "lb on" : "lb"}
+              onClick={() => onPanel(panel === "quantise" ? null : "quantise")}
+              disabled={!clipTools}
+              title="Quantise: pull the hits of the selected clip onto the grid"
+              aria-pressed={panel === "quantise"}
+              aria-label="Quantise"
+            >
+              <QuantiseIcon size={14} />
             </button>
           </div>
           <div className="lg">

@@ -46,7 +46,7 @@ export function ChannelLane({ track, number, style, onGripDown, pxPerSec, timeli
     const raw = Math.max(0, (e.clientX - rect.left) / pxPerSec);
     const { snapEnabled, snapResolution } = useProjectStore.getState();
     if (!snapEnabled || e.altKey) return raw;
-    return snapTo(raw, stepSec(project.bpm, snapResolution));
+    return snapTo(raw, stepSec(project.bpm, snapResolution, project.beatsPerBar));
   };
 
   const onDragOver = (e: React.DragEvent<HTMLDivElement>) => {

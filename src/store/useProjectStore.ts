@@ -8,7 +8,9 @@ import { listOutputDevices, type OutputDevice } from "../lib/outputDevices";
 import { nextZ, splitClip, duplicateClip, moveClip, audibleSegments } from "../lib/clips";
 import { encodeWavFloat32 } from "../lib/wav";
 import { detectChords, type ChordSegment } from "../lib/chords";
-import { stepSec, beatSec, BEATS_PER_BAR, type SnapResolution } from "../lib/grid";
+import { detectOnsets } from "../lib/onsets";
+import { quantiseClip, planMoves } from "../lib/quantise";
+import { stepSec, beatSec, type SnapResolution } from "../lib/grid";
 import { clipEnd as clipEndSec } from "../lib/clips";
 import { effectiveChannelMix } from "../lib/mix";
 import { subscribeToProject, type RealtimeStatus, type PresentUser } from "../lib/realtime";
@@ -84,6 +86,8 @@ interface ProjectState {
   loadProject: (id: string) => Promise<void>;
   renameProject: (title: string) => Promise<void>;
   setTempo: (bpm: number) => Promise<void>;
+  /** Owner only: the time signature, as beats per bar over a quarter note (3 = 3/4). */
+  setTimeSignature: (beatsPerBar: number) => Promise<void>;
   metronomeEnabled: boolean;
   toggleMetronome: () => void;
   metronomeVolume: number;
@@ -247,6 +251,15 @@ interface ProjectState {
   /** First press: listen to the channel and show its chords. After that: show / hide them. */
   toggleChords: (trackId: string) => Promise<void>;
 
+  // ---- Quantise ----
+  /** Where the hits of the selected clip are, on the timeline, while the Quantise panel is open (drawn on the clip). */
+  quantiseMarks: { clipId: string; times: number[] } | null;
+  setQuantiseMarks: (marks: { clipId: string; times: number[] } | null) => void;
+  /** Finds the hits in the selected clip (and shows them on it). Returns how many, and how many would move. */
+  previewQuantise: (options: { sensitivity: number; gridBeats: number; strength: number }) => { hits: number; moves: number } | null;
+  /** Cuts the selected clip at its hits and moves them toward the grid. Returns how many hits moved, null if there was nothing to move, or false if saving failed (it was undone). */
+  quantiseSelected: (options: { sensitivity: number; gridBeats: number; strength: number }) => Promise<number | null | false>;
+
   // ---- Notes ----
   notes: ProjectNote[];
   /** Master switch for the notes tray, the floating cards and the flags on the timeline. Saved on this device. */
@@ -308,6 +321,7 @@ interface ProjectState {
 
 const LATENCY_STORAGE_KEY = "pyl.latencyMs";
 const COUNT_IN_STORAGE_KEY = "pyl.countIn";
+/** A count-in is one bar of clicks: 4 for 4/4 (this is only the fallback). */
 const COUNT_IN_BEATS = 4;
 const SNAP_ENABLED_KEY = "pyl.snapEnabled";
 const SNAP_RESOLUTION_KEY = "pyl.snapResolution";
@@ -721,6 +735,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     if (!project) return;
     const bpm = row.bpm as number;
     if (bpm !== project.bpm) engine.setBpm(bpm);
+    const beatsPerBar = (row.beats_per_bar as number | undefined) ?? project.beatsPerBar;
+    if (beatsPerBar !== project.beatsPerBar) engine.setBeatsPerBar(beatsPerBar);
     const mixerId = (row.mixer_id as string | null) ?? null;
     if (mixerId !== project.mixerId) {
       // Someone new became (or stopped being) the Mixer: look up the name.
@@ -738,6 +754,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         mixerName: mixerId && mixerId === project.mixerId ? project.mixerName : null,
         title: row.title as string,
         bpm,
+        beatsPerBar,
         status: row.status as Project["status"],
         publishedAt: row.published_at ? new Date(row.published_at as string).getTime() : null,
       },
@@ -746,6 +763,18 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
   // Catch up after a dropped connection or a phone waking up: reload the song's
   // rows quietly, reusing recordings we already have.
+  /** The selected clip (if you may edit it and its recording is loaded) with the hits found in it. */
+  const selectedClipAndOnsets = (sensitivity: number) => {
+    const { project, selectedClip } = get();
+    const track = project?.tracks.find((t) => t.id === selectedClip?.trackId);
+    const clip = track?.clips.find((c) => c.id === selectedClip?.clipId);
+    if (!project || !track || !clip || !get().canEditClips(track)) return null;
+    const buffer = engine.getTakeBuffer(clip.takeId);
+    if (!buffer) return null;
+    const onsets = detectOnsets(buffer.getChannelData(0), buffer.sampleRate, clip.sourceStartSec, clip.durationSec, { sensitivity });
+    return { clip, track, onsets, bpm: project.bpm };
+  };
+
   const syncFromServer = async () => {
     const current = get().project;
     if (current) void refreshNotes(current.id);
@@ -1017,6 +1046,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           engine.updateTrackFx(track.id, track.fx);
         }
         engine.setBpm(project.bpm);
+        engine.setBeatsPerBar(project.beatsPerBar);
         undoStack = [];
         redoStack = [];
 
@@ -1072,6 +1102,26 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         if (current) set({ project: { ...current, bpm: previous } });
         engine.setBpm(previous);
         set({ editError: "Couldn't change the tempo — it may be locked because the song has recordings." });
+      }
+    },
+
+    setTimeSignature: async (beatsPerBar) => {
+      const { project } = get();
+      if (!project || !get().isInitiator()) return;
+      const value = Math.min(7, Math.max(2, Math.round(beatsPerBar)));
+      if (value === project.beatsPerBar) return;
+      const previous = project.beatsPerBar;
+      // Bars are drawn and counted differently now, so detected chords (which lean on the bar line) are worked out again.
+      set({ project: { ...project, beatsPerBar: value }, chords: {}, chordsShown: {} });
+      engine.setBeatsPerBar(value);
+      try {
+        await api.setBeatsPerBar(project.id, value);
+      } catch (err) {
+        console.error("Failed to change the time signature:", err);
+        const current = get().project;
+        if (current) set({ project: { ...current, beatsPerBar: previous } });
+        engine.setBeatsPerBar(previous);
+        set({ editError: `Couldn't change the time signature${errorDetail(err)}` });
       }
     },
 
@@ -1503,8 +1553,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         const beat = beatSec(project.bpm);
         if (clip) set({ loop: { startBeat: clip.startSec / beat, endBeat: clipEndSec(clip) / beat }, loopEnabled: true });
         else {
-          const startBeat = Math.floor(positionSec / beat / BEATS_PER_BAR) * BEATS_PER_BAR;
-          set({ loop: { startBeat, endBeat: startBeat + 4 * BEATS_PER_BAR }, loopEnabled: true });
+          const bpb = project.beatsPerBar;
+          const startBeat = Math.floor(positionSec / beat / bpb) * bpb;
+          set({ loop: { startBeat, endBeat: startBeat + 4 * bpb }, loopEnabled: true });
         }
       } else {
         set({ loopEnabled: !loopEnabled });
@@ -1753,7 +1804,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       if (fine) {
         start = clip.startSec + direction * 0.001;
       } else if (snapEnabled) {
-        const step = stepSec(project.bpm, snapResolution);
+        const step = stepSec(project.bpm, snapResolution, project.beatsPerBar);
         start = direction > 0 ? (Math.floor(clip.startSec / step + 1e-6) + 1) * step : (Math.ceil(clip.startSec / step - 1e-6) - 1) * step;
       } else {
         start = clip.startSec + direction * 0.01;
@@ -1810,7 +1861,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
               timelineStartSec: seg.startSec,
               sourceStartSec: seg.sourceStartSec,
               durationSec: seg.endSec - seg.startSec,
-            })
+            }, project.beatsPerBar)
           );
         }
         found.sort((a, b) => a.startBeat - b.startBeat);
@@ -1823,6 +1874,30 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       } finally {
         set({ detectingChords: null });
       }
+    },
+
+    quantiseMarks: null,
+    setQuantiseMarks: (marks) => set({ quantiseMarks: marks }),
+    previewQuantise: ({ sensitivity, gridBeats, strength }) => {
+      const found = selectedClipAndOnsets(sensitivity);
+      if (!found) {
+        set({ quantiseMarks: null });
+        return null;
+      }
+      const { clip, onsets, bpm } = found;
+      const moves = planMoves(clip, onsets, bpm, { gridBeats, strength });
+      set({ quantiseMarks: { clipId: clip.id, times: moves.map((m) => m.from) } });
+      return { hits: moves.length, moves: moves.filter((m) => Math.abs(m.to - m.from) > 0.0008).length };
+    },
+    quantiseSelected: async ({ sensitivity, gridBeats, strength }) => {
+      const found = selectedClipAndOnsets(sensitivity);
+      if (!found) return null;
+      const { clip, track, onsets, bpm } = found;
+      const result = quantiseClip(clip, onsets, bpm, { gridBeats, strength }, () => crypto.randomUUID());
+      if (!result) return null;
+      const ok = await get().commitClips(track.id, track.clips.flatMap((c) => (c.id === clip.id ? result.clips : [c])));
+      set({ quantiseMarks: null });
+      return ok ? result.moved : false;
     },
 
     notes: [],
@@ -2083,7 +2158,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       // count-in first when enabled — then flip to "recording" the moment the
       // song position actually starts moving (that's when the take begins).
       const { startsInSec, countInSec } = engine.play(get().positionSec, {
-        countInBeats: get().countInEnabled ? COUNT_IN_BEATS : 0,
+        countInBeats: get().countInEnabled ? (get().project?.beatsPerBar ?? COUNT_IN_BEATS) : 0,
       });
       if (countInSec > 0) {
         set({ recordingPhase: "count-in" });

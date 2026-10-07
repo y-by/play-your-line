@@ -14,6 +14,8 @@ import { clampFx, lowCutOn, eqResponseDb, hzToPos, posToHz, formatHz, EQ_FREQ_RA
 import { detectChords } from "../src/lib/chords.ts";
 import { detectPitch, noteFromHz, centsFromTarget, hzOfMidi, strobeSpeed, INSTRUMENTS } from "../src/lib/tuner.ts";
 import { HELP_TOPICS, HELP_GROUPS, helpTopic } from "../src/lib/helpContent.ts";
+import { detectOnsets } from "../src/lib/onsets.ts";
+import { quantiseClip, planMoves, PRE_ROLL_SEC } from "../src/lib/quantise.ts";
 import { looksAnchored } from "../src/lib/anchor.ts";
 import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
@@ -93,6 +95,9 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
 
 // ---- grid
 {
+  check("in 3/4 a bar is three beats: 1.5 s at 120 bpm", barSec(120, 3) === 1.5 && stepSec(120, "bar", 3) === 1.5 && stepSec(120, "beat", 3) === 0.5);
+  check("in 3/4 the bar and beat count follow", JSON.stringify(barAndBeat(1.5, 120, 3)) === '{"bar":2,"beat":1}' && JSON.stringify(barAndBeat(1.0, 120, 3)) === '{"bar":1,"beat":3}' && formatBarsBeats(4.5, 120, 3) === "4.1");
+  check("not saying the time signature still means 4/4", barSec(100) === barSec(100, 4) && JSON.stringify(barAndBeat(2.0, 120)) === JSON.stringify(barAndBeat(2.0, 120, 4)));
   check("120 bpm: beat 0.5s, bar 2s", beatSec(120) === 0.5 && barSec(120) === 2);
   check("step sizes at 120 bpm", stepSec(120, "bar") === 2 && stepSec(120, "beat") === 0.5 && stepSec(120, "eighth") === 0.25 && stepSec(120, "sixteenth") === 0.125);
   check("snap to 1/16 at 120 bpm", near(snapTo(1.07, 0.125), 1.125) && near(snapTo(1.05, 0.125), 1.0));
@@ -278,6 +283,7 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("beat 0 is bar 1, beat 1", barOfBeat(0) === 1 && beatInBar(0) === 1);
   check("beat 4 starts bar 2", barOfBeat(4) === 2 && beatInBar(4) === 1);
   check("beat 38 is bar 10, beat 3", barOfBeat(38) === 10 && beatInBar(38) === 3);
+  check("in 3/4 notes land in bars of three beats", barOfBeat(6, 3) === 3 && beatInBar(7, 3) === 2 && pinLabel(8, 3) === "Bar 3 · beat 3" && pinLabel(9, 3) === "Bar 4");
   check("a note on the first beat reads just 'Bar 9'", pinLabel(32) === "Bar 9");
   const people = [{ id: "u1", name: "Dana" }, { id: "u2", name: "Dan" }, { id: "u3", name: "Mo Lee" }];
   check("@Dana tags Dana only, not Dan", mentionedIds("hey @Dana listen", people).join() === "u1");
@@ -366,6 +372,79 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("every instrument lists its strings low to high", INSTRUMENTS.filter((i) => i.id === "guitar" || i.id.startsWith("bass")).every((i) => i.strings.every((st, k) => k === 0 || st.midi > i.strings[k - 1].midi)));
   check("the strobe drifts right for sharp, left for flat, and stands still in tune", strobeSpeed(10, 1) > 0 && strobeSpeed(-10, 1) < 0 && strobeSpeed(0, 4) === 0);
   check("the strobe's speed is capped so it never flickers", Math.abs(strobeSpeed(50, 8)) <= 6);
+}
+
+// ---- finding hits and quantising
+{
+  const sr = 44100;
+  let seed = 7;
+  const rand = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+  const drums = (times: number[], len = 3, level = 0.8) => {
+    const x = new Float32Array(sr * len);
+    for (const t of times) {
+      const s0 = Math.floor(t * sr);
+      for (let i = 0; i < sr * 0.25 && s0 + i < x.length; i++) x[s0 + i] += (rand() * 2 - 1) * level * Math.exp(-i / (sr * 0.04));
+    }
+    return x;
+  };
+  const bass = (times: number[], len = 3, tau = 0.12) => {
+    const x = new Float32Array(sr * len);
+    for (const t of times) {
+      const s0 = Math.floor(t * sr);
+      const f0 = 41 + ((t * 7) % 30);
+      for (let i = 0; i < sr * 0.6 && s0 + i < x.length; i++) {
+        const env = Math.min(1, i / (sr * 0.004)) * Math.exp(-i / (sr * tau));
+        const pick = i < sr * 0.006 ? (rand() * 2 - 1) * 0.25 : 0;
+        x[s0 + i] += 0.6 * env * Math.sin((2 * Math.PI * f0 * i) / sr) + 0.15 * env * Math.sin((4 * Math.PI * f0 * i) / sr) + pick;
+      }
+    }
+    return x;
+  };
+  const worstError = (found: number[], truth: number[]) => Math.max(...truth.map((t) => Math.min(...found.map((f) => Math.abs(f - t)))));
+  const hits = [0.2, 0.7, 1.15, 1.62, 2.1, 2.55];
+  const d = detectOnsets(drums(hits), sr, 0, 3);
+  check("drum hits are all found, with nothing extra", d.length === hits.length && worstError(d, hits) < 0.002);
+  const fastHits = [0.2, 0.35, 0.5, 0.65, 0.8, 0.95, 1.1, 1.25];
+  const df = detectOnsets(drums(fastHits), sr, 0, 3);
+  check("fast drum hits 150 ms apart are all found, to about a millisecond", df.length === fastHits.length && worstError(df, fastHits) < 0.002);
+  const b = detectOnsets(bass(hits), sr, 0, 3);
+  check("bass notes are all found, within 3 ms", b.length === hits.length && worstError(b, hits) < 0.003);
+  const bf = detectOnsets(bass(fastHits), sr, 0, 3);
+  check("fast bass notes with a pick attack are all found", bf.length === fastHits.length && worstError(bf, fastHits) < 0.003);
+  const steady = Float32Array.from({ length: sr * 3 }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 110 * i) / sr));
+  check("a steady tone has no hits", detectOnsets(steady, sr, 0, 3).length === 0);
+  check("silence has no hits", detectOnsets(new Float32Array(sr * 2), sr, 0, 2).length === 0);
+  const quiet = drums(hits, 3, 0.4);
+  for (let i = 0; i < quiet.length; i++) quiet[i] += (rand() * 2 - 1) * 0.004;
+  check("hits are found over a noise floor", detectOnsets(quiet, sr, 0, 3).length === hits.length);
+  const few = detectOnsets(drums(hits, 3, 0.8), sr, 0, 3, { sensitivity: 0 }).length;
+  const many = detectOnsets(drums(hits, 3, 0.8), sr, 0, 3, { sensitivity: 1 }).length;
+  check("higher sensitivity never finds fewer hits", many >= few);
+  check("only the part of the recording asked for is searched", (() => { const o = detectOnsets(drums(hits), sr, 1.0, 1.0); return o.length === 2 && o.every((t) => t >= 1.0 && t <= 2.0); })());
+
+  const clip = { id: "c", takeId: "t1", startSec: 0, sourceStartSec: 0, durationSec: 3, z: 1, fadeInSec: 0, fadeOutSec: 0 };
+  const ids = (() => { let n = 0; return () => `n${++n}`; })();
+  const lateHits = [0.28, 0.77, 1.2, 1.74, 2.2, 2.7]; // played a little late of a 1/8 grid at 120 bpm (0.25 s)
+  const land = (pieces: ClipData[], t: number) => { const p = pieces.find((q) => q.sourceStartSec <= t - PRE_ROLL_SEC + 1e-6 && t < q.sourceStartSec + q.durationSec); return p ? p.startSec + (t - p.sourceStartSec) : NaN; };
+  const full = quantiseClip(clip, lateHits, 120, { gridBeats: 0.5, strength: 1 }, ids)!;
+  check("at full strength every hit lands on the 1/8 grid", lateHits.every((t) => { const at = land(full.clips, t); return Math.abs(at / 0.25 - Math.round(at / 0.25)) < 0.004; }));
+  const half = quantiseClip(clip, lateHits, 120, { gridBeats: 0.5, strength: 0.5 }, ids)!;
+  check("at half strength each hit moves half way", lateHits.every((t) => { const g = Math.round(t / 0.25) * 0.25; return Math.abs(land(half.clips, t) - (t + (g - t) * 0.5)) < 0.002; }));
+  const sorted = [...full.clips].sort((a, c2) => a.startSec - c2.startSec);
+  check("the pieces never overlap each other on the timeline", sorted.every((p, i) => i === 0 || p.startSec >= sorted[i - 1].startSec + sorted[i - 1].durationSec - 1e-6));
+  const bySource = [...full.clips].sort((a, c2) => a.sourceStartSec - c2.sourceStartSec);
+  check("each part of the recording is used at most once", bySource.every((p, i) => i === 0 || p.sourceStartSec >= bySource[i - 1].sourceStartSec + bySource[i - 1].durationSec - 1e-6));
+  check("the first piece keeps the clip's id and the others are new", full.clips[0].id === "c" && new Set(full.clips.map((p) => p.id)).size === full.clips.length);
+  check("every piece stays on its own recording and keeps the clip's layer", full.clips.every((p) => p.takeId === "t1" && p.z === 1));
+  check("it reports how many hits moved", full.moved === lateHits.length);
+  check("hits already on the grid are left alone", quantiseClip(clip, [0.25, 0.5, 1.0, 1.75], 120, { gridBeats: 0.5, strength: 1 }, ids) === null);
+  check("strength 0 changes nothing", quantiseClip(clip, lateHits, 120, { gridBeats: 0.5, strength: 0 }, ids) === null);
+  check("no hits means nothing to do", quantiseClip(clip, [], 120, { gridBeats: 0.5, strength: 1 }, ids) === null);
+  check("a finer grid pulls hits less far", (() => { const m8 = planMoves(clip, [0.3], 120, { gridBeats: 0.5, strength: 1 })[0]; const m32 = planMoves(clip, [0.3], 120, { gridBeats: 0.125, strength: 1 })[0]; return Math.abs(m32.to - m32.from) <= Math.abs(m8.to - m8.from) && Math.abs(m32.to - 0.3) < 0.0626; })());
+  check("a moved clip keeps its place in the song (starts at its own start)", (() => { const moved = { ...clip, startSec: 4, sourceStartSec: 0.5, durationSec: 2 }; const r = quantiseClip(moved, [0.8], 120, { gridBeats: 0.5, strength: 1 }, ids)!; return Math.abs(land(r.clips, 0.8) - 4.25) < 0.004; })());
+  check("fades of the clip stay at its outer edges", (() => { const r = quantiseClip({ ...clip, fadeInSec: 0.1, fadeOutSec: 0.2 }, lateHits, 120, { gridBeats: 0.5, strength: 1 }, ids)!; const s = [...r.clips].sort((a, c2) => a.startSec - c2.startSec); return s[0].fadeInSec === 0.1 && s[s.length - 1].fadeOutSec === 0.2; })());
+  check("a hit moved earlier than the song's start is kept, not lost", (() => { const r = quantiseClip({ ...clip, startSec: 0.02 }, [0.03], 120, { gridBeats: 0.5, strength: 1 }, ids); return r === null || r.clips.every((p) => p.startSec >= 0); })());
+  check("a gap after a piece is faded out, not cut dead", full.clips.some((p) => p.fadeOutSec > 0));
 }
 
 // ---- anchored pop-ups

@@ -30,7 +30,7 @@ export interface ChordRegion {
   durationSec: number;
 }
 
-const BEATS_PER_BAR = 4;
+const DEFAULT_BEATS_PER_BAR = 4;
 const ROOTS = ["C", "Db", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
 
 interface ChordType {
@@ -181,7 +181,7 @@ function cosine(a: Float64Array, b: Float64Array): number {
  * Chords of one stretch of audio, on the project's beat grid. `samples` is the whole recording (mono).
  * The returned segments are in project beats, so they line up with the ruler and with notes.
  */
-export function detectChords(samples: Float32Array, sampleRate: number, bpm: number, region: ChordRegion): ChordSegment[] {
+export function detectChords(samples: Float32Array, sampleRate: number, bpm: number, region: ChordRegion, beatsPerBar = DEFAULT_BEATS_PER_BAR): ChordSegment[] {
   const beatSec = 60 / bpm;
   const t0 = region.timelineStartSec;
   const t1 = t0 + region.durationSec;
@@ -247,7 +247,7 @@ export function detectChords(samples: Float32Array, sampleRate: number, bpm: num
     return e;
   });
 
-  const switchCost = (beat: number) => (beat % BEATS_PER_BAR === 0 ? 0.2 : 0.5);
+  const switchCost = (beat: number) => (beat % beatsPerBar === 0 ? 0.2 : 0.5);
   const T = beats.length;
   const score = new Float64Array(S);
   const back: Uint8Array[] = [];

@@ -257,7 +257,7 @@ export function SettingsPanel() {
             </button>
           </div>
           <p className="settings-note">
-            Before recording starts, plays 4 clicks at the project tempo — even if the click track is off. Uses the click
+            Before recording starts, plays one bar of clicks (4 in 4/4, 3 in 3/4) at the project tempo — even if the click track is off. Uses the click
             volume below.
           </p>
           <div className="settings-row">

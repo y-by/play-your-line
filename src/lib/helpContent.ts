@@ -46,8 +46,17 @@ export const HELP_TOPICS: HelpTopic[] = [
     group: "Recording",
     question: "How do I record?",
     answer: [
-      "Press the round dot on your channel to arm it, then press the red record button (or R). A four-click count-in plays first if 1234 is switched on, and the recording lands exactly where you started.",
+      "Press the round dot on your channel to arm it, then press the red record button (or R). A one-bar count-in (four clicks in 4/4, three in 3/4) plays first if the numbers button is switched on, and the recording lands exactly where you started.",
       "You can also drag an audio file onto your own channel to put it there. A recording is never changed: what you see on a channel are clips, windows onto it.",
+    ],
+  },
+  {
+    id: "time-signature",
+    group: "Getting started",
+    question: "How do I change the time signature, for example to 3/4?",
+    answer: [
+      "Only the Owner can. In the number display at the top, press the time signature (it says 4/4 at first) and pick another one, such as 3/4. The beats stay exactly where they were; only the way they are grouped into bars changes.",
+      "The bar lines, the bar numbers, the click's strong first beat and the count-in all follow it. Notes pinned to a bar keep their place in the song, so their bar number may change.",
     ],
   },
   {
@@ -85,6 +94,15 @@ export const HELP_TOPICS: HelpTopic[] = [
     answer: [
       "Drag a clip to move it. Drag its left or right edge to trim. Press S to split at the playhead, Ctrl or ⌘ + D to duplicate, Delete to remove. ⌘ or Ctrl + Z undoes (add ⇧ to redo).",
       "Where two clips overlap, the newer one plays and the older one is silent underneath, but it plays again wherever nothing covers it.",
+    ],
+  },
+  {
+    id: "quantise",
+    group: "Editing clips",
+    question: "How do I quantise a drum or bass clip?",
+    answer: [
+      "Select a clip on a channel of yours and press the Quantise button in the toolbar. Pick the grid (1/8, 1/16 or 1/32), then Strength: 100% puts every hit exactly on the grid, 50% moves each one half way. The hits it found are marked on the clip first, so you can see what it will do.",
+      "It works best on drums and picked or plucked bass, where each hit starts sharply. If it misses soft notes, raise Sensitivity; if it marks too many, lower it. Quantise cuts the clip into pieces and moves them; your recording is never changed, and Undo puts it all back.",
     ],
   },
   {
