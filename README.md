@@ -50,7 +50,7 @@ ramp; the fades are heard in playback and in Export Mix, and can be undone.
 
 **Notes.** Switch notes on with the notes button (they are off by default). Write a note, tag
 a person with `@`, pin it to any bar, attach it to a channel (it then wears that channel's colour)
-and see it three ways: a tray along the bottom, floating cards, and flags on the bar ruler. Marking
+and see it three ways: a tray along the bottom, floating cards (editable too), and flags on the bar ruler. Marking
 a note done archives it. A person you tag gets an orange `@` badge on the notes button and a message.
 
 **Help.** The menu has a Help page with short answers, grouped by what you are doing. Small "?" buttons in the FX box, the Tuner and the Notes tray open the short answer for that tool, with a link to the full page. (The answers live in `src/lib/helpContent.ts`.)

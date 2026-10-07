@@ -1,6 +1,10 @@
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
-import { pinLabel } from "../../lib/notes";
+import { useAuthStore } from "../../store/useAuthStore";
+import { barOfBeat, mentionedIds, pinLabel } from "../../lib/notes";
+import { MentionTextarea } from "./MentionTextarea";
+import { BarPin } from "./BarPin";
+import { useMembers } from "./useMembers";
 import { authorInitial, noteTint, useNoteTracks } from "./noteStyle";
 import { CheckIcon, CloseIcon } from "../icons/Icons";
 import type { ProjectNote } from "../../types/project";
@@ -14,7 +18,23 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
   const jumpToNote = useProjectStore((s) => s.jumpToNote);
   const canWrite = useProjectStore((s) => s.canWriteNotes());
   const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
+  const editNote = useProjectStore((s) => s.editNote);
+  const uid = useAuthStore((s) => s.userId);
+  const isOwner = useProjectStore((s) => s.isInitiator());
+  const members = useMembers();
+  const canEdit = canWrite && (note.authorId === uid || isOwner);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(note.body);
+  const [pinned, setPinned] = useState(note.atBeat !== null);
+  const [bar, setBar] = useState(barOfBeat(note.atBeat ?? 0, beatsPerBar));
+
+  const startEdit = () => {
+    setDraft(note.body);
+    setPinned(note.atBeat !== null);
+    setBar(barOfBeat(note.atBeat ?? 0, beatsPerBar));
+    setEditing(true);
+  };
 
   return (
     <div className="note-card plugin-skin" style={{ left: x, top: y, "--note-color": noteTint(note, tracks) } as React.CSSProperties}>
@@ -49,6 +69,11 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
           </button>
         )}
         <span className="note-card-grow" />
+        {canEdit && !editing && (
+          <button className="note-act" onClick={startEdit} title="Edit" aria-label="Edit">
+            <span aria-hidden="true">✎</span>
+          </button>
+        )}
         <button className="note-act" onClick={() => minimizeNoteCard(note.id, true)} title="Minimise to the bottom row" aria-label="Minimise">
           <span aria-hidden="true">–</span>
         </button>
@@ -56,8 +81,30 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
           <CloseIcon size={12} />
         </button>
       </div>
-      <p className="note-card-body">{note.body}</p>
-      {canWrite && (
+      {editing ? (
+        <div className="note-edit">
+          <MentionTextarea value={draft} onChange={setDraft} members={members} label="Edit note" />
+          <BarPin pinned={pinned} bar={bar} onPinned={setPinned} onBar={setBar} />
+          <div>
+            <button
+              className="note-send"
+              disabled={!draft.trim()}
+              onClick={() => {
+                void editNote(note.id, { body: draft.trim(), mentions: mentionedIds(draft, members), atBeat: pinned ? (bar - 1) * beatsPerBar : null });
+                setEditing(false);
+              }}
+            >
+              Save
+            </button>
+            <button className="note-opt" onClick={() => setEditing(false)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <p className="note-card-body">{note.body}</p>
+      )}
+      {canWrite && !editing && (
         <button className="note-card-done" onClick={() => void setNoteDone(note.id, true)}>
           <CheckIcon size={12} /> Done
         </button>
