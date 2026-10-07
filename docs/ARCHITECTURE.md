@@ -314,6 +314,8 @@ src/
     coverImage.ts              shrinks a cover image before upload
     errorMessage.ts            reads the message out of a Supabase error
     mixdown.ts, wav.ts         export and 32-bit float WAV encoding
+    mp3.ts                     MP3 encoding of the mix (the Published listening copy)
+    takeCache.ts               recordings kept on the device (Cache Storage), so each is downloaded once
     inputDevices.ts, outputDevices.ts
   worklets/pcm-recorder-processor.js   lossless capture on the audio thread
 supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0037)

@@ -14,7 +14,7 @@ tempo and click, mute / solo / volume, and trimming that never destroys a record
 
 ## How it works
 
-**Projects.** The home page shows your projects as cover tiles: Drafts (large) and Published. Hover a tile (always visible on a touch screen) for **Publish / Unpublish** (the Owner) and **Export mix**. Inside a project there is no separate header: the back button and the name (the Owner clicks it to rename) sit at the left of the control bar, and Draft / Live, who is here, and your role at the right.
+**Projects.** The home page shows your projects as cover tiles: Drafts (large) and Published. Hover a tile (always visible on a touch screen) for **Publish / Unpublish** (the Owner), **Update listening copy** (a published project, the Owner) and **Export mix**. Publishing also makes a **listening copy** (one MP3 of the final mix, about 1 MB a minute) that Play on the Published list streams instead of downloading every channel; use the refresh button after you change the mix. Recordings you have downloaded stay on your device (browser cache, up to about 600 MB), so a project opens without downloading them again. Inside a project there is no separate header: the back button and the name (the Owner clicks it to rename) sit at the left of the control bar, and Draft / Live, who is here, and your role at the right.
 The Owner can add a cover image in **Settings**; without one, the tile gets generated artwork.
 
 **Roles.** One person owns a project; each channel belongs to one player.
@@ -78,7 +78,7 @@ final mix. Solo is never saved.
 
 ## Run it locally
 
-You need Node 22+ and a Supabase project (Google sign-in on, the files in `supabase/migrations/` run in number order, a private `takes` storage bucket).
+You need Node 22+ and a Supabase project (Google sign-in on, the files in `supabase/migrations/` run in number order, a private `takes` storage bucket; migrations 0029 and 0038 add the private `covers` and `previews` buckets).
 
 ```bash
 git clone https://github.com/y-by/play-your-line.git

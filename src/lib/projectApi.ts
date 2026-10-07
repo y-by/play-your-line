@@ -2,6 +2,7 @@ import { supabase } from "./supabaseClient";
 import type { ProjectNote, Project, Track, Take, Clip, ChannelFx } from "../types/project";
 import { fxFromRow, fxToRow } from "./channelFx";
 import type { StoredFile } from "./orphans";
+import { forgetCachedProject, getCachedTake, putCachedTake } from "./takeCache";
 
 function requireSupabase() {
   if (!supabase) throw new Error("Supabase is not configured — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
@@ -19,6 +20,7 @@ function mapProject(row: any, tracks: Track[], takes: Record<string, Take>): Pro
     mixerName: null,
     initiatorName: null,
     coverPath: row.cover_path ?? null,
+    previewPath: row.preview_path ?? null,
     listeners: [],
     status: row.status,
     createdAt: new Date(row.created_at).getTime(),
@@ -258,8 +260,11 @@ export async function deleteProject(projectId: string): Promise<void> {
   }
   const covers = await listFolderFiles("covers", projectId);
   if (covers.length) await client.storage.from("covers").remove(covers);
+  const previews = await listFolderFiles("previews", projectId);
+  if (previews.length) await client.storage.from("previews").remove(previews);
   const { error } = await client.from("projects").delete().eq("id", projectId);
   if (error) throw error;
+  void forgetCachedProject(projectId);
 }
 
 /** Owner: saves a new cover image (already shrunk) and removes the previous file. Returns the new path. */
@@ -314,6 +319,45 @@ export async function unpublishProject(projectId: string): Promise<void> {
   const client = requireSupabase();
   const { error } = await client.from("projects").update({ status: "draft", published_at: null }).eq("id", projectId);
   if (error) throw error;
+  // The listening copy only exists for published projects; failing to remove it is not worth failing the unpublish.
+  try {
+    await removePreview(projectId);
+  } catch (err) {
+    console.error("Couldn't remove the listening copy:", err);
+  }
+}
+
+/** Replaces the project's listening copy (an MP3 of the saved final mix) and removes the previous file. */
+export async function setProjectPreview(projectId: string, mp3: Blob): Promise<void> {
+  const client = requireSupabase();
+  const { data: row } = await client.from("projects").select("preview_path").eq("id", projectId).maybeSingle();
+  const previousPath: string | null = row?.preview_path ?? null;
+  const path = `${projectId}/${crypto.randomUUID()}.mp3`;
+  const { error: uploadError } = await client.storage.from("previews").upload(path, mp3, { contentType: "audio/mpeg", upsert: false });
+  if (uploadError) throw uploadError;
+  const { error } = await client.from("projects").update({ preview_path: path }).eq("id", projectId);
+  if (error) {
+    await client.storage.from("previews").remove([path]);
+    throw error;
+  }
+  if (previousPath) await client.storage.from("previews").remove([previousPath]);
+}
+
+/** Removes the listening copy (file and path). */
+export async function removePreview(projectId: string): Promise<void> {
+  const client = requireSupabase();
+  const files = await listFolderFiles("previews", projectId);
+  if (files.length) await client.storage.from("previews").remove(files);
+  const { error } = await client.from("projects").update({ preview_path: null }).eq("id", projectId);
+  if (error) throw error;
+}
+
+/** A short-lived link to stream the listening copy from. */
+export async function getPreviewUrl(previewPath: string): Promise<string> {
+  const client = requireSupabase();
+  const { data, error } = await client.storage.from("previews").createSignedUrl(previewPath, 60 * 60);
+  if (error) throw error;
+  return data.signedUrl;
 }
 
 export async function publishProject(projectId: string): Promise<void> {
@@ -489,9 +533,12 @@ export async function deleteClips(clipIds: string[]): Promise<void> {
 }
 
 export async function downloadTakeBlob(storagePath: string): Promise<Blob> {
+  const cached = await getCachedTake(storagePath);
+  if (cached) return cached;
   const client = requireSupabase();
   const { data, error } = await client.storage.from("takes").download(storagePath);
   if (error) throw error;
+  void putCachedTake(storagePath, data);
   return data;
 }
 

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { AppShell } from "../components/AppShell";
 import { SignInGate } from "../components/SignInGate";
-import { listPublishedProjects, getProject, hydrateTakeBlobs, fetchParticipantNames } from "../lib/projectApi";
+import { listPublishedProjects, getProject, hydrateTakeBlobs, fetchParticipantNames, getPreviewUrl } from "../lib/projectApi";
 import { mixdownProject } from "../lib/mixdown";
 import type { Project } from "../types/project";
 import { PlayIcon, PauseIcon, SpinnerIcon } from "../components/icons/Icons";
@@ -36,11 +36,21 @@ function SongListItem({ project, people }: { project: Project; people: string[] 
 
     setState("loading");
     try {
-      const full = await getProject(project.id);
-      await hydrateTakeBlobs(full);
-      const blob = await mixdownProject(full);
-      const url = URL.createObjectURL(blob);
-      objectUrlRef.current = url;
+      let url: string | null = null;
+      if (project.previewPath) {
+        // The listening copy streams (a fraction of the data); older projects fall back to mixing every channel here.
+        try {
+          url = await getPreviewUrl(project.previewPath);
+        } catch (err) {
+          console.error("Listening copy unavailable, mixing the channels instead:", err);
+        }
+      }
+      if (!url) {
+        const full = await getProject(project.id);
+        await hydrateTakeBlobs(full);
+        url = URL.createObjectURL(await mixdownProject(full));
+        objectUrlRef.current = url;
+      }
       const audio = new Audio(url);
       audio.addEventListener("ended", () => setState("paused"));
       audioRef.current = audio;

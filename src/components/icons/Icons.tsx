@@ -97,6 +97,15 @@ export function ExportIcon({ size = 15 }: IconProps) {
   );
 }
 
+export function RefreshIcon({ size = 15 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M20 11a8 8 0 0 0-14.5-4.3L4 9M4 4v5h5" />
+      <path d="M4 13a8 8 0 0 0 14.5 4.3L20 15M20 20v-5h-5" />
+    </svg>
+  );
+}
+
 export function MicIcon({ size = 14 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

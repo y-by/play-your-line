@@ -12,7 +12,7 @@ import { createReverbImpulse, fxTailSec } from "./channelFx";
  *
  * Takes must already have their audio downloaded (see hydrateTakeBlobs).
  */
-export async function mixdownProject(project: Project): Promise<Blob> {
+export async function renderMix(project: Project): Promise<AudioBuffer> {
   const decodeCtx = new AudioContext();
   const buffers = new Map<string, AudioBuffer>();
   for (const take of Object.values(project.takes)) {
@@ -53,6 +53,10 @@ export async function mixdownProject(project: Project): Promise<Blob> {
     }
   }
 
-  const rendered = await offlineCtx.startRendering();
-  return encodeWavFloat32(rendered);
+  return offlineCtx.startRendering();
+}
+
+/** The final mix as a lossless WAV file. */
+export async function mixdownProject(project: Project): Promise<Blob> {
+  return encodeWavFloat32(await renderMix(project));
 }

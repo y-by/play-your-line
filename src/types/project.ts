@@ -79,6 +79,8 @@ export interface Project {
   initiatorName: string | null;
   /** Path of the cover image in the "covers" bucket, if the Owner added one. */
   coverPath: string | null;
+  /** Path of the MP3 listening copy in the "previews" bucket, set when the project is published. */
+  previewPath: string | null;
   /** People invited to hear the draft. */
   listeners: { userId: string; name: string | null }[];
   status: ProjectStatus;
