@@ -12,7 +12,6 @@ const MIN_BARS = 16;
 export function Arrangement() {
   const project = useProjectStore((s) => s.project);
   const positionSec = useProjectStore((s) => s.positionSec);
-  const isPlaying = useProjectStore((s) => s.isPlaying);
   const followPlayhead = useProjectStore((s) => s.followPlayhead);
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const pxPerBeat = useProjectStore((s) => s.pxPerBeat);
@@ -82,28 +81,47 @@ export function Arrangement() {
   const totalBars = Math.max(MIN_BARS, Math.ceil(reachSec / barSec(bpm, beatsPerBar)) + 4);
   const timelinePx = totalBars * barPx;
 
-  // While playing, keep the playhead in view.
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el || !isPlaying || !followPlayhead) return;
+  // With "follow playhead" on, the playhead stays in the middle of the timeline and the song moves under it
+  // (until the start is reached: the view cannot scroll left of bar 1, so there the playhead walks to the middle first).
+  // Switching it on glides the view to its place instead of cutting there.
+  const centreTarget = (el: HTMLElement, sec: number, pps: number) => {
     const infoW = parseFloat(getComputedStyle(el).getPropertyValue("--info-w")) || 224;
-    const x = positionSec * pxPerSec;
-    const visibleStart = el.scrollLeft;
-    const visibleEnd = el.scrollLeft + el.clientWidth - infoW;
-    if (x > visibleEnd - 40 || x < visibleStart) el.scrollLeft = Math.max(0, x - 40);
-  }, [positionSec, isPlaying, pxPerSec, followPlayhead]);
-
-  // When the playhead jumps back to the left of the view (Back to start, a loop
-  // wrapping, a click on the ruler), bring the view with it — even when stopped.
-  const pxPerSecRef = useRef(pxPerSec);
+    return Math.max(0, sec * pps - (el.clientWidth - infoW) / 2);
+  };
+  const live = useRef({ sec: positionSec, pps: pxPerSec });
   useEffect(() => {
-    pxPerSecRef.current = pxPerSec;
-  }, [pxPerSec]);
+    live.current = { sec: positionSec, pps: pxPerSec };
+  }, [positionSec, pxPerSec]);
+  const gliding = useRef(false);
   useEffect(() => {
     const el = scrollRef.current;
     if (!el || !followPlayhead) return;
-    if (positionSec * pxPerSecRef.current < el.scrollLeft) el.scrollLeft = Math.max(0, positionSec * pxPerSecRef.current - 40);
-  }, [positionSec, followPlayhead]);
+    const start = el.scrollLeft;
+    let began = -1;
+    const still = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (still || Math.abs(centreTarget(el, live.current.sec, live.current.pps) - start) < 4) return;
+    gliding.current = true;
+    let frame = 0;
+    const step = (now: number) => {
+      if (began < 0) began = now;
+      const t = Math.min(1, (now - began) / 450);
+      const ease = 1 - Math.pow(1 - t, 3);
+      const target = centreTarget(el, live.current.sec, live.current.pps);
+      el.scrollLeft = start + (target - start) * ease;
+      if (t < 1) frame = requestAnimationFrame(step);
+      else gliding.current = false;
+    };
+    frame = requestAnimationFrame(step);
+    return () => {
+      cancelAnimationFrame(frame);
+      gliding.current = false;
+    };
+  }, [followPlayhead]);
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el || !followPlayhead || gliding.current) return;
+    el.scrollLeft = centreTarget(el, positionSec, pxPerSec);
+  }, [positionSec, pxPerSec, followPlayhead]);
 
   // Pinch to zoom on a trackpad (and Ctrl + scroll wheel). The moment under
   // your fingers stays put while the timeline stretches around it.
