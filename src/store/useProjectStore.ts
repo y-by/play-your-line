@@ -1041,7 +1041,12 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const { project } = get();
       const uid = currentUserId();
       if (!project || !uid) return false;
-      return project.initiatorId === uid || project.mixerId === uid || project.tracks.some((t) => t.assignedUserId === uid);
+      return (
+        project.initiatorId === uid ||
+        project.mixerId === uid ||
+        project.tracks.some((t) => t.assignedUserId === uid) ||
+        project.listeners.some((l) => l.userId === uid && l.canPlay)
+      );
     },
     canRenameTrack: (track) => {
       const { project } = get();
@@ -1070,8 +1075,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           {
             initiatorId: project.initiatorId,
             mixerId: project.mixerId,
-            listenerIds: project.listeners.map((l) => l.userId),
-            assignedUserIds: project.tracks.map((t) => t.assignedUserId),
+            listenerIds: project.listeners.filter((l) => !l.canPlay).map((l) => l.userId),
+            assignedUserIds: [...project.tracks.map((t) => t.assignedUserId), ...project.listeners.filter((l) => l.canPlay).map((l) => l.userId)],
           },
           currentUserId()
         )

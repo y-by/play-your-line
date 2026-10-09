@@ -93,9 +93,10 @@ export async function getProject(id: string): Promise<Project> {
   if (tracksError) throw tracksError;
 
   const trackIds = (trackRows ?? []).map((t) => t.id);
-  const { data: listenerRows, error: listenersError } = await client.from("project_listeners").select("user_id").eq("project_id", id);
+  const { data: listenerRows, error: listenersError } = await client.from("project_listeners").select("user_id, can_play").eq("project_id", id);
   if (listenersError) throw listenersError;
   const listenerIds = (listenerRows ?? []).map((r) => r.user_id as string);
+  const canPlayIds = new Set((listenerRows ?? []).filter((r) => r.can_play).map((r) => r.user_id as string));
   const assignedUserIds = [
     ...new Set([
       ...(trackRows ?? []).map((t) => t.assigned_user_id).filter((v): v is string => !!v),
@@ -136,7 +137,7 @@ export async function getProject(id: string): Promise<Project> {
   const project = mapProject(projectRow, tracks, takes);
   project.initiatorName = namesById.get(project.initiatorId) ?? null;
   project.mixerName = project.mixerId ? (namesById.get(project.mixerId) ?? null) : null;
-  project.listeners = listenerIds.map((userId) => ({ userId, name: namesById.get(userId) ?? null }));
+  project.listeners = listenerIds.map((userId) => ({ userId, name: namesById.get(userId) ?? null, canPlay: canPlayIds.has(userId) }));
   return project;
 }
 
@@ -700,16 +701,17 @@ export async function removeListener(projectId: string, userId: string): Promise
   if (error) throw error;
 }
 
-export async function fetchListeners(projectId: string): Promise<{ userId: string; name: string | null }[]> {
+export async function fetchListeners(projectId: string): Promise<{ userId: string; name: string | null; canPlay: boolean }[]> {
   const client = requireSupabase();
-  const { data, error } = await client.from("project_listeners").select("user_id").eq("project_id", projectId);
+  const { data, error } = await client.from("project_listeners").select("user_id, can_play").eq("project_id", projectId);
   if (error) throw error;
   const ids = (data ?? []).map((r) => r.user_id as string);
+  const canPlay = new Set((data ?? []).filter((r) => r.can_play).map((r) => r.user_id as string));
   if (ids.length === 0) return [];
   const { data: profiles, error: pe } = await client.from("profiles").select("id, display_name").in("id", ids);
   if (pe) throw pe;
   const names = new Map((profiles ?? []).map((p) => [p.id as string, p.display_name as string | null]));
-  return ids.map((userId) => ({ userId, name: names.get(userId) ?? null }));
+  return ids.map((userId) => ({ userId, name: names.get(userId) ?? null, canPlay: canPlay.has(userId) }));
 }
 
 // ---- Notes ----------------------------------------------------------------------------------

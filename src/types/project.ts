@@ -84,7 +84,7 @@ export interface Project {
   /** Path of the MP3 listening copy in the "previews" bucket, set when the project is published. */
   previewPath: string | null;
   /** People invited to hear the draft. */
-  listeners: { userId: string; name: string | null }[];
+  listeners: { userId: string; name: string | null; canPlay: boolean }[];
   status: ProjectStatus;
   createdAt: number;
   updatedAt: number;
