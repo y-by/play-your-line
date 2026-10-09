@@ -40,8 +40,8 @@ starts as their Google name; they can change it to a stage name in **Settings**.
 
 **Recording.** Arm your channel (the dot), press the red button or `R`. A count-in (1, 2 or 3 bars,
 chosen in Settings) plays first, and the take lands exactly where you started. You can also drag an audio file onto your
-own channel. Each channel can have its own input (the mic button in the channel strip: an audio
-interface input or a microphone); channels without one use the input chosen in Settings.
+own channel. Each channel can have its own input (the Input button in the channel strip, shown only
+when there is more than one input to choose from); channels without a pick use the input chosen in Settings.
 
 **Clips.** A recording is never modified. What you see on a channel are clips, windows onto the
 recording: trim, split, move or duplicate them freely, and the original audio is always still
