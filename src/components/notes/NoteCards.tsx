@@ -7,11 +7,16 @@ import { BarPin } from "./BarPin";
 import { useMembers } from "./useMembers";
 import { authorInitial, noteTint, useNoteTracks } from "./noteStyle";
 import { CheckIcon, CloseIcon } from "../icons/Icons";
+import type { NoteCardState, NoteCardsLayout } from "../../store/useProjectStore";
 import type { ProjectNote } from "../../types/project";
 
-function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
+function Card({ note, state, layout, index, front }: { note: ProjectNote; state: NoteCardState; layout: NoteCardsLayout; index: number; front: boolean }) {
+  const { x, y, w, h } = state;
+  const free = state.free === true;
+  const bringNoteFront = useProjectStore((s) => s.bringNoteFront);
   const tracks = useNoteTracks();
   const moveNoteCard = useProjectStore((s) => s.moveNoteCard);
+  const resizeNoteCard = useProjectStore((s) => s.resizeNoteCard);
   const minimizeNoteCard = useProjectStore((s) => s.minimizeNoteCard);
   const unfloatNote = useProjectStore((s) => s.unfloatNote);
   const setNoteDone = useProjectStore((s) => s.setNoteDone);
@@ -24,6 +29,8 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
   const members = useMembers();
   const canEdit = canWrite && (note.authorId === uid || isOwner);
   const drag = useRef<{ dx: number; dy: number } | null>(null);
+  const grow = useRef<{ sx: number; sy: number; w: number; h: number } | null>(null);
+  const cardEl = useRef<HTMLDivElement>(null);
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(note.body);
   const [pinned, setPinned] = useState(note.atBeat !== null);
@@ -37,7 +44,21 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
   };
 
   return (
-    <div className="note-card plugin-skin" style={{ left: x, top: y, "--note-color": noteTint(note, tracks) } as React.CSSProperties}>
+    <div
+      ref={cardEl}
+      className={free ? "note-card free plugin-skin" : `note-card ${layout} plugin-skin`}
+      style={
+        {
+          ...(free ? { left: x, top: y } : layout === "stack" ? { top: 40 + index * 34, zIndex: front ? 200 : index + 1 } : {}),
+          width: w,
+          height: h,
+          "--note-color": noteTint(note, tracks),
+        } as unknown as React.CSSProperties
+      }
+      onPointerDownCapture={() => {
+        if (!front) bringNoteFront(note.id);
+      }}
+    >
       <div
         className="note-card-head"
         onPointerDown={(e) => {
@@ -48,7 +69,8 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
           } catch {
             // dragging still works while the pointer stays over the header
           }
-          drag.current = { dx: e.clientX - x, dy: e.clientY - y };
+          const box = cardEl.current?.getBoundingClientRect();
+          drag.current = { dx: e.clientX - (box?.left ?? x), dy: e.clientY - (box?.top ?? y) };
         }}
         onPointerMove={(e) => {
           if (!drag.current) return;
@@ -109,11 +131,36 @@ function Card({ note, x, y }: { note: ProjectNote; x: number; y: number }) {
           <CheckIcon size={12} /> Done
         </button>
       )}
+      <div
+        className="note-card-resize"
+        title="Drag to resize"
+        aria-label="Resize note"
+        onPointerDown={(e) => {
+          const box = cardEl.current?.getBoundingClientRect();
+          if (!box) return;
+          e.preventDefault();
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {
+            // resizing still works while the pointer stays over the corner
+          }
+          grow.current = { sx: e.clientX, sy: e.clientY, w: box.width, h: box.height };
+        }}
+        onPointerMove={(e) => {
+          if (!grow.current) return;
+          const box = cardEl.current?.getBoundingClientRect();
+          const nw = Math.max(200, Math.min(window.innerWidth - (box?.left ?? 0) - 8, grow.current.w + e.clientX - grow.current.sx));
+          const nh = Math.max(110, Math.min(window.innerHeight - (box?.top ?? 0) - 8, grow.current.h + e.clientY - grow.current.sy));
+          resizeNoteCard(note.id, Math.round(nw), Math.round(nh));
+        }}
+        onPointerUp={() => (grow.current = null)}
+        onPointerCancel={() => (grow.current = null)}
+      />
     </div>
   );
 }
 
-/** Notes popped out of the tray: floating cards you can drag anywhere, and a row of minimised ones along the bottom. */
+/** Notes popped out of the tray: floating cards (three to a row on the right, or stacked; drag one away to place it anywhere), and a row of minimised ones along the bottom. */
 export function NoteCards() {
   const visible = useProjectStore((s) => s.notesVisible);
   const tracks = useNoteTracks();
@@ -121,6 +168,10 @@ export function NoteCards() {
   const notes = useProjectStore((s) => s.notes);
   const minimizeNoteCard = useProjectStore((s) => s.minimizeNoteCard);
   const trayOpen = useProjectStore((s) => s.notesTrayOpen);
+  const layout = useProjectStore((s) => s.noteCardsLayout);
+  const setLayout = useProjectStore((s) => s.setNoteCardsLayout);
+  const unfloatAll = useProjectStore((s) => s.unfloatAllNotes);
+  const front = useProjectStore((s) => s.noteCardFront);
   if (!visible) return null;
 
   const live = notes.filter((n) => cards[n.id] && !n.done);
@@ -129,9 +180,21 @@ export function NoteCards() {
 
   return (
     <>
-      {floating.map((n) => (
-        <Card key={n.id} note={n} x={cards[n.id].x} y={cards[n.id].y} />
-      ))}
+      {live.length > 0 && (
+        <div className={`note-cards-area ${layout}`}>
+          <div className="note-cards-bar plugin-skin">
+            <button className="note-opt" onClick={() => setLayout(layout === "grid" ? "stack" : "grid")} title={layout === "grid" ? "Pile the cards on top of each other" : "Lay the cards out three in a row"}>
+              {layout === "grid" ? "Stack" : "Grid"}
+            </button>
+            <button className="note-opt" onClick={unfloatAll} title="Take every card off the screen">
+              Close all
+            </button>
+          </div>
+          {floating.map((n, i) => (
+            <Card key={n.id} note={n} state={cards[n.id]} layout={layout} index={floating.filter((m, j) => j < i && cards[m.id].free !== true).length} front={(front && floating.some((m) => m.id === front) ? front : floating[floating.length - 1]?.id) === n.id} />
+          ))}
+        </div>
+      )}
       {minimised.length > 0 && !trayOpen && (
         <div className="note-dock" aria-label="Minimised notes">
           {minimised.map((n) => (

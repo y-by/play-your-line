@@ -19,6 +19,9 @@ export function NotesTray() {
   const channelFilter = useProjectStore((s) => s.noteChannelFilter);
   const showChannelNotes = useProjectStore((s) => s.showChannelNotes);
   const channelName = useProjectStore((s) => s.project?.tracks.find((t) => t.id === s.noteChannelFilter)?.instrument ?? null);
+  const floatAll = useProjectStore((s) => s.floatAllNotes);
+  const unfloatAll = useProjectStore((s) => s.unfloatAllNotes);
+  const cardCount = useProjectStore((s) => Object.keys(s.noteCards).length);
   const [tab, setTab] = useState<"open" | "done">("open");
 
   if (!visible || (!canWrite && notes.length === 0)) return null;
@@ -59,6 +62,18 @@ export function NotesTray() {
           <button className="note-chip" onClick={() => showChannelNotes(null)} title="Show every channel's notes">
             {channelName ?? "Channel"} <CloseIcon size={10} />
           </button>
+        )}
+        {open && openNotes.length > 0 && (
+          <>
+            <button className="note-opt" onClick={floatAll} title="Pop every open note out as a card on the right of the screen">
+              Open all
+            </button>
+            {cardCount > 0 && (
+              <button className="note-opt" onClick={unfloatAll} title="Take every card off the screen">
+                Close all
+              </button>
+            )}
+          </>
         )}
         <button className="notes-close" onClick={() => setOpen(!open)} aria-label={open ? "Close the notes tray" : "Open the notes tray"}>
           {open ? <CloseIcon size={14} /> : <span aria-hidden="true">＋</span>}

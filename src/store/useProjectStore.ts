@@ -272,9 +272,20 @@ interface ProjectState {
   dismissNoteAlert: () => void;
   openNoteAlert: () => void;
   /** Notes popped out as floating cards, with where they sit and whether they are minimised to the bottom row. */
-  noteCards: Record<string, { x: number; y: number; min: boolean }>;
+  noteCards: Record<string, NoteCardState>;
   floatNote: (id: string) => void;
+  /** Pop every open note out as a card (and bring minimised ones back). */
+  floatAllNotes: () => void;
+  /** Take every card off the screen. */
+  unfloatAllNotes: () => void;
+  noteCardsLayout: NoteCardsLayout;
+  /** Switch between the grid and the stack; this also puts dragged-away cards back in line. */
+  setNoteCardsLayout: (layout: NoteCardsLayout) => void;
+  /** The card shown on top of the stack. */
+  noteCardFront: string | null;
+  bringNoteFront: (id: string) => void;
   moveNoteCard: (id: string, x: number, y: number) => void;
+  resizeNoteCard: (id: string, w: number, h: number) => void;
   minimizeNoteCard: (id: string, min: boolean) => void;
   unfloatNote: (id: string) => void;
   /** The flag on the timeline whose bubble is open. */
@@ -368,6 +379,22 @@ function readStoredSnapEnabled(): boolean {
 
 
 const NOTES_VISIBLE_KEY = "pyl.notesVisible";
+/** Where a floating note card sits, and the size the owner dragged it to (unset = default size). */
+export type NoteCardState = { x: number; y: number; min: boolean; w?: number; h?: number; free?: boolean };
+
+/** How cards that have not been dragged away sit on the right of the screen. */
+export type NoteCardsLayout = "grid" | "stack";
+
+const noteLayoutKey = "pyl.noteCardsLayout";
+
+function readNoteLayout(): NoteCardsLayout {
+  try {
+    return localStorage.getItem(noteLayoutKey) === "stack" ? "stack" : "grid";
+  } catch {
+    return "grid";
+  }
+}
+
 const noteCardsKey = (projectId: string) => `pyl.noteCards.${projectId}`;
 
 /** Which channels of a project have their chords switched on. Saved on this device, so they come back next visit. */
@@ -399,7 +426,7 @@ function readNotesVisible(): boolean {
   }
 }
 
-function readNoteCards(projectId: string): Record<string, { x: number; y: number; min: boolean }> {
+function readNoteCards(projectId: string): Record<string, NoteCardState> {
   try {
     const parsed = JSON.parse(localStorage.getItem(noteCardsKey(projectId)) ?? "{}");
     return parsed && typeof parsed === "object" ? parsed : {};
@@ -408,7 +435,7 @@ function readNoteCards(projectId: string): Record<string, { x: number; y: number
   }
 }
 
-function writeNoteCards(projectId: string, cards: Record<string, { x: number; y: number; min: boolean }>) {
+function writeNoteCards(projectId: string, cards: Record<string, NoteCardState>) {
   try {
     localStorage.setItem(noteCardsKey(projectId), JSON.stringify(cards));
   } catch {
@@ -1923,16 +1950,55 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     floatNote: (id) => {
       const project = get().project;
       if (!project || get().noteCards[id]) return;
-      const count = Object.keys(get().noteCards).length;
-      const next = { ...get().noteCards, [id]: { x: 80 + count * 28, y: 150 + count * 28, min: false } };
+      const next = { ...get().noteCards, [id]: { x: 0, y: 0, min: false } };
+      set({ noteCards: next, noteCardFront: id });
+      writeNoteCards(project.id, next);
+    },
+    floatAllNotes: () => {
+      const project = get().project;
+      if (!project) return;
+      const next = { ...get().noteCards };
+      for (const n of get().notes) {
+        if (n.done) continue;
+        next[n.id] = next[n.id] ? { ...next[n.id], min: false } : { x: 0, y: 0, min: false };
+      }
       set({ noteCards: next });
       writeNoteCards(project.id, next);
     },
+    unfloatAllNotes: () => {
+      const project = get().project;
+      if (!project) return;
+      set({ noteCards: {}, noteCardFront: null });
+      writeNoteCards(project.id, {});
+    },
+    noteCardsLayout: readNoteLayout(),
+    setNoteCardsLayout: (layout) => {
+      const project = get().project;
+      try {
+        localStorage.setItem(noteLayoutKey, layout);
+      } catch {
+        // the layout just goes back to the grid next time
+      }
+      const next: Record<string, NoteCardState> = {};
+      for (const [id, c] of Object.entries(get().noteCards)) next[id] = { ...c, free: false };
+      set({ noteCardsLayout: layout, noteCards: next });
+      if (project) writeNoteCards(project.id, next);
+    },
+    noteCardFront: null,
+    bringNoteFront: (id) => set({ noteCardFront: id }),
     moveNoteCard: (id, x, y) => {
       const project = get().project;
       const card = get().noteCards[id];
       if (!project || !card) return;
-      const next = { ...get().noteCards, [id]: { ...card, x, y } };
+      const next = { ...get().noteCards, [id]: { ...card, x, y, free: true } };
+      set({ noteCards: next });
+      writeNoteCards(project.id, next);
+    },
+    resizeNoteCard: (id, w, h) => {
+      const project = get().project;
+      const card = get().noteCards[id];
+      if (!project || !card) return;
+      const next = { ...get().noteCards, [id]: { ...card, w, h } };
       set({ noteCards: next });
       writeNoteCards(project.id, next);
     },

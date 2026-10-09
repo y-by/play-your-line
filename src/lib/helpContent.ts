@@ -157,7 +157,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     question: "How do notes work?",
     answer: [
       "Press the notes button in the control bar to show notes (they are off by default). Write a note, tag someone by typing @ and picking a name, pin it to any bar, and attach it to a channel if it's about one: it then takes that channel's colour.",
-      "Notes show as a tray at the bottom, as floating cards you can pop out, and as flags on the bar ruler. Marking a note done moves it to the archive. People who only listen see only the notes marked as shared with listeners.",
+      "Notes show as a tray at the bottom, as floating cards you can pop out (they open on the right, three to a row, with a button to stack them and Open all / Close all in the tray), and as flags on the bar ruler. Marking a note done moves it to the archive. People who only listen see only the notes marked as shared with listeners.",
     ],
   },
   {
