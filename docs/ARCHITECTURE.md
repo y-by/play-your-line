@@ -179,29 +179,29 @@ Good to know:
   personal and temporary (never saved) and is ignored while recording and in exports.
 - **Channels use the full screen width**, edge to edge, each as one strip: colour/number
   tab · instrument · player name · (on your own channel) an arm dot · M (mute) S (solo) · fader ·
-  **FX** (Owner/Mixer, or the channel's own player). The fader is a real dB scale (−60..+6): 0 dB
+  **Tools** (Owner/Mixer, or the channel's own player). The fader is a real dB scale (−60..+6): 0 dB
   (unity, the default) rests near the top, like a real console — most of the travel is fine
   control right around unity, with a little headroom above and a steep drop toward silence below.
   Underneath the fader, a row of 5 signal lights shows the microphone level while that channel is
   armed, or the channel's own live output level the rest of the time.
-- **Channel FX** (EQ / Compressor / Delay / Reverb): click **FX** to open a small, draggable
+- **Channel Tools** (EQ / Compressor / Delay / Reverb): click **Tools** to open a small, draggable
   plugin-style window. A **power switch** (off by default) turns the channel's effects on; each
   effect also has its own bypass. The header holds a preset menu, Undo (this visit only), Reset and
   **Compare** (hear it dry, local only, never saved); the Owner/Mixer also see a **lock**. Tabs can
-  be **dragged out** of the tab strip into their own draggable windows and docked back (Dock / Dock all). Every FX window (and the tuner) is moved back onto the screen when it opens, changes size or the browser is resized, so none opens half cut off at the bottom. Closing the main window leaves any tab that was dragged out open and on top; the FX button on the strip shows or hides the main window again. Every FX window has a resize corner (a `transform: scale`, 1x to 2x, capped on narrow screens; the main window remembers it in `pyl.fxScale`). Every knob is
+  be **dragged out** of the tab strip into their own draggable windows and docked back (Dock / Dock all). Every Tools window (and the tuner) is moved back onto the screen when it opens, changes size or the browser is resized, so none opens half cut off at the bottom. Closing the main window leaves any tab that was dragged out open and on top; the FX button on the strip shows or hides the main window again. Every FX window has a resize corner (a `transform: scale`, 1x to 2x, capped on narrow screens; the main window remembers it in `pyl.fxScale`). Every knob is
   drag-to-turn (vertical drag, Shift to fine-tune, scroll to nudge, double-click to reset). The EQ
   has a separate Low cut (12 dB per octave high-pass, 20-400 Hz, off at 20) and a gain knob and a frequency knob per band (low shelf 40-800 Hz, mid peak 200 Hz-8 kHz, high shelf 1.5-16 kHz, log-spaced) and shows its frequency-response curve, calculated from the settings with the filters' own formulas (`eqResponseDb`, checked against the browser's filter to 0.000 dB) so it stays right even while the EQ is bypassed; the Compressor has threshold, ratio, attack, release and
   make-up, a live level meter and a gain-reduction meter. Effects that are off or neutral are taken
   out of the signal path (`fxChain.ts`), and Export Mix builds the same chain, so a mix sounds the
-  same everywhere. Volume, mute and pan stay Owner/Mixer-only; FX is shared with the channel's own
+  same everywhere. Volume, mute and pan stay Owner/Mixer-only; the Tools are shared with the channel's own
   player unless the Owner or Mixer locks the channel (enforced by the database).
 - **Notes** (`components/notes/`, `lib/notes.ts`): a tray, floating cards and ruler flags, with
   @tags (`mentions` column), a pin to any bar, channel colours, and a "tagged you" badge and message.
 - **Quantise** (`lib/onsets.ts`, `lib/quantise.ts`, `components/QuantisePanel.tsx`): hits are found from the samples (a rise in loudness, put on the exact start of the sound with a sharp-part view), the clip is cut where a hit has to move, and each piece is placed on the grid by the chosen strength; the previous piece is shortened or faded where pieces would overlap or leave a gap. All of it is ordinary clips, so it goes through `commitClips` (undo, live sharing). Pure and tested with made-up drums and bass. Limits: no time-stretch; pure sustained notes with no attack are hard to find.
 - **Anchored pop-ups** (`lib/anchor.ts`): the "?" help pop-up, tooltips and the note bubble are placed by the browser against what they belong to (CSS anchor positioning; the help pop-up is also a top-layer popover so a scaled or clipped window can't move it). They follow their anchor, flip to the other side or lean away from a screen edge on their own, and where the feature is missing the old measured placement runs instead. An anchored pop-up must come AFTER its anchor in the page, so tooltips are rendered at the end of the page each time.
-- **FX window placement:** a channel's FX window first opens placed by the browser against its FX button (below it, or above it when there is no room; `fx-anchored`), and turns into plain coordinates at the first drag or resize. A window left enlarged opens by coordinates instead, and every FX window is kept on the screen (`useKeepOnScreen`).
+- **Tools window placement:** a channel's Tools window first opens placed by the browser against its Tools button (below it, or above it when there is no room; `fx-anchored`), and turns into plain coordinates at the first drag or resize. A window left enlarged opens by coordinates instead, and every FX window is kept on the screen (`useKeepOnScreen`).
 - **Help** (`pages/HelpPage.tsx`, `lib/helpContent.ts`, `components/HelpHint.tsx`): one list of questions and answers used by the Help page and by the small "?" pop-ups (which open straight under their button and can be dragged by their title if they cover the thing they explain).
-- **Chords and tuner** (`lib/chords.ts`, `lib/tuner.ts`, `TunerPanel.tsx`): our own detectors, pure and tested. The tuner opens from a tuning-fork button at the bottom of the FX window, in a window of its own that stays when the box is closed (a strobe display on a canvas, auto or per-string, bass-capable: 25 Hz to 1.3 kHz, within 1 cent in tests).
+- **Chords and tuner** (`lib/chords.ts`, `lib/tuner.ts`, `TunerPanel.tsx`): our own detectors, pure and tested. The tuner opens from a tuning-fork button at the bottom of the Tools window, in a window of its own that stays when the box is closed (a strobe display on a canvas, auto or per-string, bass-capable: 25 Hz to 1.3 kHz, within 1 cent in tests).
 - **On a phone** (tested at 375 px wide, iPhone 13 mini): the bar sticks to the top while you
   scroll. Row 1 is transport plus the number display; row 2
   is a sideways-sliding strip with everything else. Each channel strip is three short lines in
@@ -229,8 +229,8 @@ An Apple HIG-inspired look, light and dark aware, in plain CSS (`src/index.css` 
   channels in turn. The home cover art draws from the same palette.
 - **Control bar:** a dark, glassy "hardware" strip (number display with bar / beat / time / tempo
   cells), deliberately a little different from the soft cards around it.
-- **Plugin windows (channel FX):** a darker panel with cyan accents, drag-to-turn knobs and a real
-  EQ curve, so FX feels like a plugin rather than a settings form.
+- **Plugin windows (channel Tools):** a darker panel with cyan accents, drag-to-turn knobs and a real
+  EQ curve, so the Tools feel like a plugin rather than a settings form.
 - **Type:** the system font (`-apple-system`, SF Pro on Apple devices), with numbers set in tabular
   figures wherever digits line up.
 - **Cover art:** line-art motifs (rings, orbit, sparkle, stones, waveform, vortex) on a soft

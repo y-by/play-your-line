@@ -95,6 +95,12 @@ interface ProjectState {
   testMetronomeClick: () => void;
   countInEnabled: boolean;
   setCountInEnabled: (enabled: boolean) => void;
+  /** How many bars of clicks play before a recording starts (1 to 3). */
+  /** Whether the hints that appear when pointing at a button are shown. Kept on this device. */
+  tooltipsOn: boolean;
+  setTooltipsOn: (on: boolean) => void;
+  countInBars: number;
+  setCountInBars: (bars: number) => void;
   isPlaying: boolean;
   positionSec: number;
   durationSec: number;
@@ -120,6 +126,12 @@ interface ProjectState {
   refreshInputDevices: () => Promise<void>;
   setInputDevice: (deviceId: string) => Promise<void>;
   setInputChannel: (channelIndex: number | null) => void;
+  /** An input picked for one channel (kept on this device); channels without one use the Settings input. */
+  channelInputs: Record<string, ChannelInput>;
+  /** How many input channels each device exposes, found when a device is picked for a channel. */
+  deviceChannelCounts: Record<string, number>;
+  setChannelInput: (trackId: string, input: ChannelInput | null) => Promise<void>;
+  setDeviceChannelCount: (deviceId: string, count: number) => void;
 
   availableOutputs: OutputDevice[];
   outputDeviceId: string;
@@ -332,6 +344,8 @@ interface ProjectState {
 
 const LATENCY_STORAGE_KEY = "pyl.latencyMs";
 const COUNT_IN_STORAGE_KEY = "pyl.countIn";
+const COUNT_IN_BARS_KEY = "pyl.countInBars";
+const TOOLTIPS_KEY = "pyl.tooltips";
 /** A count-in is one bar of clicks: 4 for 4/4 (this is only the fallback). */
 const COUNT_IN_BEATS = 4;
 const SNAP_ENABLED_KEY = "pyl.snapEnabled";
@@ -384,6 +398,28 @@ export type NoteCardState = { x: number; y: number; min: boolean; w?: number; h?
 
 /** How cards that have not been dragged away sit on the right of the screen. */
 export type NoteCardsLayout = "grid" | "stack";
+
+/** The audio input (device, and which of its channels) a channel records from. */
+export type ChannelInput = { deviceId: string; channelIndex: number | null };
+
+const channelInputsKey = (projectId: string) => `pyl.channelInputs.${projectId}`;
+
+function readChannelInputs(projectId: string): Record<string, ChannelInput> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(channelInputsKey(projectId)) ?? "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function writeChannelInputs(projectId: string, inputs: Record<string, ChannelInput>) {
+  try {
+    localStorage.setItem(channelInputsKey(projectId), JSON.stringify(inputs));
+  } catch {
+    // the picks just won't be remembered
+  }
+}
 
 const noteLayoutKey = "pyl.noteCardsLayout";
 
@@ -520,6 +556,23 @@ function readStoredCountIn(): boolean {
   }
 }
 
+function readStoredTooltips(): boolean {
+  try {
+    return localStorage.getItem(TOOLTIPS_KEY) !== "off"; // on by default
+  } catch {
+    return true;
+  }
+}
+
+function readStoredCountInBars(): number {
+  try {
+    const n = Number(localStorage.getItem(COUNT_IN_BARS_KEY));
+    return n === 2 || n === 3 ? n : 1;
+  } catch {
+    return 1;
+  }
+}
+
 function readStoredLatencyMs(): number | null {
   try {
     const raw = localStorage.getItem(LATENCY_STORAGE_KEY);
@@ -585,9 +638,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   // listening to the song, so you can check your level while playing along).
   // Resolves "default" to a concrete device each time, so a stale alias
   // never silently reads nothing.
+  // The input a channel records from: the one picked for it, when that device is still connected,
+  // otherwise the Settings input.
+  const inputForTrack = (trackId: string | null): ChannelInput => {
+    const own = trackId ? get().channelInputs[trackId] : undefined;
+    if (own && get().availableInputs.some((d) => d.deviceId === own.deviceId)) return own;
+    return { deviceId: get().inputDeviceId, channelIndex: get().inputChannelIndex };
+  };
   const startInputMeter = async () => {
-    const resolved = await resolveInputDeviceId(get().inputDeviceId);
-    await engine.startMonitoring(resolved, get().inputChannelIndex);
+    const input = inputForTrack(get().recordingTrackId ?? get().armedTrackId);
+    const resolved = await resolveInputDeviceId(input.deviceId);
+    await engine.startMonitoring(resolved, input.channelIndex);
   };
   const stopInputMeterIfIdle = () => {
     if (!get().armedTrackId && !get().recordingTrackId && !get().isPlaying) engine.stopMonitoring();
@@ -1093,7 +1154,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           takesVersion: get().takesVersion + 1,
         });
         syncMixToEngine();
-        set({ noteCards: readNoteCards(project.id) });
+        set({ noteCards: readNoteCards(project.id), channelInputs: readChannelInputs(project.id) });
         void refreshNotes(project.id);
         // Bring back the chords the person had switched on here last time.
         void (async () => {
@@ -1183,6 +1244,27 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         // storage unavailable — the setting just won't persist
       }
     },
+    tooltipsOn: readStoredTooltips(),
+    setTooltipsOn: (on) => {
+      set({ tooltipsOn: on });
+      try {
+        if (on) localStorage.removeItem(TOOLTIPS_KEY);
+        else localStorage.setItem(TOOLTIPS_KEY, "off");
+      } catch {
+        // storage unavailable — the setting just won't persist
+      }
+    },
+    countInBars: readStoredCountInBars(),
+    setCountInBars: (bars) => {
+      const clamped = bars === 2 || bars === 3 ? bars : 1;
+      set({ countInBars: clamped });
+      try {
+        if (clamped === 1) localStorage.removeItem(COUNT_IN_BARS_KEY);
+        else localStorage.setItem(COUNT_IN_BARS_KEY, String(clamped));
+      } catch {
+        // storage unavailable — the setting just won't persist
+      }
+    },
     isPlaying: false,
     positionSec: 0,
     durationSec: 0,
@@ -1236,6 +1318,26 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     setInputChannel: (channelIndex) => {
       set({ inputChannelIndex: channelIndex });
       startInputMeter().catch((err) => console.error("Could not start input monitoring:", err));
+    },
+
+    channelInputs: {},
+    deviceChannelCounts: {},
+    setDeviceChannelCount: (deviceId, count) => set({ deviceChannelCounts: { ...get().deviceChannelCounts, [deviceId]: count } }),
+    setChannelInput: async (trackId, input) => {
+      const project = get().project;
+      if (!project) return;
+      const next = { ...get().channelInputs };
+      if (input) next[trackId] = input;
+      else delete next[trackId];
+      set({ channelInputs: next });
+      writeChannelInputs(project.id, next);
+      if (input && get().deviceChannelCounts[input.deviceId] === undefined) {
+        const count = await probeChannelCount(input.deviceId);
+        set({ deviceChannelCounts: { ...get().deviceChannelCounts, [input.deviceId]: count } });
+      }
+      if (get().armedTrackId === trackId) {
+        startInputMeter().catch((err) => console.error("Could not start input monitoring:", err));
+      }
     },
 
     availableOutputs: [],
@@ -2192,8 +2294,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
       try {
         await engine.resume();
-        const resolvedDeviceId = await resolveInputDeviceId(get().inputDeviceId);
-        await engine.startRecording(resolvedDeviceId, get().inputChannelIndex);
+        const input = inputForTrack(trackId);
+        const resolvedDeviceId = await resolveInputDeviceId(input.deviceId);
+        await engine.startRecording(resolvedDeviceId, input.channelIndex);
         const mismatch = engine.getCaptureRateMismatch();
         if (mismatch) {
           const khz = (hz: number) => `${Math.round(hz / 100) / 10} kHz`;
@@ -2224,7 +2327,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       // count-in first when enabled — then flip to "recording" the moment the
       // song position actually starts moving (that's when the take begins).
       const { startsInSec, countInSec } = engine.play(get().positionSec, {
-        countInBeats: get().countInEnabled ? (get().project?.beatsPerBar ?? COUNT_IN_BEATS) : 0,
+        countInBeats: get().countInEnabled ? (get().project?.beatsPerBar ?? COUNT_IN_BEATS) * get().countInBars : 0,
       });
       if (countInSec > 0) {
         set({ recordingPhase: "count-in" });

@@ -554,7 +554,7 @@ export class AudioEngine {
     // Count-in: the last click lands exactly one beat before t0, so the song
     // (and the ongoing click, if on) picks up on the very next beat.
     for (let i = 0; i < countInBeats; i++) {
-      this.scheduleClick(t0 - (countInBeats - i) * beatSec, i === 0, "countin");
+      this.scheduleClick(t0 - (countInBeats - i) * beatSec, i % this.beatsPerBar === 0, "countin");
     }
 
     // A loop (when one is set and this play starts before its end) is scheduled
@@ -1178,9 +1178,10 @@ export class AudioEngine {
   private scheduleClick(time: number, accent: boolean, kind: "grid" | "countin") {
     const osc = this.ctx.createOscillator();
     const gain = this.ctx.createGain();
-    osc.frequency.value = accent ? 1500 : 1000;
+    osc.frequency.value = accent ? 1600 : 900;
     gain.gain.setValueAtTime(0.0001, time);
-    gain.gain.exponentialRampToValueAtTime(1, time + 0.001);
+    // The first beat of a bar is higher and louder, so a count-in (and the click) has its "ONE, two, three, four" feel.
+    gain.gain.exponentialRampToValueAtTime(accent ? 1 : 0.5, time + 0.001);
     gain.gain.exponentialRampToValueAtTime(0.0001, time + 0.05);
     osc.connect(gain);
     gain.connect(this.clickGain);

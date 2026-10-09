@@ -7,6 +7,8 @@ import { ChannelMeter } from "./ChannelMeter";
 import { FaderScale } from "./FaderScale";
 import { PanKnob } from "./PanKnob";
 import { ChannelFx } from "./ChannelFx";
+import { ChannelInput } from "./ChannelInput";
+import { useHasInputChoice } from "./useHasInputChoice";
 import { canAnchor } from "../../lib/anchor";
 import { useProjectStore } from "../../store/useProjectStore";
 import { XmarkCircleIcon, MicIcon, NoteIcon } from "../icons/Icons";
@@ -40,6 +42,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
   const [fxMainOpen, setFxMainOpen] = useState(false);
   const fxButtonRef = useRef<HTMLButtonElement>(null);
   const canUseFx = useProjectStore((s) => s.canUseFx(track));
+  const hasInputChoice = useHasInputChoice();
   const armTrack = useProjectStore((s) => s.armTrack);
   const armed = useProjectStore((s) => canEdit && s.effectiveArmedId() === track.id);
   // Subscribing to these makes the sliders follow the right mix (saved / monitor); effectiveMix does the choosing.
@@ -99,7 +102,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
         </div>
       ) : (
       <div className="info-main">
-        <div className="info-top">
+        <div className={canEdit && hasInputChoice ? "info-top with-input" : "info-top"}>
           {editingInstrument ? (
             <input
               autoFocus
@@ -202,6 +205,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
           </div>
           <PanKnob value={track.pan} disabled={!canMix} onChange={(v) => setChannelPan(track.id, v)} />
           <div className="strip-side">
+          {canEdit && hasInputChoice && <ChannelInput track={track} />}
           {track.clips.length > 0 && (
             <button
               className={chordsShown ? "fx-toggle on" : "fx-toggle"}
@@ -232,11 +236,11 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
                 const rect = fxButtonRef.current?.getBoundingClientRect();
                 if (rect) setFxAnchor({ top: rect.bottom + 4, left: rect.left });
               }}
-              title={track.fx.fxOn ? "Effects are on — EQ, Compressor, Delay and Reverb" : "Effects are off — EQ, Compressor, Delay and Reverb"}
+              title={track.fx.fxOn ? "Tools — effects are on (EQ, Compressor, Delay, Reverb, Tuner)" : "Tools — effects are off (EQ, Compressor, Delay, Reverb, Tuner)"}
               aria-pressed={!!fxAnchor && fxMainOpen}
-              aria-label="Channel effects"
+              aria-label="Channel tools"
             >
-              FX
+              Tools
             </button>
           )}
           </div>

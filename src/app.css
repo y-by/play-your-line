@@ -813,8 +813,9 @@
 
 .settings-panel {
   width: 100%;
-  max-width: 420px;
+  max-width: 480px;
   max-height: 85vh;
+  min-height: min(560px, 85vh);
   overflow-y: auto;
   padding: 0 16px 16px;
 }
@@ -4063,7 +4064,11 @@
 }
 
 .info-top {
-  padding-right: 68px; /* room for the chords and FX buttons */
+  padding-right: 78px; /* room for the chords and Tools buttons */
+}
+
+.info-top.with-input {
+  padding-right: 122px; /* ...and the Input button */
 }
 
 .strip-side {
@@ -6076,4 +6081,68 @@ select.sig-select option {
   box-shadow: 0 0 4px rgba(255, 214, 10, 0.8);
   pointer-events: none;
   z-index: 2;
+}
+
+/* ---- Pick an input for one channel ---- */
+
+.channel-input-pop {
+  position: fixed;
+  z-index: 70;
+  width: 240px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--color-bg-elevated);
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.45);
+  font-size: 12px;
+  color: var(--color-label);
+}
+
+.channel-input-pop label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.channel-input-pop p {
+  margin: 0;
+  color: var(--color-label-secondary);
+}
+
+.channel-input-pop .input-select {
+  width: 100%;
+}
+
+/* ---- Settings tabs ---- */
+
+.settings-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 0 -16px;
+  padding: 8px 16px;
+  background: var(--pl-bg-top);
+  border-bottom: 1px solid var(--pl-header-border);
+}
+
+.settings-tabs button {
+  flex: 1;
+  border: none;
+  border-radius: 8px;
+  padding: 6px 4px;
+  background: none;
+  color: var(--color-label-secondary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.settings-tabs button.on {
+  background: var(--color-fill);
+  color: var(--color-label);
+}
+
+.settings-section:first-of-type {
+  border-top: none;
 }

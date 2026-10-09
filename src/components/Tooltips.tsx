@@ -1,6 +1,7 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { parseTip, type TipParts } from "../lib/tooltip";
+import { useProjectStore } from "../store/useProjectStore";
 import { canAnchor, distrustAnchors, looksAnchored } from "../lib/anchor";
 
 interface Shown {
@@ -14,6 +15,9 @@ interface Shown {
  * and this one is shown instead. On a touch screen, press and hold a control to see its hint.
  */
 export function Tooltips() {
+  // Switched off in Settings: the browser's own hints are still set aside, but none is shown.
+  const enabled = useRef(useProjectStore.getState().tooltipsOn);
+  useEffect(() => useProjectStore.subscribe((s) => (enabled.current = s.tooltipsOn)), []);
   const [shown, setShown] = useState<Shown | null>(null);
   const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const box = useRef<HTMLDivElement>(null);
@@ -43,7 +47,7 @@ export function Tooltips() {
       setPos(null);
     };
     const show = () => {
-      if (!current) return;
+      if (!current || !enabled.current) return;
       const text = current.dataset.tip;
       if (text) setShown({ tip: parseTip(text), rect: current.getBoundingClientRect() });
     };

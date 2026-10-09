@@ -349,12 +349,12 @@ function DetachedTool({ track, tool, canUse, start, grab, onDock }: { track: Tra
         </span>
         <span className="fx-header-tools">
           {field && <Switch on={track.fx[field]} disabled={!canUse} label={`${info.name} on`} title={track.fx[field] ? `${info.name} is on — click to bypass it` : `${info.name} is bypassed — click to turn it on`} onChange={(on) => setChannelFx(track.id, { [field]: on }, { checkpoint: true })} />}
-          <button className="fx-dock" onClick={onDock} title="Put this back in the main FX window" aria-label={`Dock ${info.name}`}>
+          <button className="fx-dock" onClick={onDock} title="Put this back in the main Tools window" aria-label={`Dock ${info.name}`}>
             Dock
           </button>
         </span>
       </div>
-      {field && !track.fx.fxOn && <p className="fx-offnote">FX is off for this channel — switch it on in the main window to hear this.</p>}
+      {field && !track.fx.fxOn && <p className="fx-offnote">The effects are off for this channel — switch them on in the main window to hear this.</p>}
       <ToolBody track={track} tool={tool} canUse={canUse} />
       <Grip grip={sizeGrip} />
     </div>
@@ -494,7 +494,7 @@ export function ChannelFx({
         onPointerDown={(e) => e.stopPropagation()}
       >
         <div className="fx-plugin-header" {...headerProps}>
-          <span className="fx-plugin-title">{track.instrument} — FX</span>
+          <span className="fx-plugin-title">{track.instrument} — Tools</span>
           <span className="fx-header-tools">
             <HelpHint topic="fx" />
             <span className="fx-power-label">{fx.fxOn ? "On" : "Off"}</span>

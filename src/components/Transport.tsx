@@ -83,6 +83,7 @@ function ModeButtons({ className }: { className: string }) {
   const countInEnabled = useProjectStore((s) => s.countInEnabled);
   const countInBeats = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
   const setCountInEnabled = useProjectStore((s) => s.setCountInEnabled);
+  const countInBars = useProjectStore((s) => s.countInBars);
   const metronomeEnabled = useProjectStore((s) => s.metronomeEnabled);
   const toggleMetronome = useProjectStore((s) => s.toggleMetronome);
   const metronomeVolume = useProjectStore((s) => s.metronomeVolume);
@@ -101,7 +102,7 @@ function ModeButtons({ className }: { className: string }) {
       <button
         className={countInEnabled ? "lb wide brand" : "lb wide"}
         onClick={() => setCountInEnabled(!countInEnabled)}
-        title={`Count in ${countInBeats} clicks (one bar) before recording`}
+        title={`Count in ${countInBeats * countInBars} clicks (${countInBars === 1 ? "one bar" : `${countInBars} bars`}) before recording — change the length in Settings`}
         aria-pressed={countInEnabled}
       >
         {Array.from({ length: countInBeats }, (_, i) => i + 1).join("")}

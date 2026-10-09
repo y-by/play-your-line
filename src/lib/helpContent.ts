@@ -46,7 +46,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     group: "Recording",
     question: "How do I record?",
     answer: [
-      "Press the round dot on your channel to arm it, then press the red record button (or R). A one-bar count-in (four clicks in 4/4, three in 3/4) plays first if the numbers button is switched on, and the recording lands exactly where you started.",
+      "Press the round dot on your channel to arm it, then press the red record button (or R). A count-in (1, 2 or 3 bars, chosen in Settings; four clicks a bar in 4/4, three in 3/4) plays first if the numbers button is switched on, and the recording lands exactly where you started.",
       "You can also drag an audio file onto your own channel to put it there. A recording is never changed: what you see on a channel are clips, windows onto it.",
     ],
   },
@@ -73,7 +73,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     group: "Recording",
     question: "How does the tuner work?",
     answer: [
-      "Open a channel's FX box and press the tuning-fork button at the bottom. The tuner opens in its own window and stays on screen when you close the FX box; its × closes it.",
+      "Open a channel's Tools box and press the tuning-fork button at the bottom. The tuner opens in its own window and stays on screen when you close the Tools box; its × closes it.",
       "Play one note. The big letter is the note, and the stripes show how far off you are: they drift left when you're flat, right when you're sharp, and stand still, turning green, when you're in tune. Bass works too, down to a 5-string's low B.",
       "Choose Guitar, Bass or Ukulele and tap a string to tune to that string, or leave it on Any note. The A = 440 reference can be moved with − and +.",
     ],
@@ -119,7 +119,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     group: "Mixing and effects",
     question: "How do the effects switches work?",
     answer: [
-      "Each channel has a power switch at the top right of its FX box. It is off by default: a channel with the power off is heard dry, whatever the knobs say. Your settings are kept.",
+      "Each channel has a power switch at the top right of its Tools box. It is off by default: a channel with the power off is heard dry, whatever the knobs say. Your settings are kept.",
       "Each effect (EQ, Comp, Delay, Reverb) also has its own bypass switch next to its name. With the power on, a bypassed effect is skipped and the others still work. An effect set to do nothing is skipped too, so it never colours the sound.",
       "Compare plays the channel dry just for you, to check what the effects add. It's never saved and ends when you close the box.",
     ],
@@ -127,10 +127,10 @@ export const HELP_TOPICS: HelpTopic[] = [
   {
     id: "fx-windows",
     group: "Mixing and effects",
-    question: "Can I pull a tab out of the FX box?",
+    question: "Can I pull a tab out of the Tools box?",
     answer: [
       "Yes. Drag a tab (EQ, Comp, Delay or Reverb) out of the tab strip and it becomes a window of its own. Close the main box and it stays on screen. Dock puts it back, and Dock all tabs puts every tab back.",
-      "Drag the bottom-right corner of any FX window to make it bigger, up to double. Double-click the corner for normal size.",
+      "Drag the bottom-right corner of any Tools window to make it bigger, up to double. Double-click the corner for normal size.",
     ],
   },
   {
@@ -138,7 +138,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     group: "Mixing and effects",
     question: "Who can change a channel's effects?",
     answer: [
-      "The Owner and the Mixer always can. The player of a channel can change their own channel's effects too, until the Owner or Mixer presses the lock button in the FX box. A locked channel shows its effects but can't be changed by its player.",
+      "The Owner and the Mixer always can. The player of a channel can change their own channel's effects too, until the Owner or Mixer presses the lock button in the Tools box. A locked channel shows its effects but can't be changed by its player.",
       "Volume, mute and pan are the saved final mix and are only for the Owner and the Mixer.",
     ],
   },

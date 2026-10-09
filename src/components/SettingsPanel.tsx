@@ -27,6 +27,8 @@ export function SettingsPanel() {
   const testMetronomeClick = useProjectStore((s) => s.testMetronomeClick);
   const countInEnabled = useProjectStore((s) => s.countInEnabled);
   const setCountInEnabled = useProjectStore((s) => s.setCountInEnabled);
+  const countInBars = useProjectStore((s) => s.countInBars);
+  const setCountInBars = useProjectStore((s) => s.setCountInBars);
   const latencyCompMs = useProjectStore((s) => s.latencyCompMs);
   const estimatedLatencyMs = useProjectStore((s) => s.estimatedLatencyMs);
   const calibrationState = useProjectStore((s) => s.calibrationState);
@@ -37,9 +39,20 @@ export function SettingsPanel() {
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const displayName = useAuthStore((s) => s.profile?.displayName ?? "");
   const setDisplayName = useAuthStore((s) => s.setDisplayName);
+  const tooltipsOn = useProjectStore((s) => s.tooltipsOn);
+  const setTooltipsOn = useProjectStore((s) => s.setTooltipsOn);
+  const [tab, setTab] = useState<"general" | "audio" | "click" | "project">("general");
   const navigate = useNavigate();
   const projectTitle = useProjectStore((s) => s.project?.title ?? null);
   const isOwner = useProjectStore((s) => s.isInitiator());
+  const tabList = (
+    [
+      ["general", "General"],
+      ["audio", "Audio"],
+      ["click", "Click"],
+      ...(isOwner && projectTitle !== null ? [["project", "Project"]] : []),
+    ] as ["general" | "audio" | "click" | "project", string][]
+  );
   const deleteProject = useProjectStore((s) => s.deleteProject);
   const coverPath = useProjectStore((s) => s.project?.coverPath ?? null);
   const projectId = useProjectStore((s) => s.project?.id ?? null);
@@ -126,14 +139,24 @@ export function SettingsPanel() {
 
   return (
     <div className="settings-backdrop" onClick={closeSettings}>
-      <div className="settings-panel plugin-skin" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Audio settings">
+      <div className="settings-panel plugin-skin" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Settings">
         <div className="settings-header">
-          <h2>Audio settings</h2>
+          <h2>Settings</h2>
           <button className="plugin-close" onClick={closeSettings} aria-label="Close settings">
             <CloseIcon />
           </button>
         </div>
 
+        <div className="settings-tabs" role="tablist">
+          {tabList.map(([id, label]) => (
+            <button key={id} role="tab" aria-selected={tab === id} className={tab === id ? "on" : ""} onClick={() => setTab(id)}>
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {tab === "general" && (
+          <>
         <section className="settings-section">
           <h3>Your name</h3>
           <div className="settings-row">
@@ -155,6 +178,36 @@ export function SettingsPanel() {
           </p>
         </section>
 
+        <section className="settings-section">
+          <h3>Hints</h3>
+          <div className="settings-row">
+            <span>Tooltips</span>
+            <button
+              className={tooltipsOn ? "settings-toggle active" : "settings-toggle"}
+              onClick={() => setTooltipsOn(!tooltipsOn)}
+              aria-pressed={tooltipsOn}
+            >
+              {tooltipsOn ? "On" : "Off"}
+            </button>
+          </div>
+          <p className="settings-note">The little hints that appear when you point at a button. Switch them off once you know your way around.</p>
+        </section>
+
+        <section className="settings-section">
+          <h3>Help</h3>
+          <p className="settings-note">
+            <a href="/help" target="_blank" rel="noreferrer">
+              Questions and answers
+            </a>{" "}
+            about recording, effects, notes and sharing. It opens in a new tab, so your project stays as it is.
+          </p>
+        </section>
+
+          </>
+        )}
+
+        {tab === "audio" && (
+          <>
         <section className="settings-section">
           <h3>Input</h3>
           <InputSourceSelector />
@@ -234,6 +287,11 @@ export function SettingsPanel() {
           </p>
         </section>
 
+          </>
+        )}
+
+        {tab === "click" && (
+          <>
         <section className="settings-section">
           <h3>Metronome</h3>
           <div className="settings-row">
@@ -256,9 +314,19 @@ export function SettingsPanel() {
               {countInEnabled ? "On" : "Off"}
             </button>
           </div>
+          {countInEnabled && (
+            <div className="settings-row">
+              <span>Count-in length</span>
+              <select className="settings-select" value={countInBars} onChange={(e) => setCountInBars(Number(e.target.value))}>
+                <option value={1}>1 bar</option>
+                <option value={2}>2 bars</option>
+                <option value={3}>3 bars</option>
+              </select>
+            </div>
+          )}
           <p className="settings-note">
-            Before recording starts, plays one bar of clicks (4 in 4/4, 3 in 3/4) at the project tempo — even if the click track is off. Uses the click
-            volume below.
+            Before recording starts, plays 1, 2 or 3 bars of clicks (4 a bar in 4/4, 3 in 3/4) at the project tempo — even if the click track is off. Uses
+            the click volume below.
           </p>
           <div className="settings-row">
             <span>Volume</span>
@@ -301,6 +369,11 @@ export function SettingsPanel() {
           )}
         </section>
 
+          </>
+        )}
+
+        {tab === "project" && (
+          <>
         {isOwner && projectTitle !== null && (
           <section className="settings-section">
             <h3>Cover image</h3>
@@ -338,16 +411,6 @@ export function SettingsPanel() {
           </section>
         )}
 
-        <section className="settings-section">
-          <h3>Help</h3>
-          <p className="settings-note">
-            <a href="/help" target="_blank" rel="noreferrer">
-              Questions and answers
-            </a>{" "}
-            about recording, effects, notes and sharing. It opens in a new tab, so your project stays as it is.
-          </p>
-        </section>
-
         {isOwner && projectTitle !== null && (
           <section className="settings-section danger-zone">
             <h3>Danger zone</h3>
@@ -361,6 +424,9 @@ export function SettingsPanel() {
             {deleteError && <p className="assign-error">{deleteError}</p>}
           </section>
         )}
+          </>
+        )}
+
       </div>
     </div>
   );
