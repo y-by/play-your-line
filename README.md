@@ -40,8 +40,7 @@ starts as their Google name; they can change it to a stage name in **Settings**.
 
 **Recording.** Arm your channel (the dot), press the red button or `R`. A count-in (1, 2 or 3 bars,
 chosen in Settings) plays first, and the take lands exactly where you started. You can also drag an audio file onto your
-own channel. Each channel can have its own input (the Input button in the channel strip, shown only
-when there is more than one input to choose from); channels without a pick use the input chosen in Settings.
+own channel. Each channel can have its own input (the Input button in the channel strip: only on the channel assigned to you, and only when the device chosen in Settings has two or more inputs; it lists just that device's inputs). The device itself is chosen in Settings.
 
 **Clips.** A recording is never modified. What you see on a channel are clips, windows onto the
 recording: trim, split, move or duplicate them freely, and the original audio is always still
@@ -60,7 +59,7 @@ a note done archives it. A person you tag gets an orange `@` badge on the notes 
 
 **Time signature.** The Owner picks it in the number display (2/4 to 7/4). Bars, the click's strong beat, the count-in and note pins follow it.
 
-**Chords.** The ♪ button next to Tools listens to a channel and suggests the chords along the top of
+**Chords.** The Chords button next to Tools listens to a channel and suggests the chords along the top of
 its lane. It is a suggestion, not a guarantee; click a chord to jump there.
 
 **Tuner.** The tuning-fork button at the bottom of a channel's Tools box opens a strobe tuner in its own window (it never lives inside the box: it stays when the box is closed, and its × closes it) in the spirit of a Peterson: rings of

@@ -126,12 +126,9 @@ interface ProjectState {
   refreshInputDevices: () => Promise<void>;
   setInputDevice: (deviceId: string) => Promise<void>;
   setInputChannel: (channelIndex: number | null) => void;
-  /** An input picked for one channel (kept on this device); channels without one use the Settings input. */
+  /** Which input of the Settings device one channel records from (kept on this device); channels without a pick use the Settings choice. */
   channelInputs: Record<string, ChannelInput>;
-  /** How many input channels each device exposes, found when a device is picked for a channel. */
-  deviceChannelCounts: Record<string, number>;
   setChannelInput: (trackId: string, input: ChannelInput | null) => Promise<void>;
-  setDeviceChannelCount: (deviceId: string, count: number) => void;
 
   availableOutputs: OutputDevice[];
   outputDeviceId: string;
@@ -642,7 +639,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   // otherwise the Settings input.
   const inputForTrack = (trackId: string | null): ChannelInput => {
     const own = trackId ? get().channelInputs[trackId] : undefined;
-    if (own && get().availableInputs.some((d) => d.deviceId === own.deviceId)) return own;
+    if (own && own.deviceId === get().inputDeviceId) return own;
     return { deviceId: get().inputDeviceId, channelIndex: get().inputChannelIndex };
   };
   const startInputMeter = async () => {
@@ -1321,8 +1318,6 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     channelInputs: {},
-    deviceChannelCounts: {},
-    setDeviceChannelCount: (deviceId, count) => set({ deviceChannelCounts: { ...get().deviceChannelCounts, [deviceId]: count } }),
     setChannelInput: async (trackId, input) => {
       const project = get().project;
       if (!project) return;
@@ -1331,10 +1326,6 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       else delete next[trackId];
       set({ channelInputs: next });
       writeChannelInputs(project.id, next);
-      if (input && get().deviceChannelCounts[input.deviceId] === undefined) {
-        const count = await probeChannelCount(input.deviceId);
-        set({ deviceChannelCounts: { ...get().deviceChannelCounts, [input.deviceId]: count } });
-      }
       if (get().armedTrackId === trackId) {
         startInputMeter().catch((err) => console.error("Could not start input monitoring:", err));
       }

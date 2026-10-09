@@ -11,6 +11,7 @@ import { ChannelInput } from "./ChannelInput";
 import { useHasInputChoice } from "./useHasInputChoice";
 import { canAnchor } from "../../lib/anchor";
 import { useProjectStore } from "../../store/useProjectStore";
+import { useAuthStore } from "../../store/useAuthStore";
 import { XmarkCircleIcon, MicIcon, NoteIcon } from "../icons/Icons";
 
 /** The left-hand column of a lane: who plays it, record, mute/solo, volume. */
@@ -42,7 +43,9 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
   const [fxMainOpen, setFxMainOpen] = useState(false);
   const fxButtonRef = useRef<HTMLButtonElement>(null);
   const canUseFx = useProjectStore((s) => s.canUseFx(track));
-  const hasInputChoice = useHasInputChoice();
+  // Only the player the channel is assigned to picks its input, on their own machine.
+  const isMyChannel = useAuthStore((s) => !!s.userId && s.userId === track.assignedUserId);
+  const hasInputChoice = useHasInputChoice() && canEdit && isMyChannel;
   const armTrack = useProjectStore((s) => s.armTrack);
   const armed = useProjectStore((s) => canEdit && s.effectiveArmedId() === track.id);
   // Subscribing to these makes the sliders follow the right mix (saved / monitor); effectiveMix does the choosing.
@@ -102,7 +105,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
         </div>
       ) : (
       <div className="info-main">
-        <div className={canEdit && hasInputChoice ? "info-top with-input" : "info-top"}>
+        <div className={hasInputChoice ? "info-top with-input" : "info-top"}>
           {editingInstrument ? (
             <input
               autoFocus
@@ -205,7 +208,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
           </div>
           <PanKnob value={track.pan} disabled={!canMix} onChange={(v) => setChannelPan(track.id, v)} />
           <div className="strip-side">
-          {canEdit && hasInputChoice && <ChannelInput track={track} />}
+          {hasInputChoice && <ChannelInput track={track} />}
           {track.clips.length > 0 && (
             <button
               className={chordsShown ? "fx-toggle on" : "fx-toggle"}
@@ -215,7 +218,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
               aria-pressed={chordsShown}
               aria-label="Detect chords"
             >
-              {detecting ? "…" : "♪"}
+              {detecting ? "…" : "Chords"}
             </button>
           )}
           {canUseFx && (

@@ -81,7 +81,7 @@ export const HELP_TOPICS: HelpTopic[] = [
   {
     id: "chords",
     group: "Recording",
-    question: "What does the ♪ button do?",
+    question: "What does the Chords button do?",
     answer: [
       "It listens to a channel and writes the chords it hears along the top of that channel, one per stretch. Press a chord to move the playhead there. Press ♪ again to hide them.",
       "It's a suggestion, not a guarantee: chords it isn't sure about show in italics with a question mark. Your choice is remembered for each channel of a project.",

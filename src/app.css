@@ -4064,11 +4064,11 @@
 }
 
 .info-top {
-  padding-right: 78px; /* room for the chords and Tools buttons */
+  padding-right: 104px; /* room for the Chords and Tools buttons */
 }
 
 .info-top.with-input {
-  padding-right: 122px; /* ...and the Input button */
+  padding-right: 148px; /* ...and the Input button */
 }
 
 .strip-side {
@@ -6112,7 +6112,9 @@ select.sig-select option {
 }
 
 .channel-input-pop .input-select {
+  flex: none; /* the shared rule gives it a 110px basis, which made it 110px tall in this column */
   width: 100%;
+  height: 30px;
 }
 
 /* ---- Settings tabs ---- */
