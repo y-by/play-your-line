@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useAuthStore } from "../../store/useAuthStore";
 import { useProjectStore } from "../../store/useProjectStore";
 import { beatSec } from "../../lib/grid";
 import { pinLabel, pinnedOpenNotes } from "../../lib/notes";
@@ -18,6 +19,8 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
   const jumpToNote = useProjectStore((s) => s.jumpToNote);
   const floatNote = useProjectStore((s) => s.floatNote);
   const canWrite = useProjectStore((s) => s.canWriteNotes());
+  const uid = useAuthStore((s) => s.userId);
+  const isOwner = useProjectStore((s) => s.isInitiator());
   const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
   // Where the clicked flag is on screen, so the bubble can sit under it and stay inside the window.
   const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null);
@@ -94,9 +97,11 @@ export function NoteFlags({ pxPerSec }: { pxPerSec: number }) {
                 <button className="note-opt" onClick={() => floatNote(open.id)}>
                   Pop out
                 </button>
-                <button className="note-send" onClick={() => void setNoteDone(open.id, true)}>
-                  <CheckIcon size={12} /> Done
-                </button>
+                {(open.authorId === uid || isOwner) && (
+                  <button className="note-send" onClick={() => void setNoteDone(open.id, true)}>
+                    <CheckIcon size={12} /> Done
+                  </button>
+                )}
               </>
             )}
           </div>

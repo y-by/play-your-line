@@ -107,14 +107,16 @@ export function NoteRow({ note }: { note: ProjectNote }) {
       </div>
       {canWrite && !editing && (
         <div className="note-actions">
-          <button
-            className="note-act"
-            onClick={() => void setNoteDone(note.id, !note.done)}
-            title={note.done ? "Reopen this note" : "Mark as done — it moves to the archive"}
-            aria-label={note.done ? "Reopen" : "Mark as done"}
-          >
-            <CheckIcon size={14} />
-          </button>
+          {canEdit && (
+            <button
+              className="note-act"
+              onClick={() => void setNoteDone(note.id, !note.done)}
+              title={note.done ? "Reopen this note" : "Mark as done — it moves to the archive"}
+              aria-label={note.done ? "Reopen" : "Mark as done"}
+            >
+              <CheckIcon size={14} />
+            </button>
+          )}
           {!note.done && (
             <button
               className={floating ? "note-act on" : "note-act"}

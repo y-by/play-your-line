@@ -32,7 +32,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
   const recordingPhase = useProjectStore((s) => s.recordingPhase);
   const canEdit = useProjectStore((s) => s.canEditClips(track));
   const isInitiator = useProjectStore((s) => s.isInitiator());
-  const isParticipant = useProjectStore((s) => s.isParticipant());
+  const canRename = useProjectStore((s) => s.canRenameTrack(track));
   const canAdjustMix = useProjectStore((s) => s.canAdjustMix());
   const setTrackColor = useProjectStore((s) => s.setTrackColor);
   const renameTrack = useProjectStore((s) => s.renameTrack);
@@ -120,9 +120,9 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
             />
           ) : (
             <button
-              className={isParticipant ? "info-instrument" : "info-instrument readonly"}
-              onClick={() => isParticipant && setEditingInstrument(true)}
-              title={isParticipant ? "Rename this channel" : undefined}
+              className={canRename ? "info-instrument" : "info-instrument readonly"}
+              onClick={() => canRename && setEditingInstrument(true)}
+              title={canRename ? "Rename this channel" : undefined}
             >
               {track.instrument}
             </button>

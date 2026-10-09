@@ -126,7 +126,7 @@ function Card({ note, state, layout, index, front }: { note: ProjectNote; state:
       ) : (
         <p className="note-card-body">{note.body}</p>
       )}
-      {canWrite && !editing && (
+      {canEdit && !editing && (
         <button className="note-card-done" onClick={() => void setNoteDone(note.id, true)}>
           <CheckIcon size={12} /> Done
         </button>

@@ -25,7 +25,7 @@ export function AddChannelPanel() {
   const reassignTrack = useProjectStore((s) => s.reassignTrack);
   const removeTrack = useProjectStore((s) => s.removeTrack);
   const isInitiator = useProjectStore((s) => s.isInitiator());
-  const isParticipant = useProjectStore((s) => s.isParticipant());
+  const isParticipant = useProjectStore((s) => s.isContributor());
   const [instrument, setInstrument] = useState("");
   const [inviteLinks, setInviteLinks] = useState<Record<string, string>>({});
   const [copiedTrackId, setCopiedTrackId] = useState<string | null>(null);

@@ -64,6 +64,10 @@ interface ProjectState {
   isInitiator: () => boolean;
   /** Owner, Mixer, an assigned player, or an invited Listener — anyone this song is shared with. */
   isParticipant: () => boolean;
+  /** The Owner, the Mixer or a Player (assigned to a channel). Not a Listener. */
+  isContributor: () => boolean;
+  /** The Owner, the Mixer, the channel's own player, or (while the channel has no player) any contributor. */
+  canRenameTrack: (track: Track) => boolean;
   /** True for a channel's assigned player only. The initiator can NOT edit a player's clips or record on their channel. */
   canEditClips: (track: Track) => boolean;
   /** The Owner and the Mixer set the saved final mix. */
@@ -1033,6 +1037,18 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         project.listeners.some((l) => l.userId === uid)
       );
     },
+    isContributor: () => {
+      const { project } = get();
+      const uid = currentUserId();
+      if (!project || !uid) return false;
+      return project.initiatorId === uid || project.mixerId === uid || project.tracks.some((t) => t.assignedUserId === uid);
+    },
+    canRenameTrack: (track) => {
+      const { project } = get();
+      const uid = currentUserId();
+      if (!project || !uid || !get().isContributor()) return false;
+      return project.initiatorId === uid || project.mixerId === uid || track.assignedUserId === uid || track.assignedUserId === null;
+    },
     canEditClips: (track) => {
       const uid = currentUserId();
       return !!uid && track.assignedUserId === uid;
@@ -1414,7 +1430,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const { project } = get();
       // Anyone already in the song may add a new channel; only the Owner invites a
       // player to it (see createInvite).
-      if (!project || !get().isParticipant()) return;
+      if (!project || !get().isContributor()) return;
       const color = TRACK_COLORS[project.tracks.length % TRACK_COLORS.length];
       const position = project.tracks.reduce((max, t) => Math.max(max, t.position), -1) + 1;
       // Everyone except the Owner plays the channel they add (the Owner often sets channels up for others).
@@ -1488,7 +1504,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     renameTrack: async (trackId, instrument) => {
       const { project } = get();
       const trimmed = instrument.trim();
-      if (!project || !trimmed || !get().isParticipant()) return;
+      const target = project?.tracks.find((t) => t.id === trackId);
+      if (!project || !trimmed || !target || !get().canRenameTrack(target)) return;
       const before = project.tracks;
       set({ project: { ...project, tracks: before.map((t) => (t.id === trackId ? { ...t, instrument: trimmed } : t)) } });
       try {
