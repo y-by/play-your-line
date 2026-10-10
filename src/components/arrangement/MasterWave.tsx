@@ -69,7 +69,9 @@ export function MasterWave({ pxPerSec }: { pxPerSec: number }) {
     const peaks = computeStereoPeaks(mix, columns);
     const mid = HEIGHT / 2;
     const scale = mid - 2;
-    const wave = getComputedStyle(el).color;
+    // A plain colour string and an alpha: some browsers hand back newer colour syntax that a canvas will not take.
+    const wave = getComputedStyle(document.documentElement).getPropertyValue("--color-accent").trim() || "#4cc3cd";
+    ctx.globalAlpha = 0.85;
     for (let c = 0; c < columns; c++) {
       const lo = peaks[c * 2];
       const hi = peaks[c * 2 + 1];

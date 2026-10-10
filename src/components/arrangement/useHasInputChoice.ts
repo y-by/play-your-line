@@ -7,24 +7,26 @@ import { useProjectStore } from "../../store/useProjectStore";
  * (otherwise it is found when Settings or the first arm opens the device).
  */
 export function useHasInputChoice(): boolean {
-  const refreshInputDevices = useProjectStore((s) => s.refreshInputDevices);
+  const probeSettingsInput = useProjectStore((s) => s.probeSettingsInput);
   const inputs = useProjectStore((s) => s.inputChannelCount);
 
   useEffect(() => {
     let alive = true;
-    const look = () =>
+    // Every channel strip uses this hook, but the look-up is shared: it runs once, and never starts a level meter.
+    const look = (forced = false) =>
       navigator.permissions
         ?.query({ name: "microphone" as PermissionName })
-        .then((p) => alive && p.state === "granted" && void refreshInputDevices())
+        .then((p) => alive && p.state === "granted" && void probeSettingsInput(forced))
         .catch(() => undefined);
     void look();
     const devices = navigator.mediaDevices;
-    devices?.addEventListener?.("devicechange", look);
+    const onChange = () => void look(true);
+    devices?.addEventListener?.("devicechange", onChange);
     return () => {
       alive = false;
-      devices?.removeEventListener?.("devicechange", look);
+      devices?.removeEventListener?.("devicechange", onChange);
     };
-  }, [refreshInputDevices]);
+  }, [probeSettingsInput]);
 
   return inputs >= 2;
 }

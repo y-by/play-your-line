@@ -129,6 +129,8 @@ interface ProjectState {
   trackLevels: Record<string, number>;
   loadingInputs: boolean;
   refreshInputDevices: () => Promise<void>;
+  /** Finds how many inputs the Settings device has, without starting the level meter or asking for the microphone. Done once, never while playing or recording. */
+  probeSettingsInput: (force?: boolean) => Promise<void>;
   setInputDevice: (deviceId: string) => Promise<void>;
   setInputChannel: (channelIndex: number | null) => void;
   /** Which input of the Settings device one channel records from (kept on this device); channels without a pick use the Settings choice. */
@@ -556,6 +558,9 @@ const pendingFxSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; p
 const masterUndoStack: Pick<MasterMix, "fx" | "limiterOn">[] = [];
 let masterLastCheckpoint = 0;
 let pendingMaster: { timer: ReturnType<typeof setTimeout>; volume: boolean; fx: boolean } | null = null;
+/** The input device whose number of inputs was last looked up, and a look-up that is running. */
+let probedInputFor: string | null = null;
+let inputProbeRunning = false;
 let countInTimer: ReturnType<typeof setTimeout> | null = null;
 
 function clearCountInTimer() {
@@ -1376,7 +1381,28 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
+    probeSettingsInput: async (force) => {
+      // Opening an audio device makes the computer re-configure its audio, which clicks whatever is playing:
+      // so never while the song plays or a take is recorded, and only once per device.
+      if (inputProbeRunning || get().isPlaying || get().recordingTrackId) return;
+      if (!force && probedInputFor === get().inputDeviceId) return;
+      inputProbeRunning = true;
+      try {
+        const inputs = await listInputDevices();
+        set({ availableInputs: inputs });
+        const id = get().inputDeviceId;
+        const count = await probeChannelCount(id);
+        probedInputFor = id;
+        if (get().inputDeviceId === id) set({ inputChannelCount: count });
+      } catch (err) {
+        console.warn("Couldn't look up the inputs:", err);
+      } finally {
+        inputProbeRunning = false;
+      }
+    },
+
     setInputDevice: async (deviceId) => {
+      probedInputFor = null;
       set({ inputDeviceId: deviceId, inputChannelIndex: null, inputChannelCount: 1 });
       const count = await probeChannelCount(deviceId);
       if (get().inputDeviceId !== deviceId) return;
