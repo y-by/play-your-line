@@ -48,7 +48,7 @@ function Card({ note, state, layout, index, front }: { note: ProjectNote; state:
       className={free ? "note-card free plugin-skin" : `note-card ${layout} plugin-skin`}
       style={
         {
-          ...(free ? { left: x, top: y } : layout === "stack" ? { top: 40 + index * 34, zIndex: front ? 200 : index + 1 } : {}),
+          ...(free ? { left: x, top: y } : layout === "stack" ? { top: index * 34, zIndex: front ? 200 : index + 1 } : {}),
           width: w,
           height: h,
           "--note-color": noteTint(note, tracks),
@@ -192,9 +192,13 @@ export function NoteCards() {
               Close all
             </button>
           </div>
-          {floating.map((n, i) => (
-            <Card key={n.id} note={n} state={cards[n.id]} layout={layout} index={floating.filter((m, j) => j < i && cards[m.id].free !== true).length} front={(front && floating.some((m) => m.id === front) ? front : floating[floating.length - 1]?.id) === n.id} />
-          ))}
+          {/* In the grid the cards fill a column from the top until it is full, then the next one: short notes pile up
+              in one column and a long note gets its own (all in one flat list, so a card never remounts while you edit it). */}
+          <div className="note-cards-flow">
+            {floating.map((n, i) => (
+              <Card key={n.id} note={n} state={cards[n.id]} layout={layout} index={floating.filter((m, j) => j < i && cards[m.id].free !== true).length} front={(front && floating.some((m) => m.id === front) ? front : floating[floating.length - 1]?.id) === n.id} />
+            ))}
+          </div>
         </div>
       )}
       {minimised.length > 0 && !trayOpen && (
