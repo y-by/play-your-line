@@ -20,6 +20,11 @@ import { looksAnchored } from "../src/lib/anchor.ts";
 import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
+import { readFileSync, readdirSync } from "node:fs";
+import { wavePath, autoBoost } from "../src/lib/wavePath.ts";
+import { detectLoopBpm, bpmFromFileName } from "../src/lib/tempoDetect.ts";
+import { timeStretch } from "../src/lib/timeStretch.ts";
+import { RULES, can, readmeTable, rulesMarkdown, README_MARK_START, README_MARK_END } from "../src/lib/rules.ts";
 import { resolveMix, buildRows, visibleLanes, groupedOrder, parseGroupFx, groupFromRow, groupFxToJson } from "../src/lib/groups.ts";
 import type { Group } from "../src/types/project.ts";
 import { DEFAULT_MASTER, parseMasterFx, masterFromRow, masterFxToJson, clampMasterVolume, isNeutralMaster, masterFxOnly } from "../src/lib/master.ts";
@@ -541,6 +546,103 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("a live update keeps what it does not mention", groupFromRow({ id: "g", volume: 0.5 }, g).name === "Drums" && groupFromRow({ id: "g", volume: 0.5 }, g).fx.eqLow === 12);
   check("group effects round trip", JSON.stringify(parseGroupFx(groupFxToJson(g.fx))) === JSON.stringify(g.fx));
   check("junk effects are neutral", parseGroupFx("x").fxOn === false && parseGroupFx(null).compRatio === 1);
+}
+
+// ---- the rules table (one source of truth for who may do what)
+{
+  const ids = RULES.map((r) => r.id);
+  check("every rule has a unique id and says what enforces it", new Set(ids).size === ids.length && RULES.every((r) => r.enforcedBy.trim().length > 5 && r.what.trim().length > 5));
+  const migrations = readdirSync("supabase/migrations").map((f) => f.slice(0, 4));
+  const cited = RULES.flatMap((r) => [...r.enforcedBy.matchAll(/\b(\d{4})\b/g)].map((m) => m[1]));
+  check("every migration a rule names exists", cited.length > 0 && cited.every((n) => migrations.includes(n)), cited.filter((n) => !migrations.includes(n)).join(" "));
+  check("a Listener may only listen", RULES.every((r) => r.id === "listen" || r.listener === false));
+  const O = { roles: ["owner" as const] };
+  const M = { roles: ["mixer" as const] };
+  const P = { roles: ["player" as const] };
+  const L = { roles: ["listener" as const] };
+  check("the Owner may do everything that is not a channel's own", ["add-channel", "final-mix", "master", "group-structure", "group-mix", "assign-player", "people", "project-settings"].every((id) => can(id, O)));
+  check("the Mixer sets the mix, the master and the groups' mix, and nothing structural", can("final-mix", M) && can("master", M) && can("group-mix", M) && !can("group-structure", M) && !can("assign-player", M) && !can("project-settings", M) && !can("people", M));
+  check("a Player cannot touch the mix, the master or the groups", !can("final-mix", P) && !can("master", P) && !can("group-mix", P) && !can("group-structure", P));
+  check("a Listener cannot add a channel, write notes or edit anything", !can("add-channel", L) && !can("write-notes", L) && !can("rename-channel", L) && !can("channel-fx", L) && !can("note-edit-done", L) && can("listen", L));
+  check("a Player renames their own channel or an empty one, not someone else's", can("rename-channel", { ...P, ownChannel: true }) && can("rename-channel", { ...P, unassigned: true }) && !can("rename-channel", P));
+  check("a Player edits only their own notes, the Owner any", can("note-edit-done", { ...P, author: true }) && !can("note-edit-done", P) && can("note-edit-done", O) && !can("note-edit-done", M));
+  check("nobody records on or edits a channel that is not their own", !can("record-edit-clips", O) && !can("record-edit-clips", M) && !can("record-edit-clips", P) && can("record-edit-clips", { ...O, ownChannel: true }));
+  check("a Player uses the effects of their own channel only", can("channel-fx", { ...P, ownChannel: true }) && !can("channel-fx", P) && can("channel-fx", O));
+  check("someone who holds two roles gets what either allows (Mixer who also plays)", can("record-edit-clips", { roles: ["mixer", "player"], ownChannel: true }) && can("final-mix", { roles: ["mixer", "player"] }));
+  let thrown = false;
+  try {
+    can("no-such-rule", O);
+  } catch {
+    thrown = true;
+  }
+  check("asking about a rule that does not exist is an error, not a silent no", thrown);
+
+  const readme = readFileSync("README.md", "utf8");
+  const a = readme.indexOf(README_MARK_START);
+  const b = readme.indexOf(README_MARK_END);
+  check("the README roles table is up to date (run npm run docs:rules)", a >= 0 && b > a && readme.slice(a + README_MARK_START.length, b).trim() === readmeTable().trim());
+  check("docs/RULES.md is up to date (run npm run docs:rules)", readFileSync("docs/RULES.md", "utf8") === rulesMarkdown());
+}
+
+// ---- loop tempo: finding it, and fitting a loop to the project
+{
+  check("the tempo in a file name", bpmFromFileName("drums_96bpm.wav") === 96 && bpmFromFileName("Groove 120 BPM.mp3") === 120 && bpmFromFileName("bpm-85 guitar.wav") === 85 && bpmFromFileName("verse_take2.wav") === null);
+  const sr = 22050;
+  // A made-up drum loop: a kick on every beat, a snare on 2 and 4, for `bars` bars of 4 beats.
+  const drums = (bpm: number, bars: number) => {
+    const beat = 60 / bpm;
+    const out = new Float32Array(Math.round(bars * 4 * beat * sr));
+    const hit = (t: number, freq: number, len: number) => {
+      const start = Math.round(t * sr);
+      for (let i = 0; i < len * sr && start + i < out.length; i++) out[start + i] += Math.sin((2 * Math.PI * freq * i) / sr) * Math.exp(-i / (len * sr * 0.3));
+    };
+    for (let b = 0; b < bars * 4; b++) {
+      hit(b * beat, 60, 0.15);
+      if (b % 2 === 1) hit(b * beat, 220, 0.12);
+    }
+    return out;
+  };
+  for (const bpm of [90, 100, 120, 128, 140]) {
+    const found = detectLoopBpm(drums(bpm, 4), sr, "loop.wav");
+    check(`a ${bpm} BPM drum loop is found by its audio`, !!found && found.source === "audio" && Math.abs(found.bpm - bpm) < 1.5, found ? `got ${found.bpm}` : "got nothing");
+  }
+  check("the file name wins over the audio", detectLoopBpm(drums(100, 4), sr, "x_110bpm.wav")?.bpm === 110);
+  check("silence and a steady tone are not loops", detectLoopBpm(new Float32Array(sr * 6), sr) === null && detectLoopBpm(Float32Array.from({ length: sr * 6 }, (_, i) => Math.sin((2 * Math.PI * 220 * i) / sr)), sr) === null);
+  check("a recording that is far too long is left alone", detectLoopBpm(new Float32Array(sr * 200), sr) === null);
+
+  const tone = Float32Array.from({ length: sr * 2 }, (_, i) => 0.5 * Math.sin((2 * Math.PI * 440 * i) / sr));
+  const crossingsPerSec = (x: Float32Array) => {
+    let c = 0;
+    for (let i = 1; i < x.length; i++) if (x[i - 1] < 0 && x[i] >= 0) c++;
+    return c / (x.length / sr);
+  };
+  const rms = (x: Float32Array) => Math.sqrt(x.reduce((a, v) => a + v * v, 0) / x.length);
+  for (const ratio of [0.8, 1.25, 2]) {
+    const [stretched] = timeStretch([tone], sr, ratio);
+    check(`stretching x${ratio}: the length follows`, stretched.length === Math.round(tone.length * ratio));
+    check(`stretching x${ratio}: the pitch stays (440 Hz)`, Math.abs(crossingsPerSec(stretched) - 440) < 8, `${crossingsPerSec(stretched).toFixed(1)} Hz`);
+    check(`stretching x${ratio}: the loudness stays`, Math.abs(rms(stretched.slice(2000, stretched.length - 2000)) - rms(tone)) < rms(tone) * 0.12);
+  }
+  const loop = drums(100, 4);
+  const [fitted] = timeStretch([loop], sr, 100 / 120);
+  check("a 100 BPM loop fitted to 120 BPM is shorter by the right amount", Math.abs(fitted.length / sr - loop.length / sr / 1.2) < 0.01);
+  const refound = detectLoopBpm(fitted, sr, "x.wav");
+  check("...and now reads as 120 BPM", !!refound && Math.abs(refound.bpm - 120) < 2, refound ? `got ${refound.bpm}` : "got nothing");
+  const [stereoL, stereoR] = timeStretch([tone, tone.map((v) => -v)], sr, 1.25);
+  check("stereo channels stay in step", stereoL.length === stereoR.length && Math.abs(stereoL[5000] + stereoR[5000]) < 1e-6);
+  check("no change leaves the sound as it is", timeStretch([tone], sr, 1)[0].every((v, i) => v === tone[i]));
+}
+
+// ---- vector waveform shapes
+{
+  const peaks = Float32Array.from([-0.5, 0.5, -1, 1, 0, 0]);
+  const d = wavePath(peaks, 3, 100);
+  check("a waveform path is one closed shape", d.startsWith("M0,25 1,25 L") && d.endsWith("Z") && (d.match(/M/g) ?? []).length === 1);
+  check("the loudest column reaches the top and bottom", d.includes("1,0 2,0") && d.includes("2,100 1,100"));
+  check("silence is still a visible line", d.includes("2,49.5 3,49.5") && d.includes("3,50.5 2,50.5"));
+  check("a boost enlarges a quiet recording (up to the limit)", wavePath(Float32Array.from([-0.1, 0.1]), 1, 100, 4).startsWith("M0,30") && autoBoost(Float32Array.from([-0.1, 0.1])) === 4 && near(autoBoost(Float32Array.from([-0.9, 0.9])), 1, 1e-6) && autoBoost(new Float32Array(4)) === 1);
+  check("no columns, no shape", wavePath(new Float32Array(0), 0, 100) === "");
+  check("a loud sample is kept inside the picture", wavePath(Float32Array.from([-3, 3]), 1, 100).startsWith("M0,0 1,0"));
 }
 
 process.exit(fail ? 1 : 0);

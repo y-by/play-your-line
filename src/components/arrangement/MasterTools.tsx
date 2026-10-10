@@ -39,6 +39,13 @@ export function MasterTools({ initialAnchor, onClose }: { initialAnchor: { top: 
   // Hearing the song dry is only for the moment: closing the window puts the master back.
   useEffect(() => () => useProjectStore.getState().setMasterCompare(false), []);
 
+  // Opening the Tools box turns the master effects on (when you may change them). It can be switched off again.
+  useEffect(() => {
+    const s = useProjectStore.getState();
+    const current = s.project?.master;
+    if (current && !current.fx.fxOn && s.canMix()) s.setMasterFx({ fxOn: true }, { checkpoint: true });
+  }, []);
+
   if (!master) return null;
   const fx = master.fx;
   const stageOn = tool === "eq" ? fx.eqOn : tool === "comp" ? fx.compOn : master.limiterOn;

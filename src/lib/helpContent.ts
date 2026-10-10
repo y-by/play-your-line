@@ -115,11 +115,20 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: "loop-tempo",
+    group: "Recording",
+    question: "What happens when I drop a loop that is at another tempo?",
+    answer: [
+      "Drop an audio file on your channel. If it looks like a loop (its name says something like 96bpm, or its beats are clear) and its tempo is not the song's, a small window asks what to do: Fit it to the song's tempo, keep it as it is, or (the Owner, before anything is recorded) set the song to the loop's tempo.",
+      "Fitting changes the speed without changing the pitch and adds the result as a new recording on your channel. The window shows the tempo it found; if it is wrong, type the right one before you fit. A recording that is not a loop (a voice, a pad, a whole song) is added as it is, with no question.",
+    ],
+  },
+  {
     id: "fx",
     group: "Mixing and effects",
     question: "How do the effects switches work?",
     answer: [
-      "Each channel has a power switch at the top right of its Tools box. It is off by default: a channel with the power off is heard dry, whatever the knobs say. Your settings are kept.",
+      "Each channel has a power switch at the top right of its Tools box. It starts off, and opening the Tools box turns it on for you (if you may change it). With the power off a channel is heard dry, whatever the knobs say; your settings are kept.",
       "Each effect (EQ, Comp, Delay, Reverb) also has its own bypass switch next to its name. With the power on, a bypassed effect is skipped and the others still work. An effect set to do nothing is skipped too, so it never colours the sound.",
       "Compare plays the channel dry just for you, to check what the effects add. It's never saved and ends when you close the box.",
     ],

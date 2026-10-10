@@ -37,6 +37,13 @@ export function GroupTools({ groupId, initialAnchor, onClose }: { groupId: strin
   // Hearing the group dry is only for the moment: closing the window puts the effects back.
   useEffect(() => () => useProjectStore.getState().setGroupFxCompare(groupId, false), [groupId]);
 
+  // Opening the Tools box turns the group's effects on (when you may change them). It can be switched off again.
+  useEffect(() => {
+    const s = useProjectStore.getState();
+    const current = s.project?.groups.find((g) => g.id === groupId);
+    if (current && !current.fx.fxOn && s.canMix()) s.setGroupFx(groupId, { fxOn: true }, { checkpoint: true });
+  }, [groupId]);
+
   if (!group) return null;
   const fx = group.fx;
   const field = ON_FIELD[tool];

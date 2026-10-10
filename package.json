@@ -11,6 +11,7 @@
     "dev:http": "HTTPS=off vite",
     "test:timing": "node --experimental-strip-types scripts/test-timing.ts",
     "test:logic": "node --experimental-strip-types scripts/test-clips.ts",
+    "docs:rules": "node --experimental-strip-types scripts/gen-rules.ts",
     "test": "npm run test:timing && npm run test:logic"
   },
   "dependencies": {

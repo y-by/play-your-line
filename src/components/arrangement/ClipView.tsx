@@ -1,9 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type { Clip, Take, Track } from "../../types/project";
 import { useProjectStore } from "../../store/useProjectStore";
 import { clipEnd, moveClip, setClipFade, trimClipEnd, trimClipStart } from "../../lib/clips";
 import { snapTo, stepSec } from "../../lib/grid";
 import { computePeaks } from "../../lib/waveform";
+import { autoBoost, wavePath } from "../../lib/wavePath";
 
 type DragMode = "move" | "trim-start" | "trim-end" | "fade-in" | "fade-out";
 
@@ -17,7 +18,7 @@ interface Props {
 }
 
 const WAVE_HEIGHT = 72;
-const MAX_WAVE_COLUMNS = 4096;
+const MAX_WAVE_COLUMNS = 8192;
 
 export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Props) {
   const engine = useProjectStore((s) => s.engine);
@@ -34,37 +35,22 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
   const [preview, setPreview] = useState<Clip | null>(null);
   const [dragMode, setDragMode] = useState<DragMode | null>(null);
   const drag = useRef<{ mode: DragMode; startX: number; original: Clip; latest: Clip; moved: boolean } | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const shown = preview ?? clip;
   const widthPx = Math.max(3, shown.durationSec * pxPerSec);
-  const columns = Math.max(1, Math.min(MAX_WAVE_COLUMNS, Math.round(widthPx)));
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    canvas.width = columns;
-    canvas.height = WAVE_HEIGHT;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, columns, WAVE_HEIGHT);
+  // One column for each device pixel (twice as many on a sharp screen); the waveform is a vector shape, so it stays
+  // crisp when the clip is zoomed or the channel is made taller.
+  const density = Math.min(2, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
+  const columns = Math.max(1, Math.min(MAX_WAVE_COLUMNS, Math.round(widthPx * density)));
+  const wave = useMemo(() => {
     const buffer = engine.getTakeBuffer(clip.takeId);
-    if (!buffer) return;
-
+    if (!buffer) return "";
     const peaks = computePeaks(buffer.getChannelData(0), buffer.sampleRate, shown.sourceStartSec, shown.durationSec, columns);
-    let loudest = 0;
-    for (let i = 0; i < peaks.length; i++) loudest = Math.max(loudest, Math.abs(peaks[i]));
     // Quiet takes are drawn a little larger (up to 4x) so they stay readable.
-    const boost = loudest > 0 ? Math.min(4, 0.9 / loudest) : 1;
-
-    const mid = WAVE_HEIGHT / 2;
-    ctx.fillStyle = track.color;
-    for (let x = 0; x < columns; x++) {
-      const top = mid - peaks[x * 2 + 1] * boost * mid;
-      const bottom = mid - peaks[x * 2] * boost * mid;
-      ctx.fillRect(x, top, 1, Math.max(1, bottom - top));
-    }
-  }, [engine, clip.takeId, shown.sourceStartSec, shown.durationSec, columns, takesVersion, track.color]);
+    return wavePath(peaks, columns, WAVE_HEIGHT, autoBoost(peaks));
+    // takesVersion says when a recording has arrived (the buffer is not React state).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [engine, clip.takeId, shown.sourceStartSec, shown.durationSec, columns, takesVersion]);
 
   const step = stepSec(bpm, snapResolution, beatsPerBar);
   // Holding Alt while dragging ignores snapping (free placement).
@@ -141,9 +127,11 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
       onPointerUp={onEnd}
       onPointerCancel={onEnd}
     >
-      <canvas ref={canvasRef} className="clip-wave" />
+      <svg className="clip-wave" viewBox={`0 0 ${columns} ${WAVE_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
+        <path d={wave} fill={track.color} />
+      </svg>
       {(fadeInPx > 0 || fadeOutPx > 0) && (
-        <svg className="clip-fades" width={widthPx} height={WAVE_HEIGHT} aria-hidden="true">
+        <svg className="clip-fades" viewBox={`0 0 ${widthPx} ${WAVE_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
           {fadeInPx > 0 && (
             <>
               <polygon points={`0,0 ${fadeInPx},0 0,${WAVE_HEIGHT}`} className="clip-fade-shade" />

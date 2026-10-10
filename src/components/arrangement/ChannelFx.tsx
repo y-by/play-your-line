@@ -327,6 +327,14 @@ export function ChannelFx({
   // Hearing the channel dry is only for the moment: closing the window puts the effects back.
   useEffect(() => () => useProjectStore.getState().setFxCompare(track.id, false), [track.id]);
 
+  // Opening the Tools box turns the effects on (when you may change them): you open it to use them. It can be switched off again.
+  useEffect(() => {
+    if (!mainOpen) return;
+    const s = useProjectStore.getState();
+    const current = s.project?.tracks.find((t) => t.id === track.id);
+    if (current && !current.fx.fxOn && s.canUseFx(current)) s.setChannelFx(track.id, { fxOn: true }, { checkpoint: true });
+  }, [mainOpen, track.id]);
+
   const docked = TOOLS.filter((t) => !detached.includes(t.id));
   const shown = docked.some((t) => t.id === tool) ? tool : docked[0]?.id;
   /** Pulling a tab off the tab strip opens it as its own window, under the pointer. */

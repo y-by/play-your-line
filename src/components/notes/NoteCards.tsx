@@ -1,6 +1,5 @@
 import { useRef, useState } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
-import { useAuthStore } from "../../store/useAuthStore";
 import { agoLabel, barOfBeat, mentionedIds, pinLabel } from "../../lib/notes";
 import { MentionTextarea } from "./MentionTextarea";
 import { BarPin } from "./BarPin";
@@ -25,10 +24,9 @@ function Card({ note, state, layout, index, front }: { note: ProjectNote; state:
   const canWrite = useProjectStore((s) => s.canWriteNotes());
   const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
   const editNote = useProjectStore((s) => s.editNote);
-  const uid = useAuthStore((s) => s.userId);
-  const isOwner = useProjectStore((s) => s.isInitiator());
   const members = useMembers();
-  const canEdit = canWrite && (note.authorId === uid || isOwner);
+  const mayEdit = useProjectStore((s) => s.canEditNote(note));
+  const canEdit = canWrite && mayEdit;
   const drag = useRef<{ dx: number; dy: number } | null>(null);
   const grow = useRef<{ sx: number; sy: number; w: number; h: number } | null>(null);
   const cardEl = useRef<HTMLDivElement>(null);

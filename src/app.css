@@ -5636,6 +5636,7 @@ select.note-opt {
 .clip-fade-line {
   stroke: rgba(255, 255, 255, 0.75);
   stroke-width: 1.5;
+  vector-effect: non-scaling-stroke;
 }
 
 .clip-fade-handle {
@@ -6386,4 +6387,15 @@ select.sig-select option {
   height: 6px;
   cursor: row-resize;
   z-index: 6;
+}
+
+.loop-tempo {
+  max-width: 440px;
+}
+
+.loop-tempo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 10px 0 6px;
 }

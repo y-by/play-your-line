@@ -13,7 +13,6 @@ import { CheckIcon, NoteIcon, TrashIcon } from "../icons/Icons";
 export function NoteRow({ note }: { note: ProjectNote }) {
   const uid = useAuthStore((s) => s.userId);
   const tracks = useNoteTracks();
-  const isOwner = useProjectStore((s) => s.isInitiator());
   const canWrite = useProjectStore((s) => s.canWriteNotes());
   const beatsPerBar = useProjectStore((s) => s.project?.beatsPerBar ?? 4);
   const channel = useProjectStore((s) => s.project?.tracks.find((t) => t.id === note.trackId)?.instrument ?? null);
@@ -33,7 +32,7 @@ export function NoteRow({ note }: { note: ProjectNote }) {
   const forMe = !!uid && note.mentions.includes(uid);
   const myName = members.find((m) => m.id === uid)?.name ?? "\u0000";
   const mine = note.authorId === uid;
-  const canEdit = mine || isOwner;
+  const canEdit = useProjectStore((s) => s.canEditNote(note));
 
   return (
     <div className={`note-row${note.done ? " done" : ""}${forMe && !note.done ? " for-me" : ""}`} style={{ "--note-color": noteTint(note, tracks) } as React.CSSProperties}>

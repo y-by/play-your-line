@@ -8,6 +8,7 @@ import { MasterStrip } from "./MasterStrip";
 import { GroupRow } from "./GroupRow";
 import { buildRows, visibleLanes } from "../../lib/groups";
 import { Ruler } from "./Ruler";
+import { LoopTempoPrompt } from "../LoopTempoPrompt";
 
 const MIN_BARS = 16;
 const INFO_SCALE_KEY = "pyl.infoScale";
@@ -367,6 +368,7 @@ export function Arrangement() {
 
   return (
     <div className="arrangement">
+      <LoopTempoPrompt />
       <div className="arr-scroll" ref={scrollRef} onPointerDownCapture={onInfoEdgeDown} onDoubleClick={onInfoEdgeDouble}>
         <div className={pxPerBeat / 4 >= 10 ? "arr-inner fine-grid" : "arr-inner"} style={gridStyle}>
           <Ruler totalBars={totalBars} barPx={barPx} pxPerSec={pxPerSec} />

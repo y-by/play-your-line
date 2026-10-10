@@ -7,6 +7,8 @@ import { listInputDevices, probeChannelCount, resolveInputDeviceId, type InputDe
 import { listOutputDevices, type OutputDevice } from "../lib/outputDevices";
 import { nextZ, splitClip, duplicateClip, moveClip, audibleSegments } from "../lib/clips";
 import { encodeWavFloat32 } from "../lib/wav";
+import { detectLoopBpm } from "../lib/tempoDetect";
+import { timeStretch } from "../lib/timeStretch";
 import { detectChords, type ChordSegment } from "../lib/chords";
 import { detectOnsets } from "../lib/onsets";
 import { quantiseClip, planMoves } from "../lib/quantise";
@@ -22,7 +24,8 @@ import { prepareCoverImage } from "../lib/coverImage";
 import { clampFx, fxFromRow, presetPatch, resetPatch } from "../lib/channelFx";
 import { groupFromRow } from "../lib/groups";
 import { clampMasterVolume, DEFAULT_MASTER, masterFromRow, masterFxOnly } from "../lib/master";
-import { rolesOf, roleBadge, canMixFinal } from "../lib/roles";
+import { rolesOf, roleBadge } from "../lib/roles";
+import { can } from "../lib/rules";
 
 /** The useful part of a Supabase / network error, for showing to the person. */
 function errorDetail(err: unknown): string {
@@ -347,6 +350,8 @@ interface ProjectState {
   showChannelNotes: (trackId: string | null) => void;
   /** Owner, Mixer or a Player may write notes; Listeners may only read the ones shared with them. */
   canWriteNotes: () => boolean;
+  /** The author of a note or the Owner may edit it, mark it done and reopen it. */
+  canEditNote: (note: ProjectNote) => boolean;
   addNote: (input: { body: string; atBeat: number | null; trackId: string | null; mentions: string[]; sharedWithListeners: boolean }) => Promise<void>;
   editNote: (id: string, patch: Partial<{ body: string; atBeat: number | null; trackId: string | null; mentions: string[]; sharedWithListeners: boolean }>) => Promise<void>;
   setNoteDone: (id: string, done: boolean) => Promise<void>;
@@ -367,6 +372,11 @@ interface ProjectState {
   importAudioFile: (trackId: string, file: File, atSec: number) => Promise<void>;
   /** A channel currently importing a dropped file (for a small "Importing…" hint). */
   importingTrackId: string | null;
+  /** A dropped loop whose tempo differs from the project's: waiting for the person to choose what to do. */
+  loopTempoPrompt: LoopTempoPrompt | null;
+  /** Fits the loop to the project's tempo ("match"), leaves it ("keep"), or (Owner, before any recording) sets the project to the loop's tempo ("project"). */
+  confirmLoopTempo: (choice: { mode: "match" | "keep" | "project"; bpm: number }) => Promise<void>;
+  cancelLoopTempo: () => void;
 
   startRecording: (trackId: string) => Promise<void>;
   stopRecording: () => Promise<void>;
@@ -437,6 +447,18 @@ export type NoteCardState = { x: number; y: number; min: boolean; w?: number; h?
 
 /** How cards that have not been dragged away sit on the right of the screen. */
 export type NoteCardsLayout = "grid" | "stack";
+
+/** A dropped loop waiting for a tempo decision. */
+export interface LoopTempoPrompt {
+  trackId: string;
+  fileName: string;
+  atSec: number;
+  buffer: AudioBuffer;
+  /** The tempo found in the file name or the audio. */
+  bpm: number;
+  source: "filename" | "audio";
+  projectBpm: number;
+}
 
 /** The audio input (device, and which of its channels) a channel records from. */
 export type ChannelInput = { deviceId: string; channelIndex: number | null };
@@ -658,6 +680,27 @@ function stopRealtime() {
   unsubscribeRealtime = null;
 }
 
+/**
+ * The roles the signed-in person holds in this song. A person the Owner added as a player counts as a Player
+ * (they can add their own channel); with `needsChannel` only someone who really has a channel does (the database
+ * lets only those write notes).
+ */
+function myRoles(project: Project | null, needsChannel = false) {
+  const uid = currentUserId();
+  if (!project) return [];
+  const withChannel = project.tracks.map((t) => t.assignedUserId);
+  const added = project.listeners.filter((l) => l.canPlay).map((l) => l.userId);
+  return rolesOf(
+    {
+      initiatorId: project.initiatorId,
+      mixerId: project.mixerId,
+      listenerIds: project.listeners.filter((l) => needsChannel || !l.canPlay).map((l) => l.userId),
+      assignedUserIds: needsChannel ? withChannel : [...withChannel, ...added],
+    },
+    uid
+  );
+}
+
 export const useProjectStore = create<ProjectState>((set, get) => {
   const engine = new AudioEngine();
   const initialLatencyMs = readStoredLatencyMs();
@@ -697,6 +740,53 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       engine.updateTrackMix(track.id, m.volume, m.muted, m.solo);
       engine.setTrackPan(track.id, track.pan);
     }
+  };
+
+  /** Adds a decoded recording to a channel as a new clip: stored as a take (32-bit float WAV), loaded, placed, undoable. */
+  const placeImportedBuffer = async (trackId: string, fileName: string, buffer: AudioBuffer, atSec: number) => {
+    const { project } = get();
+    const uid = currentUserId();
+    if (!project || !uid) return;
+    // Re-encoded as 32-bit float WAV so every take in the song is the same lossless format, whatever the dropped file
+    // originally was — but that makes long files huge (a minute of mono 48kHz is ~11.5 MB), easily past Supabase's
+    // per-file storage limit. Better to say so plainly than let the upload fail with a raw storage error.
+    const blob = encodeWavFloat32(buffer);
+    if (blob.size > MAX_IMPORT_BYTES) {
+      const maxMinutes = (MAX_IMPORT_BYTES / (blob.size / buffer.duration) / 60).toFixed(1);
+      set({
+        editError: `"${fileName}" is too long at full quality (about ${Math.round(blob.size / 1024 / 1024)} MB) — this channel can take roughly ${maxMinutes} minutes at a time. Try a shorter clip.`,
+      });
+      return;
+    }
+
+    const take = await api.createTake({ projectId: project.id, trackId, blob, durationSec: buffer.duration, userId: uid });
+    await engine.loadTake(take.id, blob);
+
+    const existing = get().project?.tracks.find((t) => t.id === trackId)?.clips ?? [];
+    const clip: Clip = {
+      id: crypto.randomUUID(),
+      takeId: take.id,
+      startSec: Math.max(0, atSec),
+      sourceStartSec: 0,
+      durationSec: buffer.duration,
+      z: nextZ(existing),
+      fadeInSec: 0,
+      fadeOutSec: 0,
+    };
+    await api.upsertClips(trackId, [clip]);
+
+    const current = get().project;
+    if (!current) return;
+    const next = [...existing, clip];
+    undoStack.push({ trackId, before: existing, after: next });
+    redoStack = [];
+    set({
+      project: { ...current, takes: { ...current.takes, [take.id]: take } },
+      takesVersion: get().takesVersion + 1,
+      selectedClip: { trackId, clipId: clip.id },
+    });
+    applyTrackClips(trackId, next);
+    updateHistoryCounts();
   };
 
   // Pushes the loop (converted from beats to seconds at the current tempo) into the audio engine.
@@ -1234,35 +1324,29 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         project.listeners.some((l) => l.userId === uid)
       );
     },
-    isContributor: () => {
-      const { project } = get();
-      const uid = currentUserId();
-      if (!project || !uid) return false;
-      return (
-        project.initiatorId === uid ||
-        project.mixerId === uid ||
-        project.tracks.some((t) => t.assignedUserId === uid) ||
-        project.listeners.some((l) => l.userId === uid && l.canPlay)
-      );
-    },
+    // Who may do what is decided in one table (lib/rules.ts); these only ask it.
+    isContributor: () => can("add-channel", { roles: myRoles(get().project) }),
     canRenameTrack: (track) => {
-      const { project } = get();
       const uid = currentUserId();
-      if (!project || !uid || !get().isContributor()) return false;
-      return project.initiatorId === uid || project.mixerId === uid || track.assignedUserId === uid || track.assignedUserId === null;
+      return can("rename-channel", { roles: myRoles(get().project), ownChannel: !!uid && track.assignedUserId === uid, unassigned: track.assignedUserId === null });
     },
     canEditClips: (track) => {
       const uid = currentUserId();
-      return !!uid && track.assignedUserId === uid;
+      return !!uid && can("record-edit-clips", { roles: myRoles(get().project), ownChannel: track.assignedUserId === uid });
     },
     tempoLocked: () => !!get().project?.tracks.some((t) => t.clips.length > 0),
 
     canMix: () => {
       const { project } = get();
-      return !!project && canMixFinal(project, currentUserId());
+      return !!project && can("final-mix", { roles: myRoles(project) });
     },
     // The Owner and the Mixer always; the channel's own player unless the channel is locked.
-    canUseFx: (track) => get().canMix() || (get().canEditClips(track) && !track.fxLocked),
+    canUseFx: (track) => {
+      const uid = currentUserId();
+      const roles = myRoles(get().project);
+      if (!can("channel-fx", { roles, ownChannel: !!uid && track.assignedUserId === uid })) return false;
+      return can("fx-lock", { roles }) || !track.fxLocked; // a locked channel's player cannot change it
+    },
 
     roleLabel: () => {
       const { project } = get();
@@ -2545,11 +2629,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     setOpenFlag: (id) => set({ openFlagId: id }),
     noteChannelFilter: null,
     showChannelNotes: (trackId) => set({ noteChannelFilter: trackId, notesVisible: true, notesTrayOpen: true }),
-    canWriteNotes: () => {
-      const { project } = get();
+    canWriteNotes: () => can("write-notes", { roles: myRoles(get().project, true) }),
+    canEditNote: (note) => {
       const uid = currentUserId();
-      if (!project || !uid) return false;
-      return project.initiatorId === uid || project.mixerId === uid || project.tracks.some((t) => t.assignedUserId === uid);
+      return can("note-edit-done", { roles: myRoles(get().project, true), author: !!uid && note.authorId === uid });
     },
     addNote: async ({ body, atBeat, trackId, mentions, sharedWithListeners }) => {
       const { project } = get();
@@ -2633,6 +2716,35 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     seek: (sec) => engine.seek(sec),
 
     importingTrackId: null,
+    loopTempoPrompt: null,
+    cancelLoopTempo: () => set({ loopTempoPrompt: null }),
+    confirmLoopTempo: async ({ mode, bpm }) => {
+      const prompt = get().loopTempoPrompt;
+      const project = get().project;
+      if (!prompt || !project) return;
+      set({ loopTempoPrompt: null, importingTrackId: prompt.trackId, editError: null });
+      try {
+        let buffer = prompt.buffer;
+        const loopBpm = Math.min(300, Math.max(40, bpm));
+        if (mode === "project") {
+          await get().setTempo(loopBpm);
+        } else if (mode === "match") {
+          // Let the "Importing…" hint show before the number crunching starts.
+          await new Promise((r) => setTimeout(r, 30));
+          const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
+          const stretched = timeStretch(channels, buffer.sampleRate, loopBpm / project.bpm);
+          const out = new AudioBuffer({ length: stretched[0].length, sampleRate: buffer.sampleRate, numberOfChannels: stretched.length });
+          stretched.forEach((data, c) => out.copyToChannel(new Float32Array(data), c));
+          buffer = out;
+        }
+        await placeImportedBuffer(prompt.trackId, prompt.fileName, buffer, prompt.atSec);
+      } catch (err) {
+        console.error("Failed to fit the loop:", err);
+        set({ editError: `Couldn't add "${prompt.fileName}"${errorDetail(err)}` });
+      } finally {
+        set({ importingTrackId: null });
+      }
+    },
     importAudioFile: async (trackId, file, atSec) => {
       const { project } = get();
       const track = project?.tracks.find((t) => t.id === trackId);
@@ -2655,48 +2767,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         } finally {
           await decodeCtx.close();
         }
-        // Re-encoded as 32-bit float WAV so every take in the song is the same
-        // lossless format, whatever the dropped file originally was — but that
-        // makes long files huge (a minute of mono 48kHz is ~11.5 MB), easily
-        // past Supabase's per-file storage limit. Better to say so plainly
-        // than let the upload fail with a raw storage error.
-        const blob = encodeWavFloat32(buffer);
-        if (blob.size > MAX_IMPORT_BYTES) {
-          const maxMinutes = (MAX_IMPORT_BYTES / (blob.size / buffer.duration) / 60).toFixed(1);
-          set({
-            editError: `"${file.name}" is too long at full quality (about ${Math.round(blob.size / 1024 / 1024)} MB) — this channel can take roughly ${maxMinutes} minutes at a time. Try a shorter clip.`,
-          });
+        // A loop at another tempo than the song: ask what to do with it (a recording that is not a loop is left alone).
+        const found = detectLoopBpm(buffer.getChannelData(0), buffer.sampleRate, file.name);
+        if (found && Math.abs(found.bpm - project.bpm) / project.bpm > 0.01) {
+          set({ loopTempoPrompt: { trackId, fileName: file.name, atSec, buffer, bpm: found.bpm, source: found.source, projectBpm: project.bpm } });
           return;
         }
-
-        const take = await api.createTake({ projectId: project.id, trackId, blob, durationSec: buffer.duration, userId: uid });
-        await engine.loadTake(take.id, blob);
-
-        const existing = get().project?.tracks.find((t) => t.id === trackId)?.clips ?? [];
-        const clip: Clip = {
-          id: crypto.randomUUID(),
-          takeId: take.id,
-          startSec: Math.max(0, atSec),
-          sourceStartSec: 0,
-          durationSec: buffer.duration,
-          z: nextZ(existing),
-          fadeInSec: 0,
-          fadeOutSec: 0,
-        };
-        await api.upsertClips(trackId, [clip]);
-
-        const current = get().project;
-        if (!current) return;
-        const next = [...existing, clip];
-        undoStack.push({ trackId, before: existing, after: next });
-        redoStack = [];
-        set({
-          project: { ...current, takes: { ...current.takes, [take.id]: take } },
-          takesVersion: get().takesVersion + 1,
-          selectedClip: { trackId, clipId: clip.id },
-        });
-        applyTrackClips(trackId, next);
-        updateHistoryCounts();
+        await placeImportedBuffer(trackId, file.name, buffer, atSec);
       } catch (err) {
         console.error("Failed to import audio file:", err);
         set({ editError: `Couldn't add "${file.name}"${errorDetail(err)}` });

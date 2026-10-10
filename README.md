@@ -19,21 +19,27 @@ tempo and click, mute / solo / volume, and trimming that never destroys a record
 
 **Roles.** One person owns a project; each channel belongs to one player.
 
+<!-- rules-table:start (written by npm run docs:rules from src/lib/rules.ts, do not edit by hand) -->
 | | Owner | Mixer | Player | Listener |
 | --- | :---: | :---: | :---: | :---: |
-| Who | Created the project | One person the Owner picks | Whoever is on a channel | Invited to hear the draft |
+| Who | Created the project | One person the Owner picks | Whoever is on a channel (or was added as a player) | Invited to hear the draft |
+| Listen to the draft | ✅ | ✅ | ✅ | ✅ |
 | Add a channel | ✅ | ✅ | ✅ | – |
 | Rename a channel | ✅ | ✅ | their own channel (and any channel nobody plays yet) | – |
 | Put someone on a channel (link, email or pick from the list), reassign it | ✅ | – | – | – |
-| Tempo, channel order and colours, rename or delete the project, publish | ✅ | – | – | – |
+| Channel order and colours, rename or delete a channel | ✅ | – | – | – |
+| Tempo, time signature, rename or delete the project, cover image, publish | ✅ | – | – | – |
 | Final mix (volume, mute and pan per channel) | ✅ | ✅ | – | – |
-| Master channel (fader, mute, EQ, compressor, limiter) | ✅ | ✅ | – | – |
+| Master channel (fader, EQ, compressor, limiter) | ✅ | ✅ | – | – |
 | Group channels: create, rename, delete, put channels in them | ✅ | – | – | – |
 | Group channels: volume, mute, pan, Tools (effects) | ✅ | ✅ | – | – |
 | Channel Tools (EQ, Compressor, Delay, Reverb, Tuner) | ✅ | ✅ | their own channel, until the Owner or Mixer locks it | – |
-| Write notes, tag people with @ | ✅ | ✅ | ✅ | – (they read the notes shared with them) |
-| Record and edit clips | own channel | own channel | own channel | – |
-| Listen to the draft | ✅ | ✅ | ✅ | ✅ |
+| Lock or unlock a player's channel effects | ✅ | ✅ | – | – |
+| Record and edit clips | their own channel | their own channel | their own channel | – |
+| Invite a Mixer or Listeners, add someone by email, choose the Mixer | ✅ | – | – | – |
+| Write notes, tag people with @ | ✅ | ✅ | ✅ | – |
+| Edit a note, mark it done or reopen it | ✅ | their own notes | their own notes | – |
+<!-- rules-table:end -->
 
 The rules are enforced by the database, not just hidden in the screens. **Nobody touches a
 player's recordings but that player.** A channel with recordings can't be reassigned.
@@ -72,11 +78,13 @@ it is in tune, with the note, the cents and a needle. It reads from your first n
 bass's low B. Pick Guitar, Bass (4), Bass (5) or Ukulele and tap a string to tune to it, or leave it on
 "Any note". The reference pitch (A = 440) can be moved.
 
-**Effects.** The effects are **off** for a channel until its power switch is turned on. Each effect has its
+**Effects.** Opening a Tools box (a channel's, a group's or the master's) turns its effects on, if you may change them; the power switch can turn them off again. A channel that nobody has opened is heard dry. Each effect has its
 own bypass, each EQ band has a frequency knob under its gain knob, and a separate Low cut (a high-pass filter, off at the bottom of its knob) sits to the left of them, there are presets, undo, reset and a Compare (hear it dry) button, and each tab can be
 dragged out into its own window (and docked back with its Dock button). Close the main Tools window and any tab you pulled out stays on screen, on top. Drag the bottom-right corner of a Tools window to make it bigger, up to double (double-click the corner for normal size); the main window remembers its size. Export Mix includes the effects.
 
 **Master.** Under the last channel sits the master: a fader (it only turns the whole song down), a left and right level meter with a clip light, a personal mute (only your own speakers, never saved), the waveform of the whole song as it leaves the master drawn along its track (red where it reaches the top), and a Tools box with EQ, Compressor and a safety Limiter (the ruler's M is the same personal master mute). It is saved on the project (migration 0043), only the Owner and the Mixer see and change it, and everyone hears it, and it is part of Export Mix and the MP3 listening copy (the master's personal mute never silences an export). Its effects start off, so older songs sound the same. When the master changes after a song was published, the refresh button on its card turns amber: update the listening copy.
+
+**Loops at another tempo.** Drop an audio file on your channel: if it is a loop (the file name says e.g. 96bpm, or its beats are clear) and its tempo differs from the song's, a window offers to fit it to the song's tempo (WSOLA time-stretch, the pitch stays), keep it as it is, or (Owner, before any recording) set the song to the loop's tempo. A recording that is not a loop is added as it is.
 
 **Wider controls.** Drag the right edge of the channel control column (any row) to make it up to half as wide again, so long channel names and all the buttons fit; double-click the edge for normal width. Kept on this device.
 
