@@ -28,6 +28,8 @@ tempo and click, mute / solo / volume, and trimming that never destroys a record
 | Tempo, channel order and colours, rename or delete the project, publish | ✅ | – | – | – |
 | Final mix (volume, mute and pan per channel) | ✅ | ✅ | – | – |
 | Master channel (fader, mute, EQ, compressor, limiter) | ✅ | ✅ | – | – |
+| Group channels: create, rename, delete, put channels in them | ✅ | – | – | – |
+| Group channels: volume, mute, pan, Tools (effects) | ✅ | ✅ | – | – |
 | Channel Tools (EQ, Compressor, Delay, Reverb, Tuner) | ✅ | ✅ | their own channel, until the Owner or Mixer locks it | – |
 | Write notes, tag people with @ | ✅ | ✅ | ✅ | – (they read the notes shared with them) |
 | Record and edit clips | own channel | own channel | own channel | – |
@@ -75,6 +77,12 @@ own bypass, each EQ band has a frequency knob under its gain knob, and a separat
 dragged out into its own window (and docked back with its Dock button). Close the main Tools window and any tab you pulled out stays on screen, on top. Drag the bottom-right corner of a Tools window to make it bigger, up to double (double-click the corner for normal size); the main window remembers its size. Export Mix includes the effects.
 
 **Master.** Under the last channel sits the master: a fader (it only turns the whole song down), a left and right level meter with a clip light, a personal mute (only your own speakers, never saved), the waveform of the whole song as it leaves the master drawn along its track (red where it reaches the top), and a Tools box with EQ, Compressor and a safety Limiter (the ruler's M is the same personal master mute). It is saved on the project (migration 0043), only the Owner and the Mixer see and change it, and everyone hears it, and it is part of Export Mix and the MP3 listening copy (the master's personal mute never silences an export). Its effects start off, so older songs sound the same. When the master changes after a song was published, the refresh button on its card turns amber: update the listening copy.
+
+**Wider controls.** Drag the right edge of the channel control column (any row) to make it up to half as wide again, so long channel names and all the buttons fit; double-click the edge for normal width. Kept on this device.
+
+**Taller channels.** Drag the bottom edge of a channel to make that channel taller, up to twice its normal height (the master's track can be dragged the same way, and a little lower too); double-click the edge for normal height. Each channel keeps its own height, on this device.
+
+**Groups.** The Owner can make group channels (busses) in the Add Channel panel, for example Drums: a group has a header row above its channels (fold arrow, name, level meter, mute, solo, fader, pan, Tools) and its channels play through it before the master. Only the Owner makes, renames, deletes groups and puts channels in them (migration 0044); the Owner and the Mixer set a group's volume, mute, pan and effects; everyone hears it, and anyone can fold a group or solo it for themselves. Solo beats mute (a soloed channel is heard even in a muted group; a soloed group plays all its channels). Deleting a group keeps its channels, which go back to the master. Groups are part of Export Mix and the MP3 listening copy, and mark the copy out of date like the master does.
 
 **Mixes.** Players hear their own monitor mix (saved only on their device) or the Owner's saved
 final mix. Solo is never saved.

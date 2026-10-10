@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { Track } from "../../types/project";
+import type { Group, Track } from "../../types/project";
 import { useProjectStore } from "../../store/useProjectStore";
 import { snapTo, stepSec } from "../../lib/grid";
 import { ChannelInfo } from "./ChannelInfo";
@@ -9,6 +9,8 @@ import { ChordStrip } from "./ChordStrip";
 
 interface Props {
   track: Track;
+  /** The group this channel is shown under (null = not in a group). */
+  group?: Group | null;
   number: number;
   style?: React.CSSProperties;
   onGripDown?: (e: React.PointerEvent) => void;
@@ -16,7 +18,7 @@ interface Props {
   timelinePx: number;
 }
 
-export function ChannelLane({ track, number, style, onGripDown, pxPerSec, timelinePx }: Props) {
+export function ChannelLane({ track, group, number, style, onGripDown, pxPerSec, timelinePx }: Props) {
   const project = useProjectStore((s) => s.project);
   const canEdit = useProjectStore((s) => s.canEditClips(track));
   const selectedClip = useProjectStore((s) => s.selectedClip);
@@ -24,6 +26,7 @@ export function ChannelLane({ track, number, style, onGripDown, pxPerSec, timeli
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const importAudioFile = useProjectStore((s) => s.importAudioFile);
   const importing = useProjectStore((s) => s.importingTrackId === track.id);
+  const laneScale = useProjectStore((s) => s.laneScales[track.id] ?? 1);
   const [dragOver, setDragOver] = useState(false);
   if (!project) return null;
 
@@ -66,7 +69,7 @@ export function ChannelLane({ track, number, style, onGripDown, pxPerSec, timeli
   };
 
   return (
-    <div className="arr-row lane" style={{ "--track-color": track.color, ...style } as React.CSSProperties}>
+    <div className={group ? "arr-row lane in-group" : "arr-row lane"} data-lane-id={track.id} style={{ "--track-color": track.color, "--lane-scale": laneScale, ...(group ? { "--group-color": group.color } : {}), ...style } as React.CSSProperties}>
       <ChannelInfo track={track} number={number} onGripDown={onGripDown} />
       <div
         className={["arr-lane", recordingTrackId === track.id && "recording", dragOver && "drop-target"].filter(Boolean).join(" ")}

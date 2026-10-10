@@ -5,9 +5,27 @@ import { clipsEnd } from "../../lib/clips";
 import { defaultOrder, orderTracks } from "../../lib/trackOrder";
 import { ChannelLane } from "./ChannelLane";
 import { MasterStrip } from "./MasterStrip";
+import { GroupRow } from "./GroupRow";
+import { buildRows, visibleLanes } from "../../lib/groups";
 import { Ruler } from "./Ruler";
 
 const MIN_BARS = 16;
+const INFO_SCALE_KEY = "pyl.infoScale";
+/** The channel control column can be made up to half as wide again as its normal width. */
+const MAX_INFO_SCALE = 1.5;
+/** A channel can be made taller than normal, up to twice (the master can also be a little lower). */
+const MIN_LANE_SCALE = 1;
+const MAX_LANE_SCALE = 2;
+const MIN_MASTER_SCALE = 0.7;
+
+function readInfoScale(): number {
+  try {
+    const v = Number(localStorage.getItem(INFO_SCALE_KEY));
+    return v >= 1 && v <= MAX_INFO_SCALE ? v : 1;
+  } catch {
+    return 1;
+  }
+}
 
 /** The whole timeline: shared ruler, one lane per channel, a playhead across all of them. */
 export function Arrangement() {
@@ -22,8 +40,111 @@ export function Arrangement() {
   const loop = useProjectStore((s) => s.loop);
   const loopEnabled = useProjectStore((s) => s.loopEnabled);
   const pendingScroll = useRef<number | null>(null);
+  const [infoScale, setInfoScale] = useState(readInfoScale);
+  const setLaneScale = useProjectStore((s) => s.setLaneScale);
+
+  // The control column's width: its normal width for this screen (the style sheet decides) times the chosen scale.
+  useLayoutEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const apply = () => {
+      el.style.removeProperty("--info-w");
+      if (infoScale === 1) return;
+      const base = parseFloat(getComputedStyle(el).getPropertyValue("--info-w"));
+      if (base) el.style.setProperty("--info-w", `${Math.round(base * infoScale)}px`);
+    };
+    apply();
+    window.addEventListener("resize", apply);
+    return () => window.removeEventListener("resize", apply);
+  }, [infoScale, project?.id]);
+
+  // Drag the bottom edge of a channel (or of the master) to make that channel taller; double-click the edge for normal height.
+  const onLaneEdgeDown = (e: React.PointerEvent): boolean => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>("[data-lane-id]");
+    if (!row) return false;
+    const r = row.getBoundingClientRect();
+    if (e.clientY < r.bottom - 7) return false;
+    e.preventDefault();
+    e.stopPropagation();
+    const id = row.dataset.laneId as string;
+    const min = id === "master" ? MIN_MASTER_SCALE : MIN_LANE_SCALE;
+    const startY = e.clientY;
+    const startH = r.height;
+    const startScale = parseFloat(row.style.getPropertyValue("--lane-scale")) || 1;
+    const base = startH / startScale;
+    let latest = startScale;
+    document.body.style.cursor = "row-resize";
+    const move = (ev: PointerEvent) => {
+      latest = Math.min(MAX_LANE_SCALE, Math.max(min, (startH + ev.clientY - startY) / base));
+      row.style.setProperty("--lane-scale", String(latest));
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      document.body.style.cursor = "";
+      setLaneScale(id, latest);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+    return true;
+  };
+
+  // Drag the right edge of the control column (any row) to make it wider; double-click the edge for normal width.
+  const onInfoEdgeDown = (e: React.PointerEvent) => {
+    if (onLaneEdgeDown(e)) return;
+    const info = (e.target as HTMLElement).closest(".arr-info");
+    const el = scrollRef.current;
+    if (!info || !el) return;
+    const r = info.getBoundingClientRect();
+    if (e.clientX < r.right - 10) return;
+    e.preventDefault();
+    e.stopPropagation();
+    const startX = e.clientX;
+    const startW = r.width;
+    const base = startW / infoScale;
+    let latest = infoScale;
+    document.body.style.cursor = "col-resize";
+    const move = (ev: PointerEvent) => {
+      latest = Math.min(MAX_INFO_SCALE, Math.max(1, (startW + ev.clientX - startX) / base));
+      el.style.setProperty("--info-w", `${Math.round(base * latest)}px`);
+    };
+    const finish = () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", finish);
+      window.removeEventListener("pointercancel", finish);
+      document.body.style.cursor = "";
+      const rounded = Math.round(latest * 100) / 100;
+      try {
+        if (rounded === 1) localStorage.removeItem(INFO_SCALE_KEY);
+        else localStorage.setItem(INFO_SCALE_KEY, String(rounded));
+      } catch {
+        // storage unavailable — the width just won't be remembered
+      }
+      setInfoScale(rounded);
+    };
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", finish);
+    window.addEventListener("pointercancel", finish);
+  };
+  const onInfoEdgeDouble = (e: React.MouseEvent) => {
+    const row = (e.target as HTMLElement).closest<HTMLElement>("[data-lane-id]");
+    if (row && e.clientY >= row.getBoundingClientRect().bottom - 7) {
+      setLaneScale(row.dataset.laneId as string, 1);
+      return;
+    }
+    const info = (e.target as HTMLElement).closest(".arr-info");
+    if (!info || e.clientX < info.getBoundingClientRect().right - 10) return;
+    try {
+      localStorage.removeItem(INFO_SCALE_KEY);
+    } catch {
+      // nothing stored to clear
+    }
+    setInfoScale(1);
+  };
   const isInitiator = useProjectStore((s) => s.isInitiator());
-  const moveTrack = useProjectStore((s) => s.moveTrack);
+  const moveTrackNear = useProjectStore((s) => s.moveTrackNear);
   const [drag, setDrag] = useState<{ id: string; from: number; to: number; dy: number } | null>(null);
 
   // The initiator's order is the song's default; everyone else sees their own arrangement on top of it.
@@ -36,6 +157,12 @@ export function Arrangement() {
     );
   }, [tracks, isInitiator, personalOrder, personalColors]);
   // Channel numbers follow the default order, so "channel 3" means the same channel to everyone.
+  // The rows on screen: a group's header, then its channels (kept together); a folded group shows only its header.
+  const groups = project?.groups;
+  const collapsed = useProjectStore((s) => s.collapsedGroups);
+  const rows = useMemo(() => buildRows(ordered, groups ?? [], new Set(Object.keys(collapsed).filter((k) => collapsed[k]))), [ordered, groups, collapsed]);
+  const lanes = useMemo(() => visibleLanes(rows), [rows]);
+  const laneIndex = useMemo(() => new Map(lanes.map((t, i) => [t.id, i])), [lanes]);
   const numbers = useMemo(() => new Map((tracks ? defaultOrder(tracks) : []).map((t, i) => [t.id, i + 1])), [tracks]);
 
   const startDrag = (e: React.PointerEvent, id: string, from: number) => {
@@ -43,7 +170,7 @@ export function Arrangement() {
     const laneEl = scrollRef.current?.querySelector(".lane");
     const laneH = laneEl?.getBoundingClientRect().height || 64;
     const startY = e.clientY;
-    const last = ordered.length - 1;
+    const last = lanes.length - 1;
     let to = from;
     setDrag({ id, from, to, dy: 0 });
     const move = (ev: PointerEvent) => {
@@ -56,7 +183,9 @@ export function Arrangement() {
       window.removeEventListener("pointerup", finish);
       window.removeEventListener("pointercancel", finish);
       setDrag(null);
-      if (to !== from) void moveTrack(id, to);
+      // Dropped next to the channel now at that place on screen: after it when moving down, before it when moving up.
+      const target = lanes[to];
+      if (to !== from && target) void moveTrackNear(id, target.id, to > from);
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", finish);
@@ -238,20 +367,25 @@ export function Arrangement() {
 
   return (
     <div className="arrangement">
-      <div className="arr-scroll" ref={scrollRef}>
+      <div className="arr-scroll" ref={scrollRef} onPointerDownCapture={onInfoEdgeDown} onDoubleClick={onInfoEdgeDouble}>
         <div className={pxPerBeat / 4 >= 10 ? "arr-inner fine-grid" : "arr-inner"} style={gridStyle}>
           <Ruler totalBars={totalBars} barPx={barPx} pxPerSec={pxPerSec} />
-          {ordered.map((track, index) => (
-            <ChannelLane
-              key={track.id}
-              track={track}
-              number={numbers.get(track.id) ?? index + 1}
-              style={laneStyle(track.id, index)}
-              onGripDown={ordered.length > 1 ? (e) => startDrag(e, track.id, index) : undefined}
-              pxPerSec={pxPerSec}
-              timelinePx={timelinePx}
-            />
-          ))}
+          {rows.map((row) =>
+            row.kind === "group" ? (
+              <GroupRow key={`group-${row.group.id}`} group={row.group} members={row.members} timelinePx={timelinePx} />
+            ) : (
+              <ChannelLane
+                key={row.track.id}
+                track={row.track}
+                group={row.group}
+                number={numbers.get(row.track.id) ?? (laneIndex.get(row.track.id) ?? 0) + 1}
+                style={laneStyle(row.track.id, laneIndex.get(row.track.id) ?? 0)}
+                onGripDown={lanes.length > 1 ? (e) => startDrag(e, row.track.id, laneIndex.get(row.track.id) ?? 0) : undefined}
+                pxPerSec={pxPerSec}
+                timelinePx={timelinePx}
+              />
+            )
+          )}
           <MasterStrip timelinePx={timelinePx} pxPerSec={pxPerSec} />
           {loop && (
             <div

@@ -3,7 +3,7 @@ import { useProjectStore } from "../../store/useProjectStore";
 import { renderMixFromBuffers } from "../../lib/mixdown";
 import { computeStereoPeaks } from "../../lib/waveform";
 
-const HEIGHT = 56;
+const HEIGHT = 72;
 const MAX_COLUMNS = 4096;
 /** The mix is drawn from a render at this sample rate: cheap, and plenty to draw a waveform from. */
 const DRAW_RATE = 8000;
@@ -23,8 +23,8 @@ export function MasterWave({ pxPerSec }: { pxPerSec: number }) {
 
   // Anything that changes what the master hears. (Solo is a listening aid and is not part of the mix.)
   const signature = useMemo(
-    () => JSON.stringify([project?.tracks.map((t) => [t.id, t.volume, t.muted, t.pan, t.fx, t.clips]), project?.master, takesVersion]),
-    [project?.tracks, project?.master, takesVersion]
+    () => JSON.stringify([project?.tracks.map((t) => [t.id, t.volume, t.muted, t.pan, t.fx, t.clips, t.groupId]), project?.groups, project?.master, takesVersion]),
+    [project?.tracks, project?.groups, project?.master, takesVersion]
   );
 
   useEffect(() => {
@@ -83,5 +83,5 @@ export function MasterWave({ pxPerSec }: { pxPerSec: number }) {
   }, [mix, columns]);
 
   if (!mix) return null;
-  return <canvas ref={canvas} className="master-wave" style={{ width: widthPx, height: HEIGHT }} aria-label="Waveform of the whole song through the master" />;
+  return <canvas ref={canvas} className="master-wave" style={{ width: widthPx }} aria-label="Waveform of the whole song through the master" />;
 }

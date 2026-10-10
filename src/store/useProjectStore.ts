@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ProjectNote, Project, Track, Clip, ChannelFx, MasterMix } from "../types/project";
+import type { ProjectNote, Project, Track, Clip, ChannelFx, MasterMix, Group } from "../types/project";
 import { AudioEngine, type RecordingResult } from "../lib/audioEngine";
 import { useAuthStore } from "./useAuthStore";
 import * as api from "../lib/projectApi";
@@ -20,6 +20,7 @@ import { upsertClip, removeClip } from "../lib/remoteMerge";
 import { orderTracks, moveId } from "../lib/trackOrder";
 import { prepareCoverImage } from "../lib/coverImage";
 import { clampFx, fxFromRow, presetPatch, resetPatch } from "../lib/channelFx";
+import { groupFromRow } from "../lib/groups";
 import { clampMasterVolume, DEFAULT_MASTER, masterFromRow, masterFxOnly } from "../lib/master";
 import { rolesOf, roleBadge, canMixFinal } from "../lib/roles";
 
@@ -195,6 +196,29 @@ interface ProjectState {
   /** Owner / Mixer only (the saved final mix): -1 left … +1 right. */
   setChannelPan: (trackId: string, pan: number) => void;
   toggleChannelMute: (trackId: string) => void;
+  /** Group channels (busses). The Owner makes and arranges them; the Owner and the Mixer set their mix; everyone hears them. */
+  createGroup: (name: string) => Promise<void>;
+  renameGroup: (groupId: string, name: string) => Promise<void>;
+  deleteGroup: (groupId: string) => Promise<void>;
+  assignTrackToGroup: (trackId: string, groupId: string | null) => Promise<void>;
+  setGroupVolume: (groupId: string, volume: number) => void;
+  toggleGroupMute: (groupId: string) => void;
+  toggleGroupSolo: (groupId: string) => void;
+  setGroupPan: (groupId: string, pan: number) => void;
+  setGroupFx: (groupId: string, patch: Partial<ChannelFx>, opts?: { checkpoint?: boolean }) => void;
+  undoGroupFx: (groupId: string) => void;
+  resetGroupFx: (groupId: string) => void;
+  groupFxUndoCount: Record<string, number>;
+  groupFxCompare: Record<string, boolean>;
+  setGroupFxCompare: (groupId: string, dry: boolean) => void;
+  /** How much taller each channel (and the master, under the key "master") is than normal. Kept on this device. */
+  laneScales: Record<string, number>;
+  setLaneScale: (id: string, scale: number) => void;
+  /** Folded groups show only their header row. Kept on this device. */
+  collapsedGroups: Record<string, boolean>;
+  toggleGroupCollapsed: (groupId: string) => void;
+  /** Moves a channel next to another one in the saved (or, for a player, personal) order. */
+  moveTrackNear: (trackId: string, targetId: string, after: boolean) => Promise<void>;
   /** The master channel (saved on the project). Owner and Mixer change it; everyone hears it. */
   setMasterVolume: (volume: number) => void;
   /** Master mute: silences the whole song for you only. Never saved, never heard by others, never in an export. */
@@ -558,6 +582,28 @@ const pendingFxSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; p
 const masterUndoStack: Pick<MasterMix, "fx" | "limiterOn">[] = [];
 let masterLastCheckpoint = 0;
 let pendingMaster: { timer: ReturnType<typeof setTimeout>; volume: boolean; fx: boolean } | null = null;
+/** Group saves waiting for the fader or knob to settle, and the undo steps of each group's effects (this visit only). */
+const pendingGroupSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; volume: boolean; muted: boolean; pan: boolean; fx: boolean }>();
+const groupUndoStacks = new Map<string, ChannelFx[]>();
+const groupLastCheckpoint = new Map<string, number>();
+const laneScalesKey = (projectId: string) => `pyl.laneScales.${projectId}`;
+function readLaneScales(projectId: string): Record<string, number> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(laneScalesKey(projectId)) ?? "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+const collapsedKey = (projectId: string) => `pyl.collapsedGroups.${projectId}`;
+function readCollapsed(projectId: string): Record<string, boolean> {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(collapsedKey(projectId)) ?? "{}");
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return {};
+  }
+}
 /** The input device whose number of inputs was last looked up, and a look-up that is running. */
 let probedInputFor: string | null = null;
 let inputProbeRunning = false;
@@ -638,6 +684,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     const { project } = get();
     if (!project) return;
     engine.setMasterMix(project.master, get().masterMuted);
+    // The groups first, so a channel can be wired into its group; then the channels.
+    for (const g of project.groups) {
+      engine.updateGroupMix(g.id, g.volume, g.muted, !!get().localSolo[g.id]);
+      engine.setGroupPan(g.id, g.pan);
+    }
+    for (const track of project.tracks) {
+      engine.setTrackGroup(track.id, track.groupId && project.groups.some((g) => g.id === track.groupId) ? track.groupId : null);
+    }
     for (const track of project.tracks) {
       const m = get().effectiveMix(track);
       engine.updateTrackMix(track.id, m.volume, m.muted, m.solo);
@@ -730,6 +784,69 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     }, 250);
     pendingFxSaves.set(trackId, { timer, patch: merged });
+  };
+
+  /** Saves a new channel order: the Owner's is the song's default (saved for everyone), anyone else's stays on their device. */
+  const saveChannelOrder = async (next: string[]) => {
+    const { project } = get();
+    if (!project) return;
+    if (!get().isInitiator()) {
+      writePersonalOrder(project.id, next);
+      set({ personalOrder: next });
+      return;
+    }
+    const before = project.tracks;
+    set({ project: { ...project, tracks: before.map((t) => ({ ...t, position: next.indexOf(t.id) })) } });
+    try {
+      await api.setTrackOrder(next);
+    } catch (err) {
+      console.error("Failed to save the channel order:", err);
+      const current = get().project;
+      if (current) set({ project: { ...current, tracks: before }, editError: `Couldn't save the channel order${errorDetail(err)}` });
+    }
+  };
+
+  // A group's mix: apply instantly, save once the fader or knob settles. Owner and Mixer only (the database checks too).
+  const scheduleGroupSave = (groupId: string, what: { volume?: boolean; muted?: boolean; pan?: boolean; fx?: boolean }) => {
+    const existing = pendingGroupSaves.get(groupId);
+    if (existing) clearTimeout(existing.timer);
+    const merged = {
+      volume: !!(what.volume || existing?.volume),
+      muted: !!(what.muted || existing?.muted),
+      pan: !!(what.pan || existing?.pan),
+      fx: !!(what.fx || existing?.fx),
+    };
+    const timer = setTimeout(async () => {
+      pendingGroupSaves.delete(groupId);
+      const project = get().project;
+      const g = project?.groups.find((x) => x.id === groupId);
+      if (!project || !g) return;
+      try {
+        await api.saveGroupMix(groupId, {
+          ...(merged.volume ? { volume: g.volume } : {}),
+          ...(merged.muted ? { muted: g.muted } : {}),
+          ...(merged.pan ? { pan: g.pan } : {}),
+          ...(merged.fx ? { fx: g.fx } : {}),
+        });
+        const latest = get().project;
+        if (latest && latest.previewPath) set({ project: { ...latest, previewStale: true } });
+      } catch (err) {
+        console.error("Failed to save the group:", err);
+        set({ editError: `Couldn't save that group change${errorDetail(err)}` });
+      }
+    }, 250);
+    pendingGroupSaves.set(groupId, { timer, ...merged });
+  };
+
+  const applyGroupNow = (groupId: string, patch: Partial<Group>) => {
+    const project = get().project;
+    if (!project) return;
+    set({ project: { ...project, groups: project.groups.map((g) => (g.id === groupId ? { ...g, ...patch } : g)) } });
+    const g = get().project?.groups.find((x) => x.id === groupId);
+    if (!g) return;
+    engine.updateGroupMix(g.id, g.volume, g.muted, !!get().localSolo[g.id]);
+    if (patch.pan !== undefined) engine.setGroupPan(g.id, g.pan);
+    if (patch.fx) engine.updateGroupFx(g.id, g.fx);
   };
 
   // The master: apply instantly, save once the fader or knob settles. Owner and Mixer only (the database checks too).
@@ -860,6 +977,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         assignedUserId,
         assignedPlayerName: name,
         fxLocked: (row.fx_locked as boolean | undefined) ?? found.fxLocked,
+        groupId: "group_id" in row ? ((row.group_id as string | null) ?? null) : found.groupId,
         ...(savingMix ? {} : { volume: row.volume as number, muted: row.muted as boolean, pan: (row.pan as number) ?? found.pan }),
         ...(savingFx
           ? {}
@@ -870,6 +988,25 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       if (!savingFx) engine.updateTrackFx(id, updated.fx);
       set({ project: { ...latest, tracks: latest.tracks.map((t) => (t.id === id ? updated : t)) } });
     }
+    syncMixToEngine();
+  };
+
+  const handleGroupChange = (type: "INSERT" | "UPDATE" | "DELETE", row: Record<string, unknown>) => {
+    const project = get().project;
+    if (!project) return;
+    const id = row.id as string;
+    if (type === "DELETE") {
+      engine.removeGroup(id);
+      set({ project: { ...project, groups: project.groups.filter((g) => g.id !== id), tracks: project.tracks.map((t) => (t.groupId === id ? { ...t, groupId: null } : t)) } });
+      return;
+    }
+    const existing = project.groups.find((g) => g.id === id);
+    const fresh = groupFromRow(row, existing);
+    // While one of my own changes to this group is still being saved, its echo must not fight the control.
+    const saving = pendingGroupSaves.has(id) && existing;
+    const next: Group = saving ? { ...fresh, volume: existing.volume, muted: existing.muted, pan: existing.pan, fx: existing.fx } : fresh;
+    set({ project: { ...project, groups: existing ? project.groups.map((g) => (g.id === id ? next : g)) : [...project.groups, next] } });
+    if (!saving) engine.updateGroupFx(id, next.fx);
     syncMixToEngine();
   };
 
@@ -1043,6 +1180,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       unsubscribeRealtime = subscribeToProject(projectId, {
         onPresence: (users) => set({ presentUsers: users }),
         onProject: handleProjectChange,
+        onGroup: handleGroupChange,
         onListeners: () => {
           void api
             .fetchListeners(projectId)
@@ -1196,6 +1334,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       for (const id of Object.keys(get().fxCompare)) engine.setFxCompare(id, false);
       fxUndoStacks.clear();
       masterUndoStack.length = 0;
+      groupUndoStacks.clear();
+      groupLastCheckpoint.clear();
+      for (const pending of pendingGroupSaves.values()) clearTimeout(pending.timer);
+      pendingGroupSaves.clear();
       fxLastCheckpoint.clear();
       set({ projectLoading: true, projectError: null, project: null, selectedClip: null, editError: null, loop: null, loopEnabled: false, armedTrackId: null, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null, noteChannelFilter: null, fxUndoCount: {}, fxCompare: {}, chords: {}, chordsShown: {} });
       try {
@@ -1211,6 +1353,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           engine.setTrackClips(track.id, track.clips);
           engine.updateTrackFx(track.id, track.fx);
         }
+        for (const g of project.groups) engine.updateGroupFx(g.id, g.fx);
         engine.setBpm(project.bpm);
         engine.setBeatsPerBar(project.beatsPerBar);
         undoStack = [];
@@ -1232,7 +1375,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           takesVersion: get().takesVersion + 1,
         });
         syncMixToEngine();
-        set({ noteCards: readNoteCards(project.id), channelInputs: readChannelInputs(project.id) });
+        set({ noteCards: readNoteCards(project.id), channelInputs: readChannelInputs(project.id), collapsedGroups: readCollapsed(project.id), laneScales: readLaneScales(project.id) });
         void refreshNotes(project.id);
         // Bring back the chords the person had switched on here last time.
         void (async () => {
@@ -1607,27 +1750,21 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     moveTrack: async (trackId, toIndex) => {
       const { project } = get();
       if (!project) return;
-      const initiator = get().isInitiator();
-      const shown = orderTracks(project.tracks, initiator ? null : get().personalOrder).map((t) => t.id);
+      const shown = orderTracks(project.tracks, get().isInitiator() ? null : get().personalOrder).map((t) => t.id);
       const from = shown.indexOf(trackId);
       if (from < 0 || from === toIndex) return;
-      const next = moveId(shown, from, toIndex);
-
-      if (!initiator) {
-        writePersonalOrder(project.id, next);
-        set({ personalOrder: next });
-        return;
-      }
-      // The initiator's arrangement is the song's default, saved for everyone.
-      const before = project.tracks;
-      set({ project: { ...project, tracks: before.map((t) => ({ ...t, position: next.indexOf(t.id) })) } });
-      try {
-        await api.setTrackOrder(next);
-      } catch (err) {
-        console.error("Failed to save the channel order:", err);
-        const current = get().project;
-        if (current) set({ project: { ...current, tracks: before }, editError: `Couldn't save the channel order${errorDetail(err)}` });
-      }
+      await saveChannelOrder(moveId(shown, from, toIndex));
+    },
+    moveTrackNear: async (trackId, targetId, after) => {
+      const { project } = get();
+      if (!project || trackId === targetId) return;
+      const shown = orderTracks(project.tracks, get().isInitiator() ? null : get().personalOrder).map((t) => t.id);
+      const rest = shown.filter((id) => id !== trackId);
+      const at = rest.indexOf(targetId);
+      if (at < 0 || !shown.includes(trackId)) return;
+      rest.splice(at + (after ? 1 : 0), 0, trackId);
+      if (rest.join() === shown.join()) return;
+      await saveChannelOrder(rest);
     },
     resetOrder: () => {
       const { project } = get();
@@ -1784,6 +1921,162 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         set({ loopEnabled: !loopEnabled });
       }
       syncLoop();
+    },
+
+    // ---- Group channels (busses) ----
+    createGroup: async (name) => {
+      const project = get().project;
+      const trimmed = name.trim().slice(0, 40);
+      if (!project || !trimmed || !get().isInitiator()) return;
+      try {
+        const color = TRACK_COLORS[project.groups.length % TRACK_COLORS.length];
+        const id = await api.createTrackGroup(project.id, trimmed, color);
+        const latest = get().project;
+        if (latest && !latest.groups.some((g) => g.id === id)) {
+          const position = latest.groups.reduce((m, g) => Math.max(m, g.position), -1) + 1;
+          set({ project: { ...latest, groups: [...latest.groups, groupFromRow({ id, project_id: project.id, name: trimmed, color, position })] } });
+          syncMixToEngine();
+        }
+      } catch (err) {
+        console.error("Failed to create the group:", err);
+        set({ editError: `Couldn't create that group${errorDetail(err)}` });
+      }
+    },
+    renameGroup: async (groupId, name) => {
+      const project = get().project;
+      const trimmed = name.trim().slice(0, 40);
+      const group = project?.groups.find((g) => g.id === groupId);
+      if (!project || !group || !trimmed || trimmed === group.name || !get().isInitiator()) return;
+      applyGroupNow(groupId, { name: trimmed });
+      try {
+        await api.renameTrackGroup(groupId, trimmed);
+      } catch (err) {
+        console.error("Failed to rename the group:", err);
+        applyGroupNow(groupId, { name: group.name });
+        set({ editError: `Couldn't rename that group${errorDetail(err)}` });
+      }
+    },
+    deleteGroup: async (groupId) => {
+      const project = get().project;
+      if (!project || !get().isInitiator() || !project.groups.some((g) => g.id === groupId)) return;
+      try {
+        await api.deleteTrackGroup(groupId);
+      } catch (err) {
+        console.error("Failed to delete the group:", err);
+        set({ editError: `Couldn't delete that group${errorDetail(err)}` });
+        return;
+      }
+      // Its channels stay and play straight to the master.
+      engine.removeGroup(groupId);
+      const latest = get().project;
+      if (latest) {
+        set({ project: { ...latest, groups: latest.groups.filter((g) => g.id !== groupId), tracks: latest.tracks.map((t) => (t.groupId === groupId ? { ...t, groupId: null } : t)), previewStale: latest.previewPath ? true : latest.previewStale } });
+        syncMixToEngine();
+      }
+    },
+    assignTrackToGroup: async (trackId, groupId) => {
+      const project = get().project;
+      const track = project?.tracks.find((t) => t.id === trackId);
+      if (!project || !track || !get().isInitiator() || track.groupId === groupId) return;
+      const before = track.groupId;
+      const apply = (value: string | null) => {
+        const latest = get().project;
+        if (latest) set({ project: { ...latest, tracks: latest.tracks.map((t) => (t.id === trackId ? { ...t, groupId: value } : t)) } });
+        syncMixToEngine();
+      };
+      apply(groupId);
+      try {
+        await api.setTrackGroup(trackId, groupId);
+        const latest = get().project;
+        if (latest && latest.previewPath) set({ project: { ...latest, previewStale: true } });
+      } catch (err) {
+        console.error("Failed to move the channel into the group:", err);
+        apply(before);
+        set({ editError: `Couldn't move that channel${errorDetail(err)}` });
+      }
+    },
+    setGroupVolume: (groupId, volume) => {
+      if (!get().canMix()) return;
+      applyGroupNow(groupId, { volume: Math.min(4, Math.max(0, volume)) });
+      scheduleGroupSave(groupId, { volume: true });
+    },
+    toggleGroupMute: (groupId) => {
+      const group = get().project?.groups.find((g) => g.id === groupId);
+      if (!group || !get().canMix()) return;
+      applyGroupNow(groupId, { muted: !group.muted });
+      scheduleGroupSave(groupId, { muted: true });
+    },
+    // Solo is a listening aid for whoever presses it. It is never saved to the song.
+    toggleGroupSolo: (groupId) => {
+      set({ localSolo: { ...get().localSolo, [groupId]: !get().localSolo[groupId] } });
+      syncMixToEngine();
+    },
+    setGroupPan: (groupId, pan) => {
+      if (!get().canMix()) return;
+      applyGroupNow(groupId, { pan: Math.min(1, Math.max(-1, pan)) });
+      scheduleGroupSave(groupId, { pan: true });
+    },
+    groupFxUndoCount: {},
+    setGroupFx: (groupId, patch, opts) => {
+      const group = get().project?.groups.find((g) => g.id === groupId);
+      if (!group || !get().canMix()) return;
+      // A knob drag is many small changes: it counts as one undo step, started when the drag begins.
+      const now = Date.now();
+      if (opts?.checkpoint || now - (groupLastCheckpoint.get(groupId) ?? 0) > 1200) {
+        const stack = groupUndoStacks.get(groupId) ?? [];
+        stack.push(group.fx);
+        if (stack.length > 40) stack.shift();
+        groupUndoStacks.set(groupId, stack);
+        set({ groupFxUndoCount: { ...get().groupFxUndoCount, [groupId]: stack.length } });
+      }
+      groupLastCheckpoint.set(groupId, now);
+      applyGroupNow(groupId, { fx: { ...group.fx, ...clampFx(patch) } });
+      scheduleGroupSave(groupId, { fx: true });
+    },
+    undoGroupFx: (groupId) => {
+      const stack = groupUndoStacks.get(groupId);
+      if (!stack?.length || !get().canMix()) return;
+      const previous = stack.pop()!;
+      groupLastCheckpoint.set(groupId, 0);
+      set({ groupFxUndoCount: { ...get().groupFxUndoCount, [groupId]: stack.length } });
+      applyGroupNow(groupId, { fx: previous });
+      scheduleGroupSave(groupId, { fx: true });
+    },
+    resetGroupFx: (groupId) => {
+      const group = get().project?.groups.find((g) => g.id === groupId);
+      if (!group) return;
+      get().setGroupFx(groupId, resetPatch(group.fx), { checkpoint: true });
+    },
+    groupFxCompare: {},
+    setGroupFxCompare: (groupId, dry) => {
+      engine.setGroupFxCompare(groupId, dry);
+      set({ groupFxCompare: { ...get().groupFxCompare, [groupId]: dry } });
+    },
+    laneScales: {},
+    setLaneScale: (id, scale) => {
+      const project = get().project;
+      if (!project) return;
+      const next = { ...get().laneScales };
+      if (Math.abs(scale - 1) < 0.02) delete next[id];
+      else next[id] = Math.round(scale * 100) / 100;
+      set({ laneScales: next });
+      try {
+        localStorage.setItem(laneScalesKey(project.id), JSON.stringify(next));
+      } catch {
+        // storage unavailable — the height just won't be remembered
+      }
+    },
+    collapsedGroups: {},
+    toggleGroupCollapsed: (groupId) => {
+      const project = get().project;
+      if (!project) return;
+      const next = { ...get().collapsedGroups, [groupId]: !get().collapsedGroups[groupId] };
+      set({ collapsedGroups: next });
+      try {
+        localStorage.setItem(collapsedKey(project.id), JSON.stringify(next));
+      } catch {
+        // storage unavailable — the fold just won't be remembered
+      }
     },
 
     setMasterVolume: (volume) => {

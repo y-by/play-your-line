@@ -143,6 +143,17 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: "groups",
+    group: "Mixing and effects",
+    question: "What is a group channel?",
+    answer: [
+      "A group holds several channels, for example Drums holding kick, snare and hats. Its channels play through the group, and the group plays through the master. The group has its own volume, mute, solo, pan and Tools (EQ, Compressor, Delay, Reverb), so you can treat the whole drum kit as one.",
+      "Only the Owner makes, renames and deletes groups and puts channels in them (the Groups section of the Add Channel panel). The Owner and the Mixer set a group's volume, mute, pan and effects. Everyone hears the saved group settings, and anyone can fold a group to hide its channels, or solo it for themselves.",
+      "Solo beats mute: a soloed channel is heard even when its group is muted, and a soloed group plays all of its channels. Deleting a group keeps its channels, which play straight to the master again.",
+      "Groups are part of Export Mix and the MP3 listening copy. If a group changes after a song was published, the refresh button on its card turns amber: update the listening copy.",
+    ],
+  },
+  {
     id: "master",
     group: "Mixing and effects",
     question: "What is the master channel?",

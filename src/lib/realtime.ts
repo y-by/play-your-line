@@ -14,6 +14,7 @@ export interface RealtimeHandlers {
   onProject: (row: Row) => void;
   onTrack: (type: ChangeType, row: Row) => void;
   onClip: (type: ChangeType, row: Row) => void;
+  onGroup: (type: ChangeType, row: Row) => void;
   onListeners: () => void;
   onNote: (type: ChangeType, row: Row) => void;
   onStatus: (status: RealtimeStatus) => void;
@@ -41,6 +42,9 @@ export function subscribeToProject(projectId: string, handlers: RealtimeHandlers
     )
     .on("postgres_changes", { event: "*", schema: "public", table: "tracks", filter: `project_id=eq.${projectId}` }, (p) =>
       handlers.onTrack(p.eventType as ChangeType, p.eventType === "DELETE" ? p.old : p.new)
+    )
+    .on("postgres_changes", { event: "*", schema: "public", table: "track_groups", filter: `project_id=eq.${projectId}` }, (p) =>
+      handlers.onGroup(p.eventType as ChangeType, p.eventType === "DELETE" ? p.old : p.new)
     )
     .on("postgres_changes", { event: "*", schema: "public", table: "project_listeners", filter: `project_id=eq.${projectId}` }, () =>
       handlers.onListeners()

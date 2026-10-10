@@ -30,7 +30,9 @@ export async function renderMix(project: Project): Promise<AudioBuffer> {
  * it at a low rate (cheap, enough to draw); the export uses it at 48 kHz.
  */
 export async function renderMixFromBuffers(project: Project, buffers: Map<string, AudioBuffer>, sampleRate: number): Promise<AudioBuffer> {
-  const audibleTracks = project.tracks.filter((t) => !t.muted && t.clips.length > 0);
+  const groupOf = (trackGroupId: string | null) => (trackGroupId ? project.groups.find((g) => g.id === trackGroupId) : undefined);
+  // A muted channel, or a channel in a muted group, is left out (solo is never part of the final mix).
+  const audibleTracks = project.tracks.filter((t) => !t.muted && t.clips.length > 0 && !groupOf(t.groupId)?.muted);
   const segmentsByTrack = audibleTracks.map((t) => ({ track: t, segments: audibleSegments(t.clips) }));
 
   let totalDuration = 0.01;
@@ -38,7 +40,11 @@ export async function renderMixFromBuffers(project: Project, buffers: Map<string
     for (const seg of segments) totalDuration = Math.max(totalDuration, seg.endSec);
   }
   // Let echoes and reverb ring out after the last note instead of cutting them off.
-  const tail = audibleTracks.reduce((max, t) => Math.max(max, fxTailSec(t.fx)), 0);
+  const usedGroups = project.groups.filter((g) => audibleTracks.some((t) => t.groupId === g.id));
+  const tail = Math.max(
+    audibleTracks.reduce((max, t) => Math.max(max, fxTailSec(t.fx)), 0),
+    usedGroups.reduce((max, g) => Math.max(max, fxTailSec(g.fx)), 0)
+  );
   totalDuration += tail + 0.1; // a little room for the limiter's release
 
   const offlineCtx = new OfflineAudioContext(2, Math.ceil(totalDuration * sampleRate), sampleRate);
@@ -48,6 +54,20 @@ export async function renderMixFromBuffers(project: Project, buffers: Map<string
   const master = createMasterChain(offlineCtx);
   master.apply(project.master);
   master.output.connect(offlineCtx.destination);
+  // Each used group: its fader -> effects -> pan -> master, like a channel.
+  const groupInput = new Map<string, GainNode>();
+  for (const g of usedGroups) {
+    const gain = offlineCtx.createGain();
+    gain.gain.value = g.volume;
+    const fx = createFxChain(offlineCtx, impulse);
+    fx.apply(g.fx);
+    const panner = offlineCtx.createStereoPanner();
+    panner.pan.value = g.pan;
+    gain.connect(fx.input);
+    fx.output.connect(panner);
+    panner.connect(master.input);
+    groupInput.set(g.id, gain);
+  }
   for (const { track, segments } of segmentsByTrack) {
     const gain = offlineCtx.createGain();
     gain.gain.value = track.volume;
@@ -57,7 +77,7 @@ export async function renderMixFromBuffers(project: Project, buffers: Map<string
     fx.apply(track.fx);
     gain.connect(fx.input);
     fx.output.connect(panner);
-    panner.connect(master.input);
+    panner.connect((track.groupId ? groupInput.get(track.groupId) : undefined) ?? master.input);
     for (const seg of segments) {
       const buffer = buffers.get(seg.takeId);
       if (!buffer) continue;

@@ -17,6 +17,7 @@ import { MasterWave } from "./MasterWave";
 export function MasterStrip({ timelinePx, pxPerSec }: { timelinePx: number; pxPerSec: number }) {
   const master = useProjectStore((s) => s.project?.master);
   const muted = useProjectStore((s) => s.masterMuted);
+  const laneScale = useProjectStore((s) => s.laneScales.master ?? 1);
   const canMix = useProjectStore((s) => s.canMix());
   const setVolume = useProjectStore((s) => s.setMasterVolume);
   const toggleMute = useProjectStore((s) => s.toggleMasterMute);
@@ -42,7 +43,7 @@ export function MasterStrip({ timelinePx, pxPerSec }: { timelinePx: number; pxPe
   const fxLive = master.fx.fxOn;
 
   return (
-    <div className="arr-row master-row">
+    <div className="arr-row master-row" data-lane-id="master" style={{ "--lane-scale": laneScale } as React.CSSProperties}>
       <div className="arr-info master-info">
         <div className="master-head">
           <b>Master</b>

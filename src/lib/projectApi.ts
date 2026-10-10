@@ -1,7 +1,8 @@
 import { supabase } from "./supabaseClient";
-import type { ProjectNote, Project, Track, Take, Clip, ChannelFx, MasterMix } from "../types/project";
+import type { ProjectNote, Project, Track, Take, Clip, ChannelFx, MasterMix, Group } from "../types/project";
 import { fxFromRow, fxToRow } from "./channelFx";
 import { masterFromRow, masterFxToJson } from "./master";
+import { groupFromRow, groupFxToJson } from "./groups";
 import type { StoredFile } from "./orphans";
 import { forgetCachedProject, getCachedTake, putCachedTake } from "./takeCache";
 
@@ -25,6 +26,7 @@ function mapProject(row: any, tracks: Track[], takes: Record<string, Take>): Pro
     previewPath: row.preview_path ?? null,
     previewStale: !!row.preview_stale,
     master: masterFromRow(row),
+    groups: [],
     listeners: [],
     status: row.status,
     createdAt: new Date(row.created_at).getTime(),
@@ -78,6 +80,7 @@ export function mapTrack(row: any, clips: Clip[], assignedPlayerName: string | n
     pan: row.pan ?? 0,
     fx: fxFromRow(row),
     fxLocked: !!row.fx_locked,
+    groupId: row.group_id ?? null,
   };
 }
 
@@ -138,6 +141,10 @@ export async function getProject(id: string): Promise<Project> {
   );
 
   const project = mapProject(projectRow, tracks, takes);
+  // The groups table exists once migration 0044 is run; before that the song simply has no groups.
+  const groupsResult = await client.from("track_groups").select("*").eq("project_id", id).order("position", { ascending: true }).order("created_at", { ascending: true });
+  if (groupsResult.error) console.warn("Couldn't load the groups:", groupsResult.error.message);
+  else project.groups = (groupsResult.data ?? []).map((g) => groupFromRow(g));
   project.initiatorName = namesById.get(project.initiatorId) ?? null;
   project.mixerName = project.mixerId ? (namesById.get(project.mixerId) ?? null) : null;
   project.listeners = listenerIds.map((userId) => ({ userId, name: namesById.get(userId) ?? null, canPlay: canPlayIds.has(userId) }));
@@ -809,5 +816,48 @@ export async function updateNote(
 export async function deleteNote(id: string): Promise<void> {
   const client = requireSupabase();
   const { error } = await client.from("project_notes").delete().eq("id", id);
+  if (error) throw error;
+}
+
+// ---- Group channels (busses) ----------------------------------------------------------------------------------------
+
+/** The Owner makes a group; resolves with its id. */
+export async function createTrackGroup(projectId: string, name: string, color: string): Promise<string> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("create_track_group", { p_project_id: projectId, p_name: name, p_color: color });
+  if (error) throw error;
+  return data as string;
+}
+
+export async function renameTrackGroup(groupId: string, name: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc("rename_track_group", { p_group_id: groupId, p_name: name });
+  if (error) throw error;
+}
+
+/** Deletes a group; its channels stay and fall back to the master. */
+export async function deleteTrackGroup(groupId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc("delete_track_group", { p_group_id: groupId });
+  if (error) throw error;
+}
+
+/** Puts a channel in a group, or takes it out (null). Owner only. */
+export async function setTrackGroup(trackId: string, groupId: string | null): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc("set_track_group", { p_track_id: trackId, p_group_id: groupId });
+  if (error) throw error;
+}
+
+/** A group's saved mix. Owner and Mixer only (set_group_mix checks it). Only the fields passed are changed. */
+export async function saveGroupMix(groupId: string, patch: Partial<Pick<Group, "volume" | "muted" | "pan">> & { fx?: ChannelFx }): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc("set_group_mix", {
+    p_group_id: groupId,
+    p_volume: patch.volume ?? null,
+    p_muted: patch.muted ?? null,
+    p_pan: patch.pan ?? null,
+    p_fx: patch.fx ? groupFxToJson(patch.fx) : null,
+  });
   if (error) throw error;
 }

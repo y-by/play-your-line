@@ -20,6 +20,8 @@ import { looksAnchored } from "../src/lib/anchor.ts";
 import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
+import { resolveMix, buildRows, visibleLanes, groupedOrder, parseGroupFx, groupFromRow, groupFxToJson } from "../src/lib/groups.ts";
+import type { Group } from "../src/types/project.ts";
 import { DEFAULT_MASTER, parseMasterFx, masterFromRow, masterFxToJson, clampMasterVolume, isNeutralMaster, masterFxOnly } from "../src/lib/master.ts";
 
 let fail = 0;
@@ -465,7 +467,7 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("every help question has a unique id", new Set(HELP_TOPICS.map((t) => t.id)).size === HELP_TOPICS.length);
   check("every help question belongs to a known group, and every group has questions", HELP_TOPICS.every((t) => (HELP_GROUPS as readonly string[]).includes(t.group)) && HELP_GROUPS.every((g) => HELP_TOPICS.some((t) => t.group === g)));
   check("every help answer says something", HELP_TOPICS.every((t) => t.question.trim().length > 5 && t.answer.length > 0 && t.answer.every((p) => p.trim().length > 20)));
-  check("the topics the '?' buttons point to exist (fx, tuner, notes)", ["fx", "tuner", "notes", "master"].every((id) => !!helpTopic(id)));
+  check("the topics the '?' buttons point to exist (fx, tuner, notes)", ["fx", "tuner", "notes", "master", "groups"].every((id) => !!helpTopic(id)));
   check("ids are safe to use in a web address", HELP_TOPICS.every((t) => /^[a-z-]+$/.test(t.id)));
 }
 
@@ -499,6 +501,46 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("saving and reading back gives the same master", JSON.stringify(again) === JSON.stringify(m));
   check("the master's stages: EQ and compressor only", activeStages(masterFxOnly({ ...DEFAULT_MASTER.fx, fxOn: true, eqLow: 3, compRatio: 3, delayMix: 0.5, reverbMix: 0.5 })).join() === "eq,comp");
   check("a live update keeps what it does not mention", masterFromRow({}, { ...DEFAULT_MASTER, volume: 0.7 }).volume === 0.7);
+}
+
+// ---- group channels
+{
+  const mt = (id: string, groupId: string | null, over: Partial<{ volume: number; muted: boolean; solo: boolean }> = {}) => ({ id, groupId, volume: 1, muted: false, solo: false, ...over });
+  const mg = (id: string, over: Partial<{ volume: number; muted: boolean; solo: boolean }> = {}) => ({ id, volume: 1, muted: false, solo: false, ...over });
+  let r = resolveMix([mt("a", "g"), mt("b", "g"), mt("c", null)], [mg("g")]);
+  check("nothing muted or soloed: everything plays at its level", r.tracks.a === 1 && r.tracks.b === 1 && r.tracks.c === 1 && r.groups.g === 1);
+  r = resolveMix([mt("a", "g", { volume: 0.5 })], [mg("g", { volume: 2 })]);
+  check("a channel and its group each keep their own level", r.tracks.a === 0.5 && r.groups.g === 2);
+  r = resolveMix([mt("a", "g"), mt("c", null)], [mg("g", { muted: true })]);
+  check("a muted group silences its channels, others still play", r.groups.g === 0 && r.tracks.c === 1);
+  r = resolveMix([mt("a", "g", { muted: true }), mt("b", "g")], [mg("g")]);
+  check("a muted channel is silent, its group-mate is not", r.tracks.a === 0 && r.tracks.b === 1);
+  r = resolveMix([mt("a", "g", { solo: true }), mt("b", "g"), mt("c", null)], [mg("g", { muted: true })]);
+  check("solo beats mute: a soloed channel in a muted group is heard", r.tracks.a === 1 && r.groups.g === 1);
+  check("...and the others are silent", r.tracks.b === 0 && r.tracks.c === 0);
+  r = resolveMix([mt("a", "g", { muted: true }), mt("b", "g"), mt("c", null)], [mg("g", { solo: true })]);
+  check("a soloed group plays all its channels, even a muted one", r.tracks.a === 1 && r.tracks.b === 1 && r.groups.g === 1 && r.tracks.c === 0);
+  r = resolveMix([mt("a", "g"), mt("c", "h", { solo: true })], [mg("g"), mg("h")]);
+  check("a group with nothing soloed in it closes while something else is soloed", r.groups.g === 0 && r.groups.h === 1 && r.tracks.a === 0);
+  r = resolveMix([mt("a", "gone")], []);
+  check("a channel whose group is gone plays on its own", r.tracks.a === 1);
+
+  const gr = (id: string): Group => ({ id, projectId: "p", name: id, color: "#000", position: 0, volume: 1, muted: false, pan: 0, fx: parseGroupFx({}) });
+  const tr = (id: string, groupId: string | null) => ({ id, groupId } as unknown as Track);
+  const order = [tr("a", null), tr("b", "g"), tr("c", null), tr("d", "g"), tr("e", "h")];
+  const rows = buildRows(order, [gr("g"), gr("h")]);
+  const shape = rows.map((x) => (x.kind === "group" ? "[" + x.group.id + "]" : x.track.id)).join(" ");
+  check("a group's channels are kept together under their header", shape === "a [g] b d c [h] e", shape);
+  const folded = buildRows(order, [gr("g"), gr("h")], new Set(["g"]));
+  check("a folded group shows only its header", folded.map((x) => (x.kind === "group" ? "[" + x.group.id + "]" : x.track.id)).join(" ") === "a [g] c [h] e");
+  check("the lanes in screen order", visibleLanes(rows).map((t) => t.id).join("") === "abdce" && groupedOrder(order, [gr("g"), gr("h")]).map((t) => t.id).join("") === "abdce");
+  check("a channel in a missing group is an ordinary row", buildRows([tr("a", "gone")], []).map((x) => x.kind).join() === "lane");
+
+  const g = groupFromRow({ id: "g", project_id: "p", name: "Drums", color: "#123456", position: 2, volume: 9, muted: true, pan: -3, fx: { fxOn: true, eqLow: 40, delayMix: 0.4 } });
+  check("a saved group is read back, with clamped numbers", g.name === "Drums" && g.volume === 4 && g.pan === -1 && g.muted === true && g.fx.fxOn === true && g.fx.eqLow === 12 && g.fx.delayMix === 0.4);
+  check("a live update keeps what it does not mention", groupFromRow({ id: "g", volume: 0.5 }, g).name === "Drums" && groupFromRow({ id: "g", volume: 0.5 }, g).fx.eqLow === 12);
+  check("group effects round trip", JSON.stringify(parseGroupFx(groupFxToJson(g.fx))) === JSON.stringify(g.fx));
+  check("junk effects are neutral", parseGroupFx("x").fxOn === false && parseGroupFx(null).compRatio === 1);
 }
 
 process.exit(fail ? 1 : 0);

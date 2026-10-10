@@ -25,6 +25,9 @@ export function AddChannelPanel() {
   const reassignTrack = useProjectStore((s) => s.reassignTrack);
   const removeTrack = useProjectStore((s) => s.removeTrack);
   const isInitiator = useProjectStore((s) => s.isInitiator());
+  const createGroup = useProjectStore((s) => s.createGroup);
+  const assignTrackToGroup = useProjectStore((s) => s.assignTrackToGroup);
+  const [groupName, setGroupName] = useState("");
   const isParticipant = useProjectStore((s) => s.isContributor());
   const [instrument, setInstrument] = useState("");
   const [inviteLinks, setInviteLinks] = useState<Record<string, string>>({});
@@ -197,6 +200,58 @@ export function AddChannelPanel() {
               {isInitiator && assigningTrackId === t.id && renderAssignPanel(t)}
             </div>
           ))}
+        </div>
+      )}
+
+      {isInitiator && (
+        <div className="unclaimed-list">
+          <h3>Groups</h3>
+          <p className="settings-note">
+            A group holds several channels (drums, say) and has its own volume, mute, pan and effects. Its channels play through it, and it plays through the master. Only you create groups and place channels in them.
+          </p>
+          <div className="add-track-form">
+            <input
+              placeholder="New group (e.g. Drums)"
+              value={groupName}
+              maxLength={40}
+              onChange={(e) => setGroupName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && groupName.trim()) {
+                  void createGroup(groupName);
+                  setGroupName("");
+                }
+              }}
+            />
+            <button
+              disabled={!groupName.trim()}
+              onClick={() => {
+                void createGroup(groupName);
+                setGroupName("");
+              }}
+            >
+              <PlusCircleIcon />
+              Add Group
+            </button>
+          </div>
+          {project.groups.length > 0 &&
+            project.tracks.map((t) => (
+              <div key={t.id} className="unclaimed-row">
+                <span className="unclaimed-row-instrument">{t.instrument}</span>
+                <select
+                  className="input-select"
+                  value={t.groupId ?? ""}
+                  onChange={(e) => void assignTrackToGroup(t.id, e.target.value || null)}
+                  aria-label={`Group for ${t.instrument}`}
+                >
+                  <option value="">No group (straight to the master)</option>
+                  {project.groups.map((g) => (
+                    <option key={g.id} value={g.id}>
+                      {g.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            ))}
         </div>
       )}
 

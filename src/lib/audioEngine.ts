@@ -12,6 +12,7 @@ import { createFxChain, type FxChain } from "./fxChain";
 import type { ChannelFx, MasterMix } from "../types/project";
 import { createMasterChain, type MasterChain } from "./masterChain";
 import { DEFAULT_MASTER } from "./master";
+import { resolveMix } from "./groups";
 import pcmRecorderWorkletUrl from "../worklets/pcm-recorder-processor.js?url&no-inline";
 
 type PlaybackListener = (state: { isPlaying: boolean; positionSec: number }) => void;
@@ -63,11 +64,30 @@ interface LoadedTrack {
   volume: number;
   muted: boolean;
   solo: boolean;
+  /** The group this channel plays through (null = straight to the master). */
+  groupId: string | null;
+}
+
+/** A group channel (bus): channels play into its fader, then its effects and pan, then the master. */
+interface LoadedGroup {
+  groupId: string;
+  /** Fader (volume/mute). Feeds the effects. */
+  gainNode: GainNode;
+  fx: FxChain;
+  fxSettings: ChannelFx;
+  panner: StereoPannerNode;
+  analyser: AnalyserNode;
+  volume: number;
+  muted: boolean;
+  solo: boolean;
 }
 
 /** The keys under which the master's left and right levels arrive next to the channels' (see onTrackLevels). */
 export const MASTER_LEFT = "__master_left";
 export const MASTER_RIGHT = "__master_right";
+
+/** The key under which a group's level arrives next to the channels' (see onTrackLevels). */
+export const groupLevelKey = (groupId: string) => `group:${groupId}`;
 
 export type TrackLevels = Record<string, number>;
 type TrackLevelsListener = (levels: TrackLevels, peaks: TrackLevels) => void;
@@ -88,6 +108,9 @@ export class AudioEngine {
   /** Channels currently heard without their effects (the Compare button). */
   private fxCompare = new Set<string>();
   private tracks = new Map<string, LoadedTrack>();
+  private groups = new Map<string, LoadedGroup>();
+  /** Groups currently heard without their effects (the Compare button). */
+  private groupFxCompare = new Set<string>();
   // Decoded audio of every take, by take id. Clips only point at these.
   private takeBuffers = new Map<string, AudioBuffer>();
   private sources: AudioBufferSourceNode[] = [];
@@ -410,12 +433,100 @@ export class AudioEngine {
         volume: 1,
         muted: false,
         solo: false,
+        groupId: null,
       };
       this.tracks.set(trackId, track);
       fx.apply(track.fxSettings);
       this.ensureTrackLevelLoop();
     }
     return track;
+  }
+
+  // ---- Group channels (busses) ----------------------------------------------------------------------------------
+
+  private ensureGroup(groupId: string): LoadedGroup {
+    let g = this.groups.get(groupId);
+    if (!g) {
+      if (!this.reverbImpulse) this.reverbImpulse = createReverbImpulse(this.ctx);
+      const gainNode = this.ctx.createGain();
+      const fx = createFxChain(this.ctx, this.reverbImpulse);
+      const panner = this.ctx.createStereoPanner();
+      const analyser = this.ctx.createAnalyser();
+      analyser.fftSize = 512;
+      // Wiring: fader -> effects -> analyser & pan -> master, like a channel.
+      gainNode.connect(fx.input);
+      fx.output.connect(analyser);
+      fx.output.connect(panner);
+      panner.connect(this.masterGain);
+      g = { groupId, gainNode, fx, fxSettings: { ...DEFAULT_CHANNEL_FX }, panner, analyser, volume: 1, muted: false, solo: false };
+      this.groups.set(groupId, g);
+      fx.apply(g.fxSettings);
+      this.ensureTrackLevelLoop();
+    }
+    return g;
+  }
+
+  /** Where a channel's sound goes: into its group's fader, or straight to the master. */
+  private routeTrack(t: LoadedTrack) {
+    t.panner.disconnect();
+    const g = t.groupId ? this.groups.get(t.groupId) : undefined;
+    t.panner.connect(g ? g.gainNode : this.masterGain);
+  }
+
+  /** Puts a channel in a group (null = takes it out: it plays straight to the master). */
+  setTrackGroup(trackId: string, groupId: string | null) {
+    const t = this.ensureTrack(trackId);
+    if (t.groupId === groupId) return; // nothing to rewire (rewiring while playing can click)
+    if (groupId) this.ensureGroup(groupId);
+    t.groupId = groupId;
+    this.routeTrack(t);
+    this.applyMixLevels();
+  }
+
+  updateGroupMix(groupId: string, volume: number, muted: boolean, solo: boolean) {
+    const g = this.ensureGroup(groupId);
+    g.volume = volume;
+    g.muted = muted;
+    g.solo = solo;
+    this.applyMixLevels();
+  }
+
+  setGroupPan(groupId: string, pan: number) {
+    const g = this.ensureGroup(groupId);
+    g.panner.pan.setTargetAtTime(Math.max(-1, Math.min(1, pan)), this.ctx.currentTime, 0.015);
+  }
+
+  updateGroupFx(groupId: string, fx: Partial<ChannelFx>) {
+    const g = this.ensureGroup(groupId);
+    g.fxSettings = { ...g.fxSettings, ...clampFx(fx) };
+    g.fx.apply(g.fxSettings, { smooth: true, bypassAll: this.groupFxCompare.has(groupId) });
+  }
+
+  setGroupFxCompare(groupId: string, dry: boolean) {
+    if (dry) this.groupFxCompare.add(groupId);
+    else this.groupFxCompare.delete(groupId);
+    const g = this.groups.get(groupId);
+    if (g) g.fx.apply(g.fxSettings, { smooth: true, bypassAll: dry });
+  }
+
+  getGroupCompressorReduction(groupId: string): number {
+    return this.groups.get(groupId)?.fx.compressor.reduction ?? 0;
+  }
+
+  /** A group is gone: its channels go straight to the master. */
+  removeGroup(groupId: string) {
+    const g = this.groups.get(groupId);
+    if (!g) return;
+    for (const t of this.tracks.values()) {
+      if (t.groupId === groupId) {
+        t.groupId = null;
+        this.routeTrack(t);
+      }
+    }
+    for (const node of [g.gainNode, g.fx.input, g.fx.output, g.fx.eqCut, g.fx.eqLow, g.fx.eqMid, g.fx.eqHigh, g.fx.compressor, g.panner, g.analyser]) node.disconnect();
+    this.groups.delete(groupId);
+    this.groupFxCompare.delete(groupId);
+    this.applyMixLevels();
   }
 
   /** Applies (a partial update to) a channel's effects. Values outside range are clamped. */
@@ -524,6 +635,17 @@ export class AudioEngine {
         levels[t.trackId] = Math.sqrt(sumSquares / data.length);
         peaks[t.trackId] = peak;
       }
+      for (const g of this.groups.values()) {
+        g.analyser.getFloatTimeDomainData(data);
+        let sumSquares = 0;
+        let peak = 0;
+        for (let i = 0; i < data.length; i++) {
+          sumSquares += data[i] * data[i];
+          if (Math.abs(data[i]) > peak) peak = Math.abs(data[i]);
+        }
+        levels[groupLevelKey(g.groupId)] = Math.sqrt(sumSquares / data.length);
+        peaks[groupLevelKey(g.groupId)] = peak;
+      }
       for (const [key, analyser] of [[MASTER_LEFT, this.masterAnalysers.left], [MASTER_RIGHT, this.masterAnalysers.right]] as const) {
         analyser.getFloatTimeDomainData(data);
         let sumSquares = 0;
@@ -552,6 +674,8 @@ export class AudioEngine {
     this.stopTrackLevelLoop();
     for (const t of this.tracks.values()) this.disconnectTrack(t);
     this.tracks.clear();
+    for (const id of [...this.groups.keys()]) this.removeGroup(id);
+    this.groupFxCompare.clear();
     this.takeBuffers.clear();
     this.startedAtPositionSec = 0;
   }
@@ -571,11 +695,12 @@ export class AudioEngine {
   }
 
   private applyMixLevels() {
-    const anySolo = [...this.tracks.values()].some((t) => t.solo);
-    for (const t of this.tracks.values()) {
-      const audible = anySolo ? t.solo : !t.muted;
-      t.gainNode.gain.value = audible ? t.volume : 0;
-    }
+    const levels = resolveMix(
+      [...this.tracks.values()].map((t) => ({ id: t.trackId, groupId: t.groupId, volume: t.volume, muted: t.muted, solo: t.solo })),
+      [...this.groups.values()].map((g) => ({ id: g.groupId, volume: g.volume, muted: g.muted, solo: g.solo }))
+    );
+    for (const t of this.tracks.values()) t.gainNode.gain.value = levels.tracks[t.trackId] ?? 0;
+    for (const g of this.groups.values()) g.gainNode.gain.value = levels.groups[g.groupId] ?? 0;
   }
 
   /** How long the song is: the end of the last clip on any channel. */

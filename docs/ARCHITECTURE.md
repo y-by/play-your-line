@@ -192,6 +192,15 @@ Good to know:
   migration 0043) through `set_master_mix` (Owner or Mixer); live to everyone through the project realtime row;
   `preview_stale` marks a listening copy older than the last master change. The master's own track draws the whole mix (`MasterWave.tsx`): `renderMixFromBuffers` (the export's render, at 8 kHz, from the buffers the engine already decoded) a moment after anything that changes the sound, never while recording. Left/right levels reach the store as the
   keys `MASTER_LEFT` / `MASTER_RIGHT` next to the channels' in `trackLevels` / `trackPeaks`.
+- **Group channels** (`lib/groups.ts` data and rules, `GroupRow.tsx`, `GroupTools.tsx`, engine `ensureGroup` and friends):
+  a group is its own chain (fader -> effects -> pan) between its channels and the master; a channel's pan connects to
+  its group's fader instead of the fade node. `resolveMix` is the one rule for mute and solo with groups (solo beats
+  mute; used by `applyMixLevels`; the export ignores solo). `buildRows` lays the channel list out (a group's header,
+  then its channels, folded groups show only the header); drag reorder works on the visible channels and saves with
+  `moveTrackNear`. Saved in `track_groups` + `tracks.group_id` (migration 0044), written only through the functions
+  `create_track_group`, `rename_track_group`, `delete_track_group`, `set_track_group` (Owner) and `set_group_mix`
+  (Owner or Mixer); live through the `track_groups` realtime table; a group's level reaches the store under
+  `groupLevelKey(id)`. `renderMixFromBuffers` builds the same group chains.
 - **Channel Tools** (EQ / Compressor / Delay / Reverb): click **Tools** to open a small, draggable
   plugin-style window. A **power switch** (off by default) turns the channel's effects on; each
   effect also has its own bypass. The header holds a preset menu, Undo (this visit only), Reset and
@@ -327,7 +336,7 @@ src/
     takeCache.ts               recordings kept on the device (Cache Storage), so each is downloaded once
     inputDevices.ts, outputDevices.ts
   worklets/pcm-recorder-processor.js   lossless capture on the audio thread
-supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0043)
+supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0044)
 scripts/test-timing.ts         checks for the latency math
 scripts/test-clips.ts          checks for clips, overlap, grid, mix, order, roles, cleanup, FX rules, notes, chords, tuner   (npm test runs both)
 ```

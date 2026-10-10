@@ -37,6 +37,23 @@ export interface Track {
   fx: ChannelFx;
   /** The Owner or Mixer has stopped the channel's player from changing its effects. */
   fxLocked: boolean;
+  /** The group this channel plays through (null = straight to the master). */
+  groupId: string | null;
+}
+
+/** A group channel (bus): holds several channels and has its own fader, mute, pan and effects. Saved on the project. */
+export interface Group {
+  id: string;
+  projectId: string;
+  name: string;
+  color: string;
+  /** Order of the groups among themselves (the screen follows the order of the channels in them). */
+  position: number;
+  volume: number; // 0..4, 1 = unity
+  muted: boolean;
+  /** -1 (left) … +1 (right), after the group's effects. */
+  pan: number;
+  fx: ChannelFx;
 }
 
 /** Per-channel insert effects (EQ, Compressor, Delay, Reverb) on the saved final mix. */
@@ -93,6 +110,8 @@ export interface Project {
   coverPath: string | null;
   /** Path of the MP3 listening copy in the "previews" bucket, set when the project is published. */
   previewPath: string | null;
+  /** The groups (busses) of this song. */
+  groups: Group[];
   /** The master channel (fader, mute, effects). Old songs have the neutral default. */
   master: MasterMix;
   /** True when the master changed after the listening copy was made, so the copy is out of date. */
