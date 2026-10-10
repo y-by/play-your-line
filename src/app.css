@@ -4714,6 +4714,13 @@ select.note-opt {
   flex: 1;
 }
 
+.note-card-time {
+  flex: none;
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+  white-space: nowrap;
+}
+
 .note-card-body {
   flex: 1 1 auto;
   min-height: 0;

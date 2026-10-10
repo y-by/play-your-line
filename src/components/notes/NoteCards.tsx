@@ -1,11 +1,11 @@
 import { useRef, useState } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
 import { useAuthStore } from "../../store/useAuthStore";
-import { barOfBeat, mentionedIds, pinLabel } from "../../lib/notes";
+import { agoLabel, barOfBeat, mentionedIds, pinLabel } from "../../lib/notes";
 import { MentionTextarea } from "./MentionTextarea";
 import { BarPin } from "./BarPin";
 import { useMembers } from "./useMembers";
-import { authorInitial, noteTint, useNoteTracks } from "./noteStyle";
+import { authorInitial, noteTint, useNoteTracks, useNow } from "./noteStyle";
 import { CheckIcon, CloseIcon } from "../icons/Icons";
 import type { NoteCardState, NoteCardsLayout } from "../../store/useProjectStore";
 import type { ProjectNote } from "../../types/project";
@@ -15,6 +15,7 @@ function Card({ note, state, layout, index, front }: { note: ProjectNote; state:
   const free = state.free === true;
   const bringNoteFront = useProjectStore((s) => s.bringNoteFront);
   const tracks = useNoteTracks();
+  const now = useNow();
   const moveNoteCard = useProjectStore((s) => s.moveNoteCard);
   const resizeNoteCard = useProjectStore((s) => s.resizeNoteCard);
   const minimizeNoteCard = useProjectStore((s) => s.minimizeNoteCard);
@@ -90,6 +91,9 @@ function Card({ note, state, layout, index, front }: { note: ProjectNote; state:
             {pinLabel(note.atBeat, beatsPerBar)}
           </button>
         )}
+        <span className="note-card-time" title={new Date(note.createdAt).toLocaleString()}>
+          {agoLabel(note.createdAt, now)}
+        </span>
         <span className="note-card-grow" />
         {canEdit && !editing && (
           <button className="note-act" onClick={startEdit} title="Edit" aria-label="Edit">

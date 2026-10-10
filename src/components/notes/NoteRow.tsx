@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import type { ProjectNote } from "../../types/project";
 import { useProjectStore } from "../../store/useProjectStore";
 import { useAuthStore } from "../../store/useAuthStore";
@@ -6,18 +6,8 @@ import { agoLabel, pinLabel, barOfBeat, mentionedIds, splitMentions } from "../.
 import { MentionTextarea } from "./MentionTextarea";
 import { BarPin } from "./BarPin";
 import { useMembers } from "./useMembers";
-import { authorInitial, noteTint, useNoteTracks } from "./noteStyle";
+import { authorInitial, noteTint, useNoteTracks, useNow } from "./noteStyle";
 import { CheckIcon, NoteIcon, TrashIcon } from "../icons/Icons";
-
-/** The current time, refreshed every minute, so "5 min ago" keeps up. */
-function useNow(): number {
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const id = window.setInterval(() => setNow(Date.now()), 60_000);
-    return () => window.clearInterval(id);
-  }, []);
-  return now;
-}
 
 /** One note in the tray: who, when, where it is pinned, the text, and what you can do with it. */
 export function NoteRow({ note }: { note: ProjectNote }) {

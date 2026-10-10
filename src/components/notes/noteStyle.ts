@@ -1,3 +1,4 @@
+import { useEffect, useState } from "react";
 import { TRACK_COLORS } from "../../lib/trackColors";
 import { useProjectStore } from "../../store/useProjectStore";
 import { hash } from "../../lib/coverArt";
@@ -21,4 +22,14 @@ const NO_TRACKS: { id: string; color: string }[] = [];
 /** The project's channels (id and colour), for tinting notes. */
 export function useNoteTracks(): { id: string; color: string }[] {
   return useProjectStore((s) => s.project?.tracks ?? NO_TRACKS);
+}
+
+/** The current time, refreshed every minute, so "5 min ago" keeps up. */
+export function useNow(): number {
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = window.setInterval(() => setNow(Date.now()), 60_000);
+    return () => window.clearInterval(id);
+  }, []);
+  return now;
 }
