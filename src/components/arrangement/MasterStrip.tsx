@@ -10,11 +10,24 @@ import { MasterTools } from "./MasterTools";
 import { MasterWave } from "./MasterWave";
 
 /**
- * The master channel, pinned under the last channel: a fader, a left and right level meter with a clip light,
+ * The master channel, pinned to the bottom of the screen above the notes bar, so nothing covers it: a fader, a left and right level meter with a clip light,
  * mute, and the Tools button (EQ, Compressor, Limiter on the whole song). The Owner and the Mixer change it;
  * everyone hears it but only they see it. The fader only turns the song down.
  */
-export function MasterStrip({ timelinePx, pxPerSec }: { timelinePx: number; pxPerSec: number }) {
+export function MasterStrip({
+  scrollRef,
+  timelinePx,
+  pxPerSec,
+  onPointerDownCapture,
+  onDoubleClick,
+}: {
+  /** The timeline the master's track follows sideways. */
+  scrollRef: React.RefObject<HTMLDivElement | null>;
+  timelinePx: number;
+  pxPerSec: number;
+  onPointerDownCapture: (e: React.PointerEvent) => void;
+  onDoubleClick: (e: React.MouseEvent) => void;
+}) {
   const master = useProjectStore((s) => s.project?.master);
   const muted = useProjectStore((s) => s.masterMuted);
   const laneScale = useProjectStore((s) => s.laneScales.master ?? 1);
@@ -27,6 +40,40 @@ export function MasterStrip({ timelinePx, pxPerSec }: { timelinePx: number; pxPe
   const [anchor, setAnchor] = useState<{ top: number; left: number } | null>(null);
   const [clipped, setClipped] = useState(false);
   const toolsBtn = useRef<HTMLButtonElement>(null);
+  const dock = useRef<HTMLDivElement>(null);
+  const track = useRef<HTMLDivElement>(null);
+  const playhead = useProjectStore((s) => s.positionSec);
+  const visible = !!master && canMix;
+
+  // The strip sits at the bottom of the screen, over the width of the timeline; its track slides sideways with the timeline.
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    const el = dock.current;
+    if (!visible || !scroller || !el) return;
+    const place = () => {
+      const r = scroller.getBoundingClientRect();
+      el.style.left = `${r.left}px`;
+      el.style.width = `${r.width}px`;
+      // Room under the channels, so the last one is not hidden behind the strip.
+      document.documentElement.style.setProperty("--master-dock-h", `${el.getBoundingClientRect().height}px`);
+    };
+    const follow = () => {
+      if (track.current) track.current.style.transform = `translateX(${-scroller.scrollLeft}px)`;
+    };
+    place();
+    follow();
+    scroller.addEventListener("scroll", follow, { passive: true });
+    window.addEventListener("resize", place);
+    const observer = new ResizeObserver(place);
+    observer.observe(scroller);
+    observer.observe(el);
+    return () => {
+      scroller.removeEventListener("scroll", follow);
+      window.removeEventListener("resize", place);
+      observer.disconnect();
+      document.documentElement.style.removeProperty("--master-dock-h");
+    };
+  }, [visible, scrollRef]);
 
   // The clip light stays on until it is clicked, so a short peak is not missed.
   useEffect(
@@ -43,6 +90,7 @@ export function MasterStrip({ timelinePx, pxPerSec }: { timelinePx: number; pxPe
   const fxLive = master.fx.fxOn;
 
   return (
+    <div ref={dock} className="master-dock" onPointerDownCapture={onPointerDownCapture} onDoubleClick={onDoubleClick}>
     <div className="arr-row master-row" data-lane-id="master" style={{ "--lane-scale": laneScale } as React.CSSProperties}>
       <div className="arr-info master-info">
         <div className="master-head">
@@ -112,10 +160,14 @@ export function MasterStrip({ timelinePx, pxPerSec }: { timelinePx: number; pxPe
           </button>
         </div>
       </div>
-      <div className="arr-lane master-lane" style={{ width: timelinePx }}>
-        <MasterWave pxPerSec={pxPerSec} />
+      <div className="master-track">
+        <div ref={track} className="arr-lane master-lane" style={{ width: timelinePx }}>
+          <MasterWave pxPerSec={pxPerSec} />
+          <div className="master-playhead" style={{ left: playhead * pxPerSec }} />
+        </div>
       </div>
       {anchor && createPortal(<MasterTools initialAnchor={anchor} onClose={() => setAnchor(null)} />, document.body)}
+    </div>
     </div>
   );
 }

@@ -4625,7 +4625,7 @@ select.note-opt {
   right: 12px;
   z-index: 55;
   width: min(calc(3 * 240px + 2 * 8px), calc(100vw - 24px));
-  max-height: calc(100vh - 96px - 60px);
+  max-height: calc(100vh - 96px - 60px - var(--master-dock-h, 0px));
   pointer-events: none;
 }
 
@@ -4642,7 +4642,7 @@ select.note-opt {
 
 .note-cards-area.stack {
   width: 240px;
-  height: calc(100vh - 96px - 60px);
+  height: calc(100vh - 96px - 60px - var(--master-dock-h, 0px));
 }
 
 .note-cards-bar {
@@ -4753,7 +4753,8 @@ select.note-opt {
 .note-dock {
   position: fixed;
   left: 12px;
-  bottom: calc(52px + env(safe-area-inset-bottom, 0px));
+  /* above the notes bar and the master strip */
+  bottom: calc(var(--notes-tray-h, 52px) + var(--master-dock-h, 0px) + 8px + env(safe-area-inset-bottom, 0px));
   z-index: 55;
   display: flex;
   flex-wrap: wrap;
@@ -6410,4 +6411,124 @@ select.sig-select option {
   border: 1px solid var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 18%, transparent);
   border-radius: 3px;
+}
+
+/* ---- The master strip, pinned to the bottom of the screen above the notes bar ---- */
+
+.master-dock {
+  position: fixed;
+  bottom: var(--notes-tray-h, 0px);
+  z-index: 49;
+  background: var(--color-bg-elevated);
+  box-shadow: 0 -6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.master-dock .master-row {
+  min-height: 62px;
+}
+
+.master-dock .master-track {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+.master-dock .master-lane {
+  position: relative;
+  will-change: transform;
+}
+
+.master-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--color-accent);
+  pointer-events: none;
+  z-index: 2;
+}
+
+.arrangement {
+  padding-bottom: var(--master-dock-h, 0px);
+}
+
+/* The master is made taller by its top edge (it sits at the bottom of the screen). */
+.master-dock .master-row > .arr-lane::after,
+.master-dock .master-row > .arr-info::before {
+  top: 0;
+  bottom: auto;
+}
+
+.master-dock .master-track::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: row-resize;
+  z-index: 6;
+}
+
+/* The timeline has no scroll bar: the overview strip above the ruler (TimelineOverview.tsx) is the way to scroll sideways and to see where you are. */
+.arr-scroll {
+  scrollbar-width: none;
+}
+
+.arr-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+.timeline-overview {
+  position: relative;
+  height: 18px;
+  margin-left: var(--info-w);
+  background: var(--color-bg-elevated);
+  border-radius: 6px;
+  overflow: hidden;
+  cursor: pointer;
+  touch-action: none;
+  box-shadow: inset 0 0 0 1px var(--color-separator);
+}
+
+.timeline-overview svg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.timeline-overview .ov-loop {
+  fill: color-mix(in srgb, var(--color-accent) 22%, transparent);
+}
+
+.timeline-overview .ov-loop.on {
+  fill: color-mix(in srgb, var(--color-accent) 40%, transparent);
+}
+
+.timeline-overview .ov-playhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--color-accent);
+  pointer-events: none;
+}
+
+.timeline-overview .ov-thumb {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  min-width: 14px;
+  border-radius: 5px;
+  border: 1.5px solid var(--color-label-secondary);
+  background: color-mix(in srgb, var(--color-label) 10%, transparent);
+  cursor: grab;
+}
+
+.timeline-overview.whole .ov-thumb {
+  opacity: 0.35;
 }

@@ -9,6 +9,7 @@ import { GroupRow } from "./GroupRow";
 import { buildRows, visibleLanes } from "../../lib/groups";
 import { Ruler } from "./Ruler";
 import { LoopTempoPrompt } from "../LoopTempoPrompt";
+import { TimelineOverview } from "./TimelineOverview";
 
 const MIN_BARS = 16;
 const INFO_SCALE_KEY = "pyl.infoScale";
@@ -36,6 +37,7 @@ export function Arrangement() {
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const pxPerBeat = useProjectStore((s) => s.pxPerBeat);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const wrapRef = useRef<HTMLDivElement>(null);
   const personalOrder = useProjectStore((s) => s.personalOrder);
   const personalColors = useProjectStore((s) => s.personalColors);
   const loop = useProjectStore((s) => s.loop);
@@ -44,15 +46,24 @@ export function Arrangement() {
   const [infoScale, setInfoScale] = useState(readInfoScale);
   const setLaneScale = useProjectStore((s) => s.setLaneScale);
 
+  // The width is set on the timeline and on the whole arrangement: the master strip, pinned to the bottom of the screen, sits outside the timeline.
+  const setInfoWidth = (px: number | null) => {
+    for (const el of [scrollRef.current, wrapRef.current]) {
+      if (!el) continue;
+      if (px === null) el.style.removeProperty("--info-w");
+      else el.style.setProperty("--info-w", `${px}px`);
+    }
+  };
+
   // The control column's width: its normal width for this screen (the style sheet decides) times the chosen scale.
   useLayoutEffect(() => {
     const el = scrollRef.current;
     if (!el) return;
     const apply = () => {
-      el.style.removeProperty("--info-w");
+      setInfoWidth(null);
       if (infoScale === 1) return;
       const base = parseFloat(getComputedStyle(el).getPropertyValue("--info-w"));
-      if (base) el.style.setProperty("--info-w", `${Math.round(base * infoScale)}px`);
+      if (base) setInfoWidth(Math.round(base * infoScale));
     };
     apply();
     window.addEventListener("resize", apply);
@@ -64,10 +75,12 @@ export function Arrangement() {
     const row = (e.target as HTMLElement).closest<HTMLElement>("[data-lane-id]");
     if (!row) return false;
     const r = row.getBoundingClientRect();
-    if (e.clientY < r.bottom - 7) return false;
+    const id = row.dataset.laneId as string;
+    // A channel is made taller by its bottom edge; the master, which sits at the bottom of the screen, by its top edge (drag up).
+    const fromTop = id === "master";
+    if (fromTop ? e.clientY > r.top + 7 : e.clientY < r.bottom - 7) return false;
     e.preventDefault();
     e.stopPropagation();
-    const id = row.dataset.laneId as string;
     const min = id === "master" ? MIN_MASTER_SCALE : MIN_LANE_SCALE;
     const startY = e.clientY;
     const startH = r.height;
@@ -76,7 +89,7 @@ export function Arrangement() {
     let latest = startScale;
     document.body.style.cursor = "row-resize";
     const move = (ev: PointerEvent) => {
-      latest = Math.min(MAX_LANE_SCALE, Math.max(min, (startH + ev.clientY - startY) / base));
+      latest = Math.min(MAX_LANE_SCALE, Math.max(min, (startH + (fromTop ? startY - ev.clientY : ev.clientY - startY)) / base));
       row.style.setProperty("--lane-scale", String(latest));
     };
     const finish = () => {
@@ -109,7 +122,7 @@ export function Arrangement() {
     document.body.style.cursor = "col-resize";
     const move = (ev: PointerEvent) => {
       latest = Math.min(MAX_INFO_SCALE, Math.max(1, (startW + ev.clientX - startX) / base));
-      el.style.setProperty("--info-w", `${Math.round(base * latest)}px`);
+      setInfoWidth(Math.round(base * latest));
     };
     const finish = () => {
       window.removeEventListener("pointermove", move);
@@ -374,8 +387,9 @@ export function Arrangement() {
   } as React.CSSProperties;
 
   return (
-    <div className="arrangement">
+    <div className="arrangement" ref={wrapRef}>
       <LoopTempoPrompt />
+      <TimelineOverview scrollRef={scrollRef} timelinePx={timelinePx} pxPerSec={pxPerSec} />
       <div className="arr-scroll" ref={scrollRef} onPointerDownCapture={onInfoEdgeDown} onDoubleClick={onInfoEdgeDouble}>
         <div className={pxPerBeat / 4 >= 10 ? "arr-inner fine-grid" : "arr-inner"} style={gridStyle}>
           <Ruler totalBars={totalBars} barPx={barPx} pxPerSec={pxPerSec} />
@@ -395,7 +409,6 @@ export function Arrangement() {
               />
             )
           )}
-          <MasterStrip timelinePx={timelinePx} pxPerSec={pxPerSec} />
           {loop && (
             <div
               className={loopEnabled ? "arr-loop-band on" : "arr-loop-band"}
@@ -408,6 +421,7 @@ export function Arrangement() {
           <div className="arr-playhead" style={{ left: `calc(var(--info-w) + ${positionSec * pxPerSec}px)` }} />
         </div>
       </div>
+      <MasterStrip scrollRef={scrollRef} timelinePx={timelinePx} pxPerSec={pxPerSec} onPointerDownCapture={onInfoEdgeDown} onDoubleClick={onInfoEdgeDouble} />
     </div>
   );
 }

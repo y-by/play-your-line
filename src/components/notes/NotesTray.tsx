@@ -1,5 +1,5 @@
 import { HelpHint } from "../HelpHint";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
 import { notesForTray } from "../../lib/notes";
 import { NoteComposer } from "./NoteComposer";
@@ -23,6 +23,22 @@ export function NotesTray() {
   const unfloatAll = useProjectStore((s) => s.unfloatAllNotes);
   const cardCount = useProjectStore((s) => Object.keys(s.noteCards).length);
   const [tab, setTab] = useState<"open" | "done">("open");
+  const tray = useRef<HTMLElement>(null);
+  const showing = visible && !(!canWrite && notes.length === 0);
+
+  // Tell the page how tall the tray is, so the master strip can sit just above it and never be covered.
+  useEffect(() => {
+    const el = tray.current;
+    if (!showing || !el) return;
+    const publish = () => document.documentElement.style.setProperty("--notes-tray-h", `${el.getBoundingClientRect().height}px`);
+    publish();
+    const observer = new ResizeObserver(publish);
+    observer.observe(el);
+    return () => {
+      observer.disconnect();
+      document.documentElement.style.removeProperty("--notes-tray-h");
+    };
+  }, [showing, open]);
 
   if (!visible || (!canWrite && notes.length === 0)) return null;
 
@@ -32,7 +48,7 @@ export function NotesTray() {
   const newest = notesForTray(notes, { done: false, trackId: null })[0];
 
   return (
-    <aside className={open ? "notes-tray open plugin-skin" : "notes-tray plugin-skin"} aria-label="Notes">
+    <aside ref={tray} className={open ? "notes-tray open plugin-skin" : "notes-tray plugin-skin"} aria-label="Notes">
       <div className="notes-bar">
         <button className="notes-toggle" onClick={() => setOpen(!open)} aria-expanded={open}>
           <span className="notes-title">Notes</span>
