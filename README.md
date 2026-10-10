@@ -22,10 +22,12 @@ tempo and click, mute / solo / volume, and trimming that never destroys a record
 | | Owner | Mixer | Player | Listener |
 | --- | :---: | :---: | :---: | :---: |
 | Who | Created the project | One person the Owner picks | Whoever is on a channel | Invited to hear the draft |
-| Add a channel, rename a channel | ✅ | ✅ | ✅ | ✅ |
+| Add a channel | ✅ | ✅ | ✅ | – |
+| Rename a channel | ✅ | ✅ | their own channel (and any channel nobody plays yet) | – |
 | Put someone on a channel (link, email or pick from the list), reassign it | ✅ | – | – | – |
 | Tempo, channel order and colours, rename or delete the project, publish | ✅ | – | – | – |
 | Final mix (volume, mute and pan per channel) | ✅ | ✅ | – | – |
+| Master channel (fader, mute, EQ, compressor, limiter) | ✅ | ✅ | – | – |
 | Channel Tools (EQ, Compressor, Delay, Reverb, Tuner) | ✅ | ✅ | their own channel, until the Owner or Mixer locks it | – |
 | Write notes, tag people with @ | ✅ | ✅ | ✅ | – (they read the notes shared with them) |
 | Record and edit clips | own channel | own channel | own channel | – |
@@ -71,6 +73,8 @@ bass's low B. Pick Guitar, Bass (4), Bass (5) or Ukulele and tap a string to tun
 **Effects.** The effects are **off** for a channel until its power switch is turned on. Each effect has its
 own bypass, each EQ band has a frequency knob under its gain knob, and a separate Low cut (a high-pass filter, off at the bottom of its knob) sits to the left of them, there are presets, undo, reset and a Compare (hear it dry) button, and each tab can be
 dragged out into its own window (and docked back with its Dock button). Close the main Tools window and any tab you pulled out stays on screen, on top. Drag the bottom-right corner of a Tools window to make it bigger, up to double (double-click the corner for normal size); the main window remembers its size. Export Mix includes the effects.
+
+**Master.** Under the last channel sits the master: a fader (it only turns the whole song down), a left and right level meter with a clip light, a personal mute (only your own speakers, never saved), the waveform of the whole song as it leaves the master drawn along its track (red where it reaches the top), and a Tools box with EQ, Compressor and a safety Limiter (the ruler's M is the same personal master mute). It is saved on the project (migration 0043), only the Owner and the Mixer see and change it, and everyone hears it, and it is part of Export Mix and the MP3 listening copy (the master's personal mute never silences an export). Its effects start off, so older songs sound the same. When the master changes after a song was published, the refresh button on its card turns amber: update the listening copy.
 
 **Mixes.** Players hear their own monitor mix (saved only on their device) or the Owner's saved
 final mix. Solo is never saved.

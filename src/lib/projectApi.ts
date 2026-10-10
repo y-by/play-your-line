@@ -1,6 +1,7 @@
 import { supabase } from "./supabaseClient";
-import type { ProjectNote, Project, Track, Take, Clip, ChannelFx } from "../types/project";
+import type { ProjectNote, Project, Track, Take, Clip, ChannelFx, MasterMix } from "../types/project";
 import { fxFromRow, fxToRow } from "./channelFx";
+import { masterFromRow, masterFxToJson } from "./master";
 import type { StoredFile } from "./orphans";
 import { forgetCachedProject, getCachedTake, putCachedTake } from "./takeCache";
 
@@ -22,6 +23,8 @@ function mapProject(row: any, tracks: Track[], takes: Record<string, Take>): Pro
     initiatorName: null,
     coverPath: row.cover_path ?? null,
     previewPath: row.preview_path ?? null,
+    previewStale: !!row.preview_stale,
+    master: masterFromRow(row),
     listeners: [],
     status: row.status,
     createdAt: new Date(row.created_at).getTime(),
@@ -339,12 +342,13 @@ export async function unpublishProject(projectId: string): Promise<void> {
 /** Replaces the project's listening copy (an MP3 of the saved final mix) and removes the previous file. */
 export async function setProjectPreview(projectId: string, mp3: Blob): Promise<void> {
   const client = requireSupabase();
-  const { data: row } = await client.from("projects").select("preview_path").eq("id", projectId).maybeSingle();
+  const { data: row } = await client.from("projects").select("*").eq("id", projectId).maybeSingle();
   const previousPath: string | null = row?.preview_path ?? null;
   const path = `${projectId}/${crypto.randomUUID()}.mp3`;
   const { error: uploadError } = await client.storage.from("previews").upload(path, mp3, { contentType: "audio/mpeg", upsert: false });
   if (uploadError) throw uploadError;
-  const { error } = await client.from("projects").update({ preview_path: path }).eq("id", projectId);
+  // preview_stale exists once migration 0043 is run; before that the update must not mention it.
+  const { error } = await client.from("projects").update(row && "preview_stale" in row ? { preview_path: path, preview_stale: false } : { preview_path: path }).eq("id", projectId);
   if (error) {
     await client.storage.from("previews").remove([path]);
     throw error;
@@ -417,6 +421,17 @@ export async function removeTrack(trackId: string): Promise<void> {
 export async function updateTrackMix(trackId: string, patch: Partial<{ volume: number; muted: boolean; pan: number }>): Promise<void> {
   const client = requireSupabase();
   const { error } = await client.from("tracks").update(patch).eq("id", trackId);
+  if (error) throw error;
+}
+
+/** The saved master channel. Owner and Mixer only (set_master_mix checks it). Only the fields passed are changed. */
+export async function saveMasterMix(projectId: string, patch: Partial<Pick<MasterMix, "volume">> & { fxAndLimiter?: Pick<MasterMix, "fx" | "limiterOn"> }): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.rpc("set_master_mix", {
+    p_project_id: projectId,
+    p_volume: patch.volume ?? null,
+    p_fx: patch.fxAndLimiter ? masterFxToJson(patch.fxAndLimiter) : null,
+  });
   if (error) throw error;
 }
 

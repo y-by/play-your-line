@@ -7,7 +7,10 @@ import { ExportIcon, GlobeIcon, RefreshIcon, SpinnerIcon } from "./icons/Icons";
 /** The two things you can do to a project from the list: publish it (or take it back) and export its mix. */
 export function ProjectCardActions({ project, isOwner, onStatus }: { project: Project; isOwner: boolean; onStatus: (id: string, status: "draft" | "published") => void }) {
   const [busy, setBusy] = useState<"publish" | "export" | "copy" | null>(null);
+  const [refreshed, setRefreshed] = useState(false);
   const published = project.status === "published";
+  // The master changed after the listening copy was made: the Owner is reminded to update it.
+  const stale = published && !!project.previewPath && project.previewStale && !refreshed;
 
   const stop = (e: React.SyntheticEvent) => {
     e.preventDefault();
@@ -43,6 +46,7 @@ export function ProjectCardActions({ project, isOwner, onStatus }: { project: Pr
     setBusy("copy");
     try {
       await buildListeningCopy(project.id);
+      setRefreshed(true);
       alert("The listening copy now matches the current mix.");
     } catch (err) {
       console.error("Failed to update the listening copy:", err);
@@ -75,7 +79,7 @@ export function ProjectCardActions({ project, isOwner, onStatus }: { project: Pr
         </button>
       )}
       {isOwner && published && (
-        <button className="card-act" onClick={refreshCopy} disabled={!!busy} title="Update the listening copy so Published Projects plays your latest mix" aria-label="Update listening copy">
+        <button className={stale ? "card-act stale" : "card-act"} onClick={refreshCopy} disabled={!!busy} title={stale ? "Out of date: the master changed after the listening copy was made. Click to update it so Published Projects plays your latest mix." : "Update the listening copy so Published Projects plays your latest mix"} aria-label={stale ? "Update listening copy (out of date)" : "Update listening copy"}>
           {busy === "copy" ? <SpinnerIcon size={14} /> : <RefreshIcon size={14} />}
         </button>
       )}

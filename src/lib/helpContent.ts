@@ -143,6 +143,18 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: "master",
+    group: "Mixing and effects",
+    question: "What is the master channel?",
+    answer: [
+      "The master is the last stop for every channel before the speakers. It sits under the last channel: a fader, a left and right level meter with a clip light, a mute button and a Tools box with EQ, Compressor and a safety Limiter.",
+      "The master fader only turns the whole song down. Master mute silences the whole song for you only: it is never saved, nobody else hears the difference and an export is never silent because of it.",
+      "Only the Owner and the Mixer see and change the master. It is saved with the project and everyone hears it, players included, so what you hear is what the exported mix sounds like. The master effects start switched off, so older songs sound exactly as before.",
+      "The Limiter catches the loudest peaks near -1 dB so the song and the MP3 do not distort. It is a safety net, not a mastering tool. Compare plays the song without the master effects, only for you.",
+      "If the master changes after a song was published, the refresh button on its card turns amber: update the listening copy so Published Projects plays the new sound.",
+    ],
+  },
+  {
     id: "monitor",
     group: "Mixing and effects",
     question: "What's the difference between my mix and the final mix?",

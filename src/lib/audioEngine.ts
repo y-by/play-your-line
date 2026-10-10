@@ -9,7 +9,9 @@ import { scheduleSegment } from "./segmentPlayback";
 import { loopApplies, positionWithLoop, nextLoopPass, MIN_LOOP_SEC, type LoopRegion, type LoopPass } from "./loop";
 import { createReverbImpulse, clampFx, DEFAULT_CHANNEL_FX } from "./channelFx";
 import { createFxChain, type FxChain } from "./fxChain";
-import type { ChannelFx } from "../types/project";
+import type { ChannelFx, MasterMix } from "../types/project";
+import { createMasterChain, type MasterChain } from "./masterChain";
+import { DEFAULT_MASTER } from "./master";
 import pcmRecorderWorkletUrl from "../worklets/pcm-recorder-processor.js?url&no-inline";
 
 type PlaybackListener = (state: { isPlaying: boolean; positionSec: number }) => void;
@@ -63,12 +65,24 @@ interface LoadedTrack {
   solo: boolean;
 }
 
+/** The keys under which the master's left and right levels arrive next to the channels' (see onTrackLevels). */
+export const MASTER_LEFT = "__master_left";
+export const MASTER_RIGHT = "__master_right";
+
 export type TrackLevels = Record<string, number>;
 type TrackLevelsListener = (levels: TrackLevels, peaks: TrackLevels) => void;
 
 export class AudioEngine {
   private ctx: AudioContext;
+  /** Fades the whole song while a microphone opens (withQuietOutput). Not the master fader: the user never touches it. */
   private masterGain: GainNode;
+  /** The master channel: fader, EQ, compressor and limiter, after every channel. */
+  private master: MasterChain;
+  private masterSettings: MasterMix = DEFAULT_MASTER;
+  private masterDry = false;
+  /** The listener's own master mute (never saved). */
+  private masterMute = false;
+  private masterAnalysers: { left: AnalyserNode; right: AnalyserNode };
   /** One noise-based impulse response, shared by every channel's reverb (cheap; no sample to ship). */
   private reverbImpulse: AudioBuffer | null = null;
   /** Channels currently heard without their effects (the Compare button). */
@@ -175,7 +189,20 @@ export class AudioEngine {
     // less delay between a scheduled sound and it reaching the speakers.
     this.ctx = new AudioContext({ latencyHint: "interactive" });
     this.masterGain = this.ctx.createGain();
-    this.masterGain.connect(this.ctx.destination);
+    this.master = createMasterChain(this.ctx);
+    this.masterGain.connect(this.master.input);
+    this.master.output.connect(this.ctx.destination);
+    // The master's own level meter: left and right, read after the limiter.
+    const splitter = this.ctx.createChannelSplitter(2);
+    this.master.output.connect(splitter);
+    const left = this.ctx.createAnalyser();
+    const right = this.ctx.createAnalyser();
+    left.fftSize = 512;
+    right.fftSize = 512;
+    splitter.connect(left, 0);
+    splitter.connect(right, 1);
+    this.masterAnalysers = { left, right };
+    this.master.apply(this.masterSettings);
 
     this.clickGain = this.ctx.createGain();
     this.clickGain.gain.value = this.metronomeVolume;
@@ -406,6 +433,29 @@ export class AudioEngine {
     if (t) t.fx.apply(t.fxSettings, { smooth: true, bypassAll: dry });
   }
 
+  /** Sets the master channel (fader, mute, effects). The same settings everyone hears, as saved on the project. */
+  setMasterMix(master: MasterMix, mute = false) {
+    this.masterSettings = master;
+    this.masterMute = mute;
+    this.master.apply(master, { smooth: true, dry: this.masterDry, mute });
+  }
+
+  /** Hear the song without the master's effects (a quick before/after) — nothing is changed or saved. */
+  setMasterCompare(dry: boolean) {
+    this.masterDry = dry;
+    this.master.apply(this.masterSettings, { smooth: true, dry, mute: this.masterMute });
+  }
+
+  /** How many dB the master compressor is pulling the level down right now (0 or negative). */
+  getMasterReduction(): number {
+    return this.master.fx.compressor.reduction ?? 0;
+  }
+
+  /** How many dB the limiter is pulling the level down right now (0 or negative). */
+  getLimiterReduction(): number {
+    return this.master.limiter.reduction ?? 0;
+  }
+
   /** How many dB the channel's compressor is pulling the level down right now (0 or negative). */
   getCompressorReduction(trackId: string): number {
     return this.tracks.get(trackId)?.fx.compressor.reduction ?? 0;
@@ -473,6 +523,17 @@ export class AudioEngine {
         }
         levels[t.trackId] = Math.sqrt(sumSquares / data.length);
         peaks[t.trackId] = peak;
+      }
+      for (const [key, analyser] of [[MASTER_LEFT, this.masterAnalysers.left], [MASTER_RIGHT, this.masterAnalysers.right]] as const) {
+        analyser.getFloatTimeDomainData(data);
+        let sumSquares = 0;
+        let peak = 0;
+        for (let i = 0; i < data.length; i++) {
+          sumSquares += data[i] * data[i];
+          if (Math.abs(data[i]) > peak) peak = Math.abs(data[i]);
+        }
+        levels[key] = Math.sqrt(sumSquares / data.length);
+        peaks[key] = peak;
       }
       this.trackLevelListeners.forEach((l) => l(levels, peaks));
     }, this.schedulerIntervalMs);

@@ -15,3 +15,8 @@ export function gainToDb(gain: number): number {
 export function dbToGain(db: number): number {
   return Math.pow(10, Math.max(MIN_DB, Math.min(MAX_DB, db)) / 20);
 }
+
+/** A peak level (1 = full scale) in dBFS; silence is -Infinity. */
+export function peakToDb(peak: number): number {
+  return peak > 0 ? 20 * Math.log10(peak) : -Infinity;
+}

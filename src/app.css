@@ -6148,3 +6148,95 @@ select.sig-select option {
 .settings-section:first-of-type {
   border-top: none;
 }
+
+/* ---- Master channel strip ---- */
+
+.master-row {
+  border-top: 2px solid var(--color-separator);
+  min-height: 62px;
+}
+
+.master-info {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px 8px 14px;
+}
+
+.master-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--color-label);
+}
+
+.master-head b {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.master-db {
+  flex: 1;
+  color: var(--color-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.master-clip {
+  border: none;
+  border-radius: 4px;
+  padding: 1px 6px;
+  font-size: 10px;
+  background: var(--color-fill-secondary);
+  color: var(--color-label-tertiary);
+  cursor: pointer;
+}
+
+.master-clip.on {
+  background: var(--color-red);
+  color: #fff;
+}
+
+.master-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.master-meter {
+  width: 14px;
+  height: 26px;
+  margin: 0;
+}
+
+.master-fader {
+  flex: 1;
+  min-width: 0;
+}
+
+.master-lane {
+  height: 62px;
+}
+
+.master-stale {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: color-mix(in srgb, #ffb200 25%, transparent);
+  color: var(--color-label);
+}
+
+.card-act.stale {
+  background: color-mix(in srgb, #ffb200 35%, var(--color-fill-secondary));
+  color: var(--color-label);
+}
+
+.master-wave {
+  position: absolute;
+  left: 0;
+  top: 3px;
+  color: color-mix(in srgb, var(--color-accent) 80%, transparent);
+  pointer-events: none;
+}

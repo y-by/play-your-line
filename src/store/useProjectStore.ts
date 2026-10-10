@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ProjectNote, Project, Track, Clip, ChannelFx } from "../types/project";
+import type { ProjectNote, Project, Track, Clip, ChannelFx, MasterMix } from "../types/project";
 import { AudioEngine, type RecordingResult } from "../lib/audioEngine";
 import { useAuthStore } from "./useAuthStore";
 import * as api from "../lib/projectApi";
@@ -20,6 +20,7 @@ import { upsertClip, removeClip } from "../lib/remoteMerge";
 import { orderTracks, moveId } from "../lib/trackOrder";
 import { prepareCoverImage } from "../lib/coverImage";
 import { clampFx, fxFromRow, presetPatch, resetPatch } from "../lib/channelFx";
+import { clampMasterVolume, DEFAULT_MASTER, masterFromRow, masterFxOnly } from "../lib/master";
 import { rolesOf, roleBadge, canMixFinal } from "../lib/roles";
 
 /** The useful part of a Supabase / network error, for showing to the person. */
@@ -192,8 +193,19 @@ interface ProjectState {
   /** Owner / Mixer only (the saved final mix): -1 left … +1 right. */
   setChannelPan: (trackId: string, pan: number) => void;
   toggleChannelMute: (trackId: string) => void;
-  /** Master mute: mutes every channel, or un-mutes them all. Follows the same rules as a single channel's M. */
-  setAllMuted: (muted: boolean) => void;
+  /** The master channel (saved on the project). Owner and Mixer change it; everyone hears it. */
+  setMasterVolume: (volume: number) => void;
+  /** Master mute: silences the whole song for you only. Never saved, never heard by others, never in an export. */
+  masterMuted: boolean;
+  toggleMasterMute: () => void;
+  /** The master's EQ, compressor, limiter and power switch. Owner and Mixer only. */
+  setMasterFx: (patch: Partial<ChannelFx> & { limiterOn?: boolean }, opts?: { checkpoint?: boolean }) => void;
+  undoMasterFx: () => void;
+  resetMasterFx: () => void;
+  masterFxUndoCount: number;
+  /** Hear the song without the master's effects, only for you and only for now. */
+  masterCompare: boolean;
+  setMasterCompare: (dry: boolean) => void;
   toggleChannelSolo: (trackId: string) => void;
   /** EQ, Compressor, Delay and Reverb on the saved final mix: the Owner, the Mixer, and (unless it is locked) the channel's player. */
   setChannelFx: (trackId: string, patch: Partial<ChannelFx>, opts?: { checkpoint?: boolean }) => void;
@@ -540,6 +552,10 @@ const pendingMixSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; 
 const fxUndoStacks = new Map<string, ChannelFx[]>();
 const fxLastCheckpoint = new Map<string, number>();
 const pendingFxSaves = new Map<string, { timer: ReturnType<typeof setTimeout>; patch: Partial<ChannelFx> }>();
+/** The master's undo steps for this visit, and a save waiting for the fader or knob to settle. */
+const masterUndoStack: Pick<MasterMix, "fx" | "limiterOn">[] = [];
+let masterLastCheckpoint = 0;
+let pendingMaster: { timer: ReturnType<typeof setTimeout>; volume: boolean; fx: boolean } | null = null;
 let countInTimer: ReturnType<typeof setTimeout> | null = null;
 
 function clearCountInTimer() {
@@ -616,6 +632,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   const syncMixToEngine = () => {
     const { project } = get();
     if (!project) return;
+    engine.setMasterMix(project.master, get().masterMuted);
     for (const track of project.tracks) {
       const m = get().effectiveMix(track);
       engine.updateTrackMix(track.id, m.volume, m.muted, m.solo);
@@ -708,6 +725,38 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     }, 250);
     pendingFxSaves.set(trackId, { timer, patch: merged });
+  };
+
+  // The master: apply instantly, save once the fader or knob settles. Owner and Mixer only (the database checks too).
+  const scheduleMasterSave = (what: { volume?: boolean; fx?: boolean }) => {
+    if (pendingMaster) clearTimeout(pendingMaster.timer);
+    const merged = { volume: !!(what.volume || pendingMaster?.volume), fx: !!(what.fx || pendingMaster?.fx) };
+    const timer = setTimeout(async () => {
+      pendingMaster = null;
+      const project = get().project;
+      if (!project) return;
+      const m = project.master;
+      try {
+        await api.saveMasterMix(project.id, {
+          ...(merged.volume ? { volume: m.volume } : {}),
+          ...(merged.fx ? { fxAndLimiter: { fx: m.fx, limiterOn: m.limiterOn } } : {}),
+        });
+        const latest = get().project;
+        if (latest && latest.previewPath) set({ project: { ...latest, previewStale: true } });
+      } catch (err) {
+        console.error("Failed to save the master:", err);
+        set({ editError: `Couldn't save that master change${errorDetail(err)}` });
+      }
+    }, 250);
+    pendingMaster = { timer, ...merged };
+  };
+
+  const applyMasterNow = (patch: Partial<MasterMix>) => {
+    const project = get().project;
+    if (!project) return;
+    const master: MasterMix = { ...project.master, ...patch };
+    set({ project: { ...project, master } });
+    engine.setMasterMix(master, get().masterMuted);
   };
 
   /** Changes the channel's effects on screen, in the sound, and (once it settles) in the database. */
@@ -836,9 +885,14 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         });
       }
     }
+    // While one of my own master changes is still being saved, its echo must not fight the control.
+    const master = pendingMaster ? project.master : masterFromRow(row, project.master);
+    if (!pendingMaster) engine.setMasterMix(master, get().masterMuted);
     set({
       project: {
         ...project,
+        master,
+        previewStale: "preview_stale" in row ? !!row.preview_stale : project.previewStale,
         mixerId,
         mixerName: mixerId && mixerId === project.mixerId ? project.mixerName : null,
         title: row.title as string,
@@ -1136,6 +1190,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     loadProject: async (id) => {
       for (const id of Object.keys(get().fxCompare)) engine.setFxCompare(id, false);
       fxUndoStacks.clear();
+      masterUndoStack.length = 0;
       fxLastCheckpoint.clear();
       set({ projectLoading: true, projectError: null, project: null, selectedClip: null, editError: null, loop: null, loopEnabled: false, armedTrackId: null, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null, noteChannelFilter: null, fxUndoCount: {}, fxCompare: {}, chords: {}, chordsShown: {} });
       try {
@@ -1705,20 +1760,54 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       syncLoop();
     },
 
-    setAllMuted: (muted) => {
-      const { project } = get();
-      if (!project) return;
-      if (get().canMix()) {
-        set({ project: { ...project, tracks: project.tracks.map((t) => ({ ...t, muted })) } });
-        syncMixToEngine();
-        for (const t of project.tracks) if (t.muted !== muted) scheduleMixSave(t.id, { muted });
-      } else if (get().listeningMode === "monitor") {
-        const monitor = { ...get().monitor };
-        for (const t of project.tracks) monitor[t.id] = { volume: monitor[t.id]?.volume ?? 1, muted };
-        set({ monitor });
-        writeMonitor(project.id, monitor);
-        syncMixToEngine();
+    setMasterVolume: (volume) => {
+      if (!get().canMix() || !get().project) return;
+      applyMasterNow({ volume: clampMasterVolume(volume) });
+      scheduleMasterSave({ volume: true });
+    },
+    masterMuted: false,
+    toggleMasterMute: () => {
+      const project = get().project;
+      if (!project || !get().canMix()) return;
+      const muted = !get().masterMuted;
+      set({ masterMuted: muted });
+      engine.setMasterMix(project.master, muted);
+    },
+    masterFxUndoCount: 0,
+    setMasterFx: (patch, opts) => {
+      const project = get().project;
+      if (!project || !get().canMix()) return;
+      const current = project.master;
+      // A knob drag is many small changes: it counts as one undo step, started when the drag begins.
+      const now = Date.now();
+      if (opts?.checkpoint || now - masterLastCheckpoint > 1200) {
+        masterUndoStack.push({ fx: current.fx, limiterOn: current.limiterOn });
+        if (masterUndoStack.length > 40) masterUndoStack.shift();
+        set({ masterFxUndoCount: masterUndoStack.length });
       }
+      masterLastCheckpoint = now;
+      const { limiterOn, ...fxPatch } = patch;
+      applyMasterNow({ fx: masterFxOnly({ ...current.fx, ...clampFx(fxPatch) }), limiterOn: limiterOn ?? current.limiterOn });
+      scheduleMasterSave({ fx: true });
+    },
+    undoMasterFx: () => {
+      const project = get().project;
+      if (!project || !get().canMix() || masterUndoStack.length === 0) return;
+      const previous = masterUndoStack.pop()!;
+      masterLastCheckpoint = 0;
+      set({ masterFxUndoCount: masterUndoStack.length });
+      applyMasterNow({ fx: previous.fx, limiterOn: previous.limiterOn });
+      scheduleMasterSave({ fx: true });
+    },
+    resetMasterFx: () => {
+      const project = get().project;
+      if (!project) return;
+      get().setMasterFx({ ...resetPatch(project.master.fx), limiterOn: DEFAULT_MASTER.limiterOn }, { checkpoint: true });
+    },
+    masterCompare: false,
+    setMasterCompare: (dry) => {
+      engine.setMasterCompare(dry);
+      set({ masterCompare: dry });
     },
     clearSolo: () => {
       set({ localSolo: {} });

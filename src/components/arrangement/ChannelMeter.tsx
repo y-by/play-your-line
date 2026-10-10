@@ -1,4 +1,5 @@
 import { useProjectStore } from "../../store/useProjectStore";
+import { peakToDb } from "../../lib/dbFader";
 
 // Peak level in dBFS (0 dBFS is the loudest the file can hold). Five green, two amber, and a red light
 // that comes on within 1 dB of the top. Peak, not average: it shows how close the signal is to clipping.
@@ -21,7 +22,7 @@ const SEGMENTS: { db: number; color: "green" | "amber" | "red" }[] = [
  * whenever the channel is actually audible: a clip playing back, or anything
  * else passing through it.
  */
-const toDb = (peak: number) => (peak > 0 ? 20 * Math.log10(peak) : -Infinity);
+const toDb = peakToDb;
 
 /**
  * How much of a mono signal reaches each side after the channel's pan (equal-power, the same law the
@@ -32,7 +33,7 @@ function sideGains(pan: number): { left: number; right: number } {
   return { left: Math.cos(angle), right: Math.sin(angle) };
 }
 
-const Column = ({ db }: { db: number }) => (
+export const Column = ({ db }: { db: number }) => (
   <>
     {SEGMENTS.map((seg, i) => (
       <span key={i} className={db >= seg.db ? `chan-meter-seg on ${seg.color}` : "chan-meter-seg"} />

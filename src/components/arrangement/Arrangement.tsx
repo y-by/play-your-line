@@ -4,6 +4,7 @@ import { barSec, beatSec } from "../../lib/grid";
 import { clipsEnd } from "../../lib/clips";
 import { defaultOrder, orderTracks } from "../../lib/trackOrder";
 import { ChannelLane } from "./ChannelLane";
+import { MasterStrip } from "./MasterStrip";
 import { Ruler } from "./Ruler";
 
 const MIN_BARS = 16;
@@ -251,6 +252,7 @@ export function Arrangement() {
               timelinePx={timelinePx}
             />
           ))}
+          <MasterStrip timelinePx={timelinePx} pxPerSec={pxPerSec} />
           {loop && (
             <div
               className={loopEnabled ? "arr-loop-band on" : "arr-loop-band"}

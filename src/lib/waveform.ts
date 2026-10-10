@@ -37,3 +37,16 @@ export function computePeaks(
   }
   return out;
 }
+
+/** Peaks across both channels of a rendered mix: for each of `columns` slices, [min, max] over left and right. */
+export function computeStereoPeaks(buffer: AudioBuffer, columns: number): Float32Array {
+  const left = computePeaks(buffer.getChannelData(0), buffer.sampleRate, 0, buffer.duration, columns);
+  if (buffer.numberOfChannels < 2) return left;
+  const right = computePeaks(buffer.getChannelData(1), buffer.sampleRate, 0, buffer.duration, columns);
+  const out = new Float32Array(columns * 2);
+  for (let c = 0; c < columns; c++) {
+    out[c * 2] = Math.min(left[c * 2], right[c * 2]);
+    out[c * 2 + 1] = Math.max(left[c * 2 + 1], right[c * 2 + 1]);
+  }
+  return out;
+}

@@ -40,6 +40,16 @@ export interface Track {
 }
 
 /** Per-channel insert effects (EQ, Compressor, Delay, Reverb) on the saved final mix. */
+/** The master channel: the fader, mute and effects every channel is mixed through. Saved on the project. */
+export interface MasterMix {
+  /** 0..1. The master only turns the song down; 1 leaves it as it is. */
+  volume: number;
+  /** Same shape as a channel's effects. Only EQ and Compressor are used (delay and reverb stay off). */
+  fx: ChannelFx;
+  /** The safety limiter that catches peaks, after the other effects. Works only while the power switch (fx.fxOn) is on. */
+  limiterOn: boolean;
+}
+
 export interface ChannelFx {
   /** The power switch: with it off the channel is heard dry, whatever the settings below. Off by default. */
   fxOn: boolean;
@@ -83,6 +93,10 @@ export interface Project {
   coverPath: string | null;
   /** Path of the MP3 listening copy in the "previews" bucket, set when the project is published. */
   previewPath: string | null;
+  /** The master channel (fader, mute, effects). Old songs have the neutral default. */
+  master: MasterMix;
+  /** True when the master changed after the listening copy was made, so the copy is out of date. */
+  previewStale: boolean;
   /** People invited to hear the draft. */
   listeners: { userId: string; name: string | null; canPlay: boolean }[];
   status: ProjectStatus;

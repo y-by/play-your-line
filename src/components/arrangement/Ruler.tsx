@@ -35,9 +35,9 @@ export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
   const setLoopRegion = useProjectStore((s) => s.setLoopRegion);
   const anySolo = useProjectStore((s) => Object.values(s.localSolo).some(Boolean));
   const clearSolo = useProjectStore((s) => s.clearSolo);
-  const anyMuted = useProjectStore((s) => (s.project?.tracks ?? []).some((t) => s.effectiveMix(t).muted));
-  const setAllMuted = useProjectStore((s) => s.setAllMuted);
-  const canAdjustMix = useProjectStore((s) => s.canAdjustMix());
+  const masterMuted = useProjectStore((s) => s.masterMuted);
+  const toggleMasterMute = useProjectStore((s) => s.toggleMasterMute);
+  const canMix = useProjectStore((s) => s.canMix());
   const followPlayhead = useProjectStore((s) => s.followPlayhead);
   const setFollowPlayhead = useProjectStore((s) => s.setFollowPlayhead);
   const drag = useRef<LoopDrag | null>(null);
@@ -108,16 +108,18 @@ export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
         <span className="rc-label">Bar</span>
         <div className="rc-controls">
           <span className="arm-slot" aria-hidden="true" />
-          <button
-            className={anyMuted ? "strip-btn mute on" : "strip-btn mute"}
-            disabled={!canAdjustMix}
-            onClick={() => setAllMuted(!anyMuted)}
-            title={anyMuted ? "Master mute: un-mute every channel" : "Master mute: mute every channel"}
-            aria-pressed={anyMuted}
-            aria-label="Master mute"
-          >
-            M
-          </button>
+          {canMix && (
+            <button
+              className={masterMuted ? "strip-btn mute on" : "strip-btn mute"}
+              disabled={!canMix}
+              onClick={toggleMasterMute}
+              title={masterMuted ? "Master mute is on: you hear nothing. Only you: nobody else is affected. Click to hear again." : "Master mute: silence the whole song for you only (not saved, not in an export)"}
+              aria-pressed={masterMuted}
+              aria-label="Master mute"
+            >
+              M
+            </button>
+          )}
           <button
             className={anySolo ? "strip-btn solo on" : "strip-btn solo"}
             disabled={!anySolo}

@@ -184,6 +184,14 @@ Good to know:
   control right around unity, with a little headroom above and a steep drop toward silence below.
   Underneath the fader, a row of 5 signal lights shows the microphone level while that channel is
   armed, or the channel's own live output level the rest of the time.
+- **Master channel** (`lib/master.ts` data, `lib/masterChain.ts` graph, `MasterStrip.tsx`, `MasterTools.tsx`): every
+  channel is mixed into a fade node (`withQuietOutput`, never user-controlled) and then through the master chain
+  (fader -> EQ -> compressor -> a safety limiter that is in the path only when on) -> speakers. The metronome click
+  bypasses it. `renderMix` builds the same chain (`createMasterChain`) so playback, Export Mix and the MP3 copy match;
+  the master's mute is personal (store `masterMuted`, like solo: never saved, never in an export). Saved on `projects` (`master_volume`, `master_fx` json,
+  migration 0043) through `set_master_mix` (Owner or Mixer); live to everyone through the project realtime row;
+  `preview_stale` marks a listening copy older than the last master change. The master's own track draws the whole mix (`MasterWave.tsx`): `renderMixFromBuffers` (the export's render, at 8 kHz, from the buffers the engine already decoded) a moment after anything that changes the sound, never while recording. Left/right levels reach the store as the
+  keys `MASTER_LEFT` / `MASTER_RIGHT` next to the channels' in `trackLevels` / `trackPeaks`.
 - **Channel Tools** (EQ / Compressor / Delay / Reverb): click **Tools** to open a small, draggable
   plugin-style window. A **power switch** (off by default) turns the channel's effects on; each
   effect also has its own bypass. The header holds a preset menu, Undo (this visit only), Reset and
@@ -319,7 +327,7 @@ src/
     takeCache.ts               recordings kept on the device (Cache Storage), so each is downloaded once
     inputDevices.ts, outputDevices.ts
   worklets/pcm-recorder-processor.js   lossless capture on the audio thread
-supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0039)
+supabase/migrations/           database schema, permissions, invite and assignment functions (0001-0043)
 scripts/test-timing.ts         checks for the latency math
 scripts/test-clips.ts          checks for clips, overlap, grid, mix, order, roles, cleanup, FX rules, notes, chords, tuner   (npm test runs both)
 ```

@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
-import type { Track } from "../../types/project";
+import type { ChannelFx as ChannelFxSettings, Track } from "../../types/project";
 import { activeStages, EQ_FREQ_RANGE, FX_PRESETS, DEFAULT_CHANNEL_FX, formatHz, hzToPos, posToHz } from "../../lib/channelFx";
 import { CloseIcon, LockIcon, TunerIcon, UndoIcon } from "../icons/Icons";
 import { HelpHint } from "../HelpHint";
 import { canAnchor, distrustAnchors, looksAnchored } from "../../lib/anchor";
 import { Knob } from "./Knob";
+import { usePlacement, useKeepOnScreen, useResizable, SCALE_KEY, TUNER_SCALE_KEY, readStoredScale, type Pos } from "./fxWindow";
 import { EqCurve } from "./EqCurve";
 import { TunerPanel } from "./TunerPanel";
 
@@ -19,7 +20,7 @@ const TOOLS: { id: Tool; label: string; name: string }[] = [
 const ON_FIELD = { eq: "eqOn", comp: "compOn", delay: "delayOn", reverb: "reverbOn" } as const;
 
 /** A small on/off switch. */
-function Switch({ on, onChange, label, disabled, title }: { on: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean; title?: string }) {
+export function Switch({ on, onChange, label, disabled, title }: { on: boolean; onChange: (on: boolean) => void; label: string; disabled?: boolean; title?: string }) {
   return (
     <button type="button" role="switch" aria-checked={on} aria-label={label} title={title} disabled={disabled} className={on ? "fx-switch on" : "fx-switch"} onClick={() => onChange(!on)}>
       <span className="fx-switch-knob" />
@@ -28,12 +29,12 @@ function Switch({ on, onChange, label, disabled, title }: { on: boolean; onChang
 }
 
 /** A live level meter — real audio, not decoration. */
-function VuMeter({ trackId }: { trackId: string }) {
-  const level = useProjectStore((s) => Math.min(1, (s.trackLevels[trackId] ?? 0) * 3));
+export function VuMeter({ levelKey, title = "This channel's live level" }: { levelKey: string; title?: string }) {
+  const level = useProjectStore((s) => Math.min(1, (s.trackLevels[levelKey] ?? 0) * 3));
   const segments = 14;
   const lit = Math.round(level * segments);
   return (
-    <div className="vu-meter" title="This channel's live level">
+    <div className="vu-meter" title={title}>
       {Array.from({ length: segments }, (_, i) => (
         <span key={i} className={i < lit ? `vu-seg on ${i >= segments - 3 ? "red" : i >= segments - 6 ? "amber" : "green"}` : "vu-seg"} />
       ))}
@@ -42,24 +43,24 @@ function VuMeter({ trackId }: { trackId: string }) {
 }
 
 /** How much the compressor is turning the level down right now — it reads from the real compressor. */
-function ReductionMeter({ trackId, active }: { trackId: string; active: boolean }) {
+export function ReductionMeter({ read, active, label = "reduction", title = "Gain reduction: how many dB the compressor is turning the sound down" }: { read: () => number; active: boolean; label?: string; title?: string }) {
   const fill = useRef<HTMLSpanElement>(null);
   const text = useRef<HTMLSpanElement>(null);
   useEffect(() => {
     let frame = 0;
     const tick = () => {
       // A compressor that is out of the signal path is not working, whatever it last read.
-      const db = active ? Math.min(0, useProjectStore.getState().engine.getCompressorReduction(trackId)) : 0;
+      const db = active ? Math.min(0, read()) : 0;
       if (fill.current) fill.current.style.width = `${Math.min(100, (-db / 24) * 100)}%`;
       if (text.current) text.current.textContent = `${db.toFixed(1)} dB`;
       frame = requestAnimationFrame(tick);
     };
     frame = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(frame);
-  }, [trackId, active]);
+  }, [read, active]);
   return (
-    <div className="gr-meter" title="Gain reduction: how many dB the compressor is turning the sound down">
-      <span className="gr-label">reduction</span>
+    <div className="gr-meter" title={title}>
+      <span className="gr-label">{label}</span>
       <span className="gr-track">
         <span className="gr-fill" ref={fill} />
       </span>
@@ -70,175 +71,36 @@ function ReductionMeter({ trackId, active }: { trackId: string; active: boolean 
   );
 }
 
-type Pos = { top: number; left: number };
-
-/**
- * A window you can drag by its header. It may start with no position (`null`): then the browser places it
- * against its button (CSS anchor positioning) until the first drag or resize turns that into real coordinates.
- */
-function usePlacement(initial: Pos | null) {
-  const [pos, setPos] = useState<Pos | null>(initial);
-  const drag = useRef<{ startX: number; startY: number; startTop: number; startLeft: number } | null>(null);
-  const headerProps = {
-    onPointerDown: (e: React.PointerEvent) => {
-      if ((e.target as Element).closest("button, select, input, [role=switch]")) return;
-      e.preventDefault();
-      try {
-        (e.target as Element).setPointerCapture(e.pointerId);
-      } catch {
-        // Capture is only a convenience; dragging still works while the pointer stays over the header.
-      }
-      let base = pos;
-      if (!base) {
-        const r = (e.currentTarget as HTMLElement).closest(".channel-fx-plugin")?.getBoundingClientRect();
-        base = r ? { top: r.top, left: r.left } : { top: 8, left: 8 };
-        setPos(base);
-      }
-      drag.current = { startX: e.clientX, startY: e.clientY, startTop: base.top, startLeft: base.left };
-    },
-    onPointerMove: (e: React.PointerEvent) => {
-      if (!drag.current) return;
-      const { startX, startY, startTop, startLeft } = drag.current;
-      setPos({
-        top: Math.max(0, startTop + (e.clientY - startY)),
-        left: Math.max(0, Math.min(window.innerWidth - 60, startLeft + (e.clientX - startX))),
-      });
-    },
-    onPointerUp: () => {
-      drag.current = null;
-    },
-  };
-  /** Carry on dragging this window with a pointer that is already down (a tab that was just pulled out). */
-  const startWindowDrag = (clientX: number, clientY: number) => {
-    const start = { x: clientX, y: clientY, top: pos?.top ?? 8, left: pos?.left ?? 8 };
-    const move = (e: PointerEvent) =>
-      setPos({
-        top: Math.max(0, start.top + (e.clientY - start.y)),
-        left: Math.max(0, Math.min(window.innerWidth - 60, start.left + (e.clientX - start.x))),
-      });
-    const up = () => {
-      window.removeEventListener("pointermove", move);
-      window.removeEventListener("pointerup", up);
-      window.removeEventListener("pointercancel", up);
-    };
-    window.addEventListener("pointermove", move);
-    window.addEventListener("pointerup", up);
-    window.addEventListener("pointercancel", up);
-  };
-  return { pos, setPos, headerProps, startWindowDrag };
-}
-
 /** The windows that always start at known coordinates. */
 function useDraggable(initial: Pos) {
   const placement = usePlacement(initial);
   return { ...placement, pos: placement.pos ?? initial };
 }
 
-/**
- * Keeps a window on the screen. When it opens (or its size changes: another tab, a bigger window, a resized
- * browser) and it runs past the bottom or the right edge, it is moved back so all of it can be seen.
- * It does not fight you while you drag it: only a change of size or of the screen triggers it.
- */
-function useKeepOnScreen(box: React.RefObject<HTMLDivElement | null>, setPos: React.Dispatch<React.SetStateAction<Pos | null>>, active = true) {
-  useEffect(() => {
-    const el = box.current;
-    if (!el || !active) return;
-    const fit = () => {
-      const r = el.getBoundingClientRect();
-      const margin = 8;
-      const dy = r.bottom > window.innerHeight - margin ? window.innerHeight - margin - r.bottom : 0;
-      const dx = r.right > window.innerWidth - margin ? window.innerWidth - margin - r.right : 0;
-      if (dx === 0 && dy === 0) return;
-      setPos((p) => (p ? { top: Math.max(margin, p.top + dy), left: Math.max(margin, p.left + dx) } : p));
-    };
-    const observer = new ResizeObserver(fit);
-    observer.observe(el);
-    window.addEventListener("resize", fit);
-    fit();
-    return () => {
-      observer.disconnect();
-      window.removeEventListener("resize", fit);
-    };
-  }, [box, setPos, active]);
-}
-
-const SCALE_KEY = "pyl.fxScale";
-const TUNER_SCALE_KEY = "pyl.tunerScale";
-const MAX_SCALE = 2;
-
-/** Grow a window by dragging its bottom-right corner, up to double its size (less on a narrow screen). */
-function readStoredScale(key: string): number {
-  try {
-    const v = Number(localStorage.getItem(key));
-    return v >= 1 && v <= MAX_SCALE ? v : 1;
-  } catch {
-    return 1;
-  }
-}
-
-function useResizable(rememberAs: string | null, onBegin?: () => void) {
-  const [scale, setScale] = useState(() => {
-    if (!rememberAs) return 1;
-    try {
-      const v = Number(localStorage.getItem(rememberAs));
-      return v >= 1 && v <= MAX_SCALE ? v : 1;
-    } catch {
-      return 1;
-    }
-  });
-  const box = useRef<HTMLDivElement>(null);
-  const grip = {
-    onPointerDown: (e: React.PointerEvent) => {
-      e.preventDefault();
-      e.stopPropagation();
-      const el = box.current;
-      if (!el) return;
-      onBegin?.(); // a window placed by its button gets real coordinates before it grows
-      const baseW = el.offsetWidth;
-      const baseH = el.offsetHeight;
-      const startX = e.clientX;
-      const startY = e.clientY;
-      const startScale = scale;
-      const max = Math.max(1, Math.min(MAX_SCALE, (window.innerWidth - 12) / baseW));
-      let latest = startScale;
-      const move = (ev: PointerEvent) => {
-        // The corner follows the pointer: a drag across the window's own size doubles it.
-        latest = Math.min(max, Math.max(1, startScale + (ev.clientX - startX + ev.clientY - startY) / (baseW + baseH)));
-        setScale(latest);
-      };
-      const up = () => {
-        window.removeEventListener("pointermove", move);
-        window.removeEventListener("pointerup", up);
-        window.removeEventListener("pointercancel", up);
-        if (rememberAs) {
-          try {
-            localStorage.setItem(rememberAs, String(Math.round(latest * 100) / 100));
-          } catch {
-            // storage unavailable — the size just won't be remembered
-          }
-        }
-      };
-      window.addEventListener("pointermove", move);
-      window.addEventListener("pointerup", up);
-      window.addEventListener("pointercancel", up);
-    },
-    onDoubleClick: () => setScale(1),
-  };
-  const style = scale === 1 ? {} : { transform: `scale(${scale})`, transformOrigin: "top left" };
-  return { box, grip, style };
-}
-
 /** The corner you drag to make a window bigger (double-click it to go back to normal size). */
-function Grip({ grip }: { grip: ReturnType<typeof useResizable>["grip"] }) {
+export function Grip({ grip }: { grip: ReturnType<typeof useResizable>["grip"] }) {
   return <span className="fx-grip" {...grip} title="Drag to make this bigger, up to double. Double-click for normal size." role="separator" aria-label="Resize" />;
 }
 
 /** The controls of one effect. */
-function ToolBody({ track, tool, canUse }: { track: Track; tool: Tool; canUse: boolean }) {
-  const setChannelFx = useProjectStore((s) => s.setChannelFx);
-  const compare = useProjectStore((s) => !!s.fxCompare[track.id]);
-  const fx = track.fx;
-  const set = (patch: Parameters<typeof setChannelFx>[1]) => setChannelFx(track.id, patch);
+export function ToolBody({
+  fx,
+  set,
+  tool,
+  canUse,
+  levelKey,
+  readReduction,
+  compare,
+}: {
+  fx: ChannelFxSettings;
+  set: (patch: Partial<ChannelFxSettings>) => void;
+  tool: Tool;
+  canUse: boolean;
+  /** Which live level the compressor's meter shows (a channel's id, or the master's). */
+  levelKey: string;
+  readReduction: () => number;
+  compare: boolean;
+}) {
   const pct = (field: "delayMix" | "reverbMix") => (v: number) => set({ [field]: v / 100 });
   if (tool === "eq") {
     return (
@@ -290,8 +152,8 @@ function ToolBody({ track, tool, canUse }: { track: Track; tool: Tool; canUse: b
   if (tool === "comp") {
     return (
       <div className="fx-section fx-section-comp">
-        <VuMeter trackId={track.id} />
-        <ReductionMeter trackId={track.id} active={activeStages(fx).includes("comp") && !compare} />
+        <VuMeter levelKey={levelKey} />
+        <ReductionMeter read={readReduction} active={activeStages(fx).includes("comp") && !compare} />
         <div className="fx-knob-row wrap">
           <Knob label="threshold" value={fx.compThresholdDb} unit="dB" min={-60} max={0} sensitivity={0.4} defaultValue={0} disabled={!canUse} size={52} onChange={(v) => set({ compThresholdDb: v })} />
           <Knob label="ratio" value={fx.compRatio} unit=":1" min={1} max={20} sensitivity={0.1} defaultValue={1} decimals={1} disabled={!canUse} size={52} onChange={(v) => set({ compRatio: v })} />
@@ -355,7 +217,7 @@ function DetachedTool({ track, tool, canUse, start, grab, onDock }: { track: Tra
         </span>
       </div>
       {field && !track.fx.fxOn && <p className="fx-offnote">The effects are off for this channel — switch them on in the main window to hear this.</p>}
-      <ToolBody track={track} tool={tool} canUse={canUse} />
+      <ToolBody fx={track.fx} set={(patch) => setChannelFx(track.id, patch)} tool={tool} canUse={canUse} levelKey={track.id} readReduction={() => useProjectStore.getState().engine.getCompressorReduction(track.id)} compare={useProjectStore.getState().fxCompare[track.id] ?? false} />
       <Grip grip={sizeGrip} />
     </div>
   );
@@ -589,7 +451,7 @@ export function ChannelFx({
                     <Switch on={fx[ON_FIELD[shown]]} disabled={!canUse} label={`${shown} on`} title={fx[ON_FIELD[shown]] ? "On — click to bypass just this effect" : "Bypassed — click to turn this effect on"} onChange={(on) => setChannelFx(track.id, { [ON_FIELD[shown]]: on }, { checkpoint: true })} />
                   </span>
                 </div>
-                <ToolBody track={track} tool={shown} canUse={canUse} />
+                <ToolBody fx={fx} set={(patch) => setChannelFx(track.id, patch)} tool={shown} canUse={canUse} levelKey={track.id} readReduction={() => useProjectStore.getState().engine.getCompressorReduction(track.id)} compare={dry} />
               </>
             )}
           </>

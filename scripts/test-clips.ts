@@ -20,6 +20,7 @@ import { looksAnchored } from "../src/lib/anchor.ts";
 import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
+import { DEFAULT_MASTER, parseMasterFx, masterFromRow, masterFxToJson, clampMasterVolume, isNeutralMaster, masterFxOnly } from "../src/lib/master.ts";
 
 let fail = 0;
 const near = (a: number, b: number, eps = 1e-9) => Math.abs(a - b) <= eps;
@@ -464,7 +465,7 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("every help question has a unique id", new Set(HELP_TOPICS.map((t) => t.id)).size === HELP_TOPICS.length);
   check("every help question belongs to a known group, and every group has questions", HELP_TOPICS.every((t) => (HELP_GROUPS as readonly string[]).includes(t.group)) && HELP_GROUPS.every((g) => HELP_TOPICS.some((t) => t.group === g)));
   check("every help answer says something", HELP_TOPICS.every((t) => t.question.trim().length > 5 && t.answer.length > 0 && t.answer.every((p) => p.trim().length > 20)));
-  check("the topics the '?' buttons point to exist (fx, tuner, notes)", ["fx", "tuner", "notes"].every((id) => !!helpTopic(id)));
+  check("the topics the '?' buttons point to exist (fx, tuner, notes)", ["fx", "tuner", "notes", "master"].every((id) => !!helpTopic(id)));
   check("ids are safe to use in a web address", HELP_TOPICS.every((t) => /^[a-z-]+$/.test(t.id)));
 }
 
@@ -478,6 +479,26 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("a long explanation in brackets is not a key", parseTip("Solo (only you hear this — never saved)").key === null);
   check("a plain hint stays one line", j("Back to start") === '{"name":"Back to start","hint":null,"key":null}');
   check("a shortcut with a modifier is a key", parseTip("Undo (⌘/Ctrl+Z)").key === "⌘/Ctrl+Z");
+}
+
+// ---- master channel
+{
+  check("a song with no master columns has the neutral master", JSON.stringify(masterFromRow({})) === JSON.stringify(DEFAULT_MASTER));
+  check("the default master changes nothing about the sound", isNeutralMaster(DEFAULT_MASTER));
+  check("a lowered master fader is not neutral", !isNeutralMaster({ ...DEFAULT_MASTER, volume: 0.5 }));
+  check("a switched-on limiter is not neutral", !isNeutralMaster({ ...DEFAULT_MASTER, fx: { ...DEFAULT_MASTER.fx, fxOn: true } }));
+  check("effects with the power off are neutral whatever the knobs say", isNeutralMaster({ ...DEFAULT_MASTER, fx: { ...DEFAULT_MASTER.fx, eqLow: 6 } }));
+  check("the master volume only turns down: above 1 is clamped, below 0 too", clampMasterVolume(2) === 1 && clampMasterVolume(-1) === 0 && clampMasterVolume(NaN) === 1);
+  const row = { master_volume: 0.5, master_fx: { fxOn: true, eqLow: 40, compRatio: 99, delayOn: true, delayMix: 0.9, reverbMix: 0.9, limiterOn: false, nonsense: 1 } };
+  const m = masterFromRow(row);
+  check("a saved master is read back", m.volume === 0.5 && m.fx.fxOn === true && m.limiterOn === false);
+  check("saved effect numbers are clamped to their ranges", m.fx.eqLow === 12 && m.fx.compRatio === 20);
+  check("delay and reverb never run on the master", m.fx.delayOn === false && m.fx.reverbOn === false && m.fx.delayMix === 0 && m.fx.reverbMix === 0);
+  check("junk in the saved effects is ignored", parseMasterFx("x").limiterOn === true && parseMasterFx([1, 2]).fx.fxOn === false && parseMasterFx(null).fx.eqLow === 0);
+  const again = masterFromRow({ master_volume: m.volume, master_fx: masterFxToJson(m) });
+  check("saving and reading back gives the same master", JSON.stringify(again) === JSON.stringify(m));
+  check("the master's stages: EQ and compressor only", activeStages(masterFxOnly({ ...DEFAULT_MASTER.fx, fxOn: true, eqLow: 3, compRatio: 3, delayMix: 0.5, reverbMix: 0.5 })).join() === "eq,comp");
+  check("a live update keeps what it does not mention", masterFromRow({}, { ...DEFAULT_MASTER, volume: 0.7 }).volume === 0.7);
 }
 
 process.exit(fail ? 1 : 0);
