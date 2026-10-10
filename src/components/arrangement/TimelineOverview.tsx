@@ -5,7 +5,7 @@ import { barSec } from "../../lib/grid";
 const HEIGHT = 18;
 
 /**
- * A slim map of the whole song above the ruler: every clip as a small block (a row for each channel), the loop, the
+ * A slim map of the whole song above the ruler, over the full width of the screen (from the far left, above the channel controls): every clip as a small block (a row for each channel), the loop, the
  * playhead, and a window that shows which part the timeline is showing. It replaces the scroll bar: drag the window
  * (or click anywhere on the map) to scroll sideways, and see at a glance how long the song is and where you are.
  */

@@ -6484,7 +6484,6 @@ select.sig-select option {
 .timeline-overview {
   position: relative;
   height: 18px;
-  margin-left: var(--info-w);
   background: var(--color-bg-elevated);
   border-radius: 6px;
   overflow: hidden;
