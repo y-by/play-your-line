@@ -1,7 +1,7 @@
 import { useProjectStore } from "../../store/useProjectStore";
 import { SNAP_OPTIONS, type SnapResolution } from "../../lib/grid";
 import type { SongPanel } from "../Transport";
-import { UndoIcon, CutIcon, QuantiseIcon, DuplicateIcon, TrashIcon, MagnetIcon, ChevronDownIcon } from "../icons/Icons";
+import { UndoIcon, CutIcon, JoinIcon, QuantiseIcon, DuplicateIcon, TrashIcon, MagnetIcon, ChevronDownIcon } from "../icons/Icons";
 
 export function EditToolbar({ panel, onPanel }: { panel: SongPanel; onPanel: (panel: SongPanel) => void }) {
   const pxPerBeat = useProjectStore((s) => s.pxPerBeat);
@@ -24,6 +24,8 @@ export function EditToolbar({ panel, onPanel }: { panel: SongPanel; onPanel: (pa
   const splitSelected = useProjectStore((s) => s.splitSelected);
   const duplicateSelected = useProjectStore((s) => s.duplicateSelected);
   const deleteSelected = useProjectStore((s) => s.deleteSelected);
+  const joinSelected = useProjectStore((s) => s.joinSelected);
+  const manySelected = useProjectStore((s) => s.extraSelected.length > 0);
   const recording = useProjectStore((s) => s.recordingTrackId !== null);
   const canEditSelection = useProjectStore((s) => {
     const sel = s.selectedClip;
@@ -56,6 +58,9 @@ export function EditToolbar({ panel, onPanel }: { panel: SongPanel; onPanel: (pa
           <div className="lg">
             <button className="lb" onClick={splitSelected} disabled={!clipTools} title="Split at playhead (S)" aria-label="Split">
               <CutIcon size={14} />
+            </button>
+            <button className="lb" onClick={joinSelected} disabled={!clipTools || !manySelected} title="Join the selected clips into one clip (J). Select several with Shift or ⌘-click." aria-label="Join clips">
+              <JoinIcon size={14} />
             </button>
             <button className="lb" onClick={duplicateSelected} disabled={!clipTools} title="Duplicate (⌘D)" aria-label="Duplicate">
               <DuplicateIcon size={14} />

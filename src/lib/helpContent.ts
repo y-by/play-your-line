@@ -115,6 +115,16 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: "join-clips",
+    group: "Editing clips",
+    question: "How do I join several clips into one?",
+    answer: [
+      "Drag across empty space in a channel to draw a rectangle: every clip of that channel it touches is selected (hold Shift or ⌘/Ctrl to add to what is selected). You can also click a clip and Shift-click (or ⌘/Ctrl-click) more of the same channel. ⌘/Ctrl-A selects every clip of the channel. Then press the Join button in the editing bar, or J.",
+      "Pieces of one recording that sit side by side, like a clip you split and did not move, simply become one clip again. Otherwise (after a quantise moved the pieces, or the clips come from different recordings) what you hear of them, with fades and overlaps, is made into one new recording that replaces them; gaps become silence. Undo brings the separate clips back.",
+      "Delete removes every selected clip. Moving, trimming and fading still work on one clip at a time.",
+    ],
+  },
+  {
     id: "loop-tempo",
     group: "Recording",
     question: "What happens when I drop a loop that is at another tempo?",

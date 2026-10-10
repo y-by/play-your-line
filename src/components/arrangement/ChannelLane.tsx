@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { Group, Track } from "../../types/project";
 import { useProjectStore } from "../../store/useProjectStore";
 import { snapTo, stepSec } from "../../lib/grid";
@@ -23,11 +23,16 @@ export function ChannelLane({ track, group, number, style, onGripDown, pxPerSec,
   const canEdit = useProjectStore((s) => s.canEditClips(track));
   const selectedClip = useProjectStore((s) => s.selectedClip);
   const selectClip = useProjectStore((s) => s.selectClip);
+  const extraSelected = useProjectStore((s) => s.extraSelected);
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const importAudioFile = useProjectStore((s) => s.importAudioFile);
   const importing = useProjectStore((s) => s.importingTrackId === track.id);
   const laneScale = useProjectStore((s) => s.laneScales[track.id] ?? 1);
   const [dragOver, setDragOver] = useState(false);
+  const selectClips = useProjectStore((s) => s.selectClips);
+  // Dragging across empty space draws a rectangle; the clips of this channel it touches get selected.
+  const [marquee, setMarquee] = useState<{ x0: number; x1: number } | null>(null);
+  const marqueeStart = useRef<{ x: number; left: number; add: boolean; moved: boolean } | null>(null);
   if (!project) return null;
 
   // Lower z first so the newest clip is drawn on top.
@@ -74,12 +79,53 @@ export function ChannelLane({ track, group, number, style, onGripDown, pxPerSec,
       <div
         className={["arr-lane", recordingTrackId === track.id && "recording", dragOver && "drop-target"].filter(Boolean).join(" ")}
         style={{ width: timelinePx }}
-        onPointerDown={() => selectClip(null)}
+        onPointerDown={(e) => {
+          // A mouse or pen drag on empty space selects clips; a touch, or someone who cannot edit here, just clears the selection.
+          if (e.pointerType === "touch" || !canEdit || e.button !== 0) {
+            selectClip(null);
+            return;
+          }
+          const left = e.currentTarget.getBoundingClientRect().left;
+          marqueeStart.current = { x: e.clientX - left, left, add: e.shiftKey || e.metaKey || e.ctrlKey, moved: false };
+          try {
+            e.currentTarget.setPointerCapture(e.pointerId);
+          } catch {
+            // the rectangle still follows while the pointer stays over the channel
+          }
+        }}
+        onPointerMove={(e) => {
+          const m = marqueeStart.current;
+          if (!m) return;
+          const x = e.clientX - m.left;
+          if (!m.moved && Math.abs(x - m.x) < 4) return;
+          m.moved = true;
+          setMarquee({ x0: Math.min(m.x, x), x1: Math.max(m.x, x) });
+        }}
+        onPointerUp={(e) => {
+          const m = marqueeStart.current;
+          marqueeStart.current = null;
+          setMarquee(null);
+          if (!m) return;
+          if (!m.moved) {
+            if (!m.add) selectClip(null);
+            return;
+          }
+          const x = e.clientX - m.left;
+          const from = Math.min(m.x, x) / pxPerSec;
+          const to = Math.max(m.x, x) / pxPerSec;
+          const hit = track.clips.filter((c) => c.startSec < to && c.startSec + c.durationSec > from).map((c) => c.id);
+          selectClips(track.id, hit, m.add);
+        }}
+        onPointerCancel={() => {
+          marqueeStart.current = null;
+          setMarquee(null);
+        }}
         onDragOver={onDragOver}
         onDragLeave={() => setDragOver(false)}
         onDrop={onDrop}
       >
         {hint && <span className="lane-hint">{hint}</span>}
+        {marquee && <div className="lane-marquee" style={{ left: marquee.x0, width: marquee.x1 - marquee.x0 }} />}
         {clips.map((clip) => (
           <ClipView
             key={clip.id}
@@ -87,7 +133,7 @@ export function ChannelLane({ track, group, number, style, onGripDown, pxPerSec,
             clip={clip}
             take={project.takes[clip.takeId]}
             canEdit={canEdit}
-            selected={selectedClip?.clipId === clip.id}
+            selected={selectedClip?.clipId === clip.id || (selectedClip?.trackId === track.id && extraSelected.includes(clip.id))}
             pxPerSec={pxPerSec}
           />
         ))}

@@ -28,6 +28,7 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
   const snapResolution = useProjectStore((s) => s.snapResolution);
   const takesVersion = useProjectStore((s) => s.takesVersion);
   const selectClip = useProjectStore((s) => s.selectClip);
+  const toggleClipSelected = useProjectStore((s) => s.toggleClipSelected);
   const commitClips = useProjectStore((s) => s.commitClips);
   const marks = useProjectStore((s) => (s.quantiseMarks?.clipId === clip.id ? s.quantiseMarks.times : null));
 
@@ -60,6 +61,11 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
     if (!canEdit) return;
     e.stopPropagation();
     e.preventDefault();
+    // Shift or ⌘/Ctrl-click adds the clip to the selection (or takes it out) instead of starting a drag.
+    if (mode === "move" && (e.shiftKey || e.metaKey || e.ctrlKey)) {
+      toggleClipSelected({ trackId: track.id, clipId: clip.id });
+      return;
+    }
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {

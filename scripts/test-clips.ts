@@ -21,6 +21,7 @@ import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
 import { readFileSync, readdirSync } from "node:fs";
+import { mergeContiguous, joinRange } from "../src/lib/joinClips.ts";
 import { wavePath, autoBoost } from "../src/lib/wavePath.ts";
 import { detectLoopBpm, bpmFromFileName } from "../src/lib/tempoDetect.ts";
 import { timeStretch } from "../src/lib/timeStretch.ts";
@@ -643,6 +644,26 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("a boost enlarges a quiet recording (up to the limit)", wavePath(Float32Array.from([-0.1, 0.1]), 1, 100, 4).startsWith("M0,30") && autoBoost(Float32Array.from([-0.1, 0.1])) === 4 && near(autoBoost(Float32Array.from([-0.9, 0.9])), 1, 1e-6) && autoBoost(new Float32Array(4)) === 1);
   check("no columns, no shape", wavePath(new Float32Array(0), 0, 100) === "");
   check("a loud sample is kept inside the picture", wavePath(Float32Array.from([-3, 3]), 1, 100).startsWith("M0,0 1,0"));
+}
+
+// ---- joining clips
+{
+  const a = clip("a", 0, 2, 1, 0);
+  const b = clip("b", 2, 3, 2, 2);
+  const c = clip("c", 5, 1, 3, 5);
+  const m = mergeContiguous([c, a, b]);
+  check("consecutive pieces of one recording join into one clip", !!m && m.id === "a" && m.startSec === 0 && m.sourceStartSec === 0 && m.durationSec === 6 && m.takeId === "t1" && m.z === 3);
+  check("the first clip's fade in and the last clip's fade out are kept", (() => {
+    const j = mergeContiguous([{ ...a, fadeInSec: 0.1 }, { ...b, fadeOutSec: 0.2 }]);
+    return !!j && j.fadeInSec === 0.1 && j.fadeOutSec === 0.2;
+  })());
+  check("pieces that were moved apart are not one continuous clip", mergeContiguous([a, { ...b, startSec: 2.5 }]) === null);
+  check("pieces that do not continue each other in the recording are not", mergeContiguous([a, { ...b, sourceStartSec: 9 }]) === null);
+  check("clips of different recordings are not", mergeContiguous([a, clip("b", 2, 3, 2, 2, "t2")]) === null);
+  check("a fade in the middle would be lost, so they are not joined that way", mergeContiguous([{ ...a, fadeOutSec: 0.1 }, b]) === null);
+  check("one clip alone is not a join", mergeContiguous([a]) === null);
+  const range = joinRange([clip("a", 1, 2, 1), clip("b", 4, 1, 2)]);
+  check("the joined range runs from the first sound to the last", range.startSec === 1 && range.endSec === 5);
 }
 
 process.exit(fail ? 1 : 0);

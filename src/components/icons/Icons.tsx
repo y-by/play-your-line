@@ -280,6 +280,16 @@ export function SpinnerIcon({ size = 15 }: IconProps) {
   );
 }
 
+export function JoinIcon({ size = 13 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="2.5" y="8" width="7" height="8" rx="1.5" />
+      <rect x="14.5" y="8" width="7" height="8" rx="1.5" />
+      <path d="M10 12h4M12.5 10l1.5 2-1.5 2" />
+    </svg>
+  );
+}
+
 export function CutIcon({ size = 13 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

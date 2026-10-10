@@ -339,6 +339,13 @@ export function Arrangement() {
         void s.duplicateSelected();
       } else if (!meta && key === "s") {
         void s.splitSelected();
+      } else if (!meta && key === "j") {
+        void s.joinSelected();
+      } else if (meta && key === "a") {
+        if (s.selectedClip) {
+          e.preventDefault();
+          s.selectAllInChannel();
+        }
       } else if (key === "delete" || key === "backspace") {
         if (s.selectedClip) {
           e.preventDefault();

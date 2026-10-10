@@ -8,6 +8,8 @@ import { listOutputDevices, type OutputDevice } from "../lib/outputDevices";
 import { nextZ, splitClip, duplicateClip, moveClip, audibleSegments } from "../lib/clips";
 import { encodeWavFloat32 } from "../lib/wav";
 import { detectLoopBpm } from "../lib/tempoDetect";
+import { mergeContiguous, joinRange } from "../lib/joinClips";
+import { renderClipsToBuffer } from "../lib/joinRender";
 import { timeStretch } from "../lib/timeStretch";
 import { detectChords, type ChordSegment } from "../lib/chords";
 import { detectOnsets } from "../lib/onsets";
@@ -281,6 +283,16 @@ interface ProjectState {
   setSnapResolution: (resolution: SnapResolution) => void;
   selectedClip: { trackId: string; clipId: string } | null;
   selectClip: (selection: { trackId: string; clipId: string } | null) => void;
+  /** More clips of the same channel selected together with `selectedClip` (Shift or ⌘/Ctrl-click). */
+  extraSelected: string[];
+  /** Adds the clip to the selection, or takes it out; a clip of another channel starts a new selection. */
+  toggleClipSelected: (selection: { trackId: string; clipId: string }) => void;
+  /** Selects these clips of one channel (the first becomes the main one); with `add`, together with what is selected there already. */
+  selectClips: (trackId: string, clipIds: string[], add?: boolean) => void;
+  /** Selects every clip of the selected clip's channel. */
+  selectAllInChannel: () => void;
+  /** Joins the selected clips (two or more of one channel) into one clip. */
+  joinSelected: () => Promise<void>;
   /** Replaces a channel's clips (the one path every edit goes through). Resolves false if saving failed. */
   commitClips: (trackId: string, next: Clip[], opts?: { skipHistory?: boolean }) => Promise<boolean>;
   splitSelected: () => Promise<void>;
@@ -835,10 +847,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       set({ chords: rest });
     }
     const stillSelected = !selectedClip || selectedClip.trackId !== trackId || clips.some((c) => c.id === selectedClip.clipId);
+    const extra = get().extraSelected;
     set({
       project: { ...project, tracks },
       durationSec: engine.getProjectDurationSec(),
       ...(stillSelected ? {} : { selectedClip: null }),
+      // The other selected clips go with the primary one, or stay only while they still exist.
+      ...(!stillSelected ? { extraSelected: [] } : selectedClip && selectedClip.trackId === trackId && extra.length ? { extraSelected: extra.filter((id) => clips.some((c) => c.id === id)) } : {}),
     });
   };
 
@@ -1423,7 +1438,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       for (const pending of pendingGroupSaves.values()) clearTimeout(pending.timer);
       pendingGroupSaves.clear();
       fxLastCheckpoint.clear();
-      set({ projectLoading: true, projectError: null, project: null, selectedClip: null, editError: null, loop: null, loopEnabled: false, armedTrackId: null, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null, noteChannelFilter: null, fxUndoCount: {}, fxCompare: {}, chords: {}, chordsShown: {} });
+      set({ projectLoading: true, projectError: null, project: null, selectedClip: null, extraSelected: [], editError: null, loop: null, loopEnabled: false, armedTrackId: null, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null, noteChannelFilter: null, fxUndoCount: {}, fxCompare: {}, chords: {}, chordsShown: {} });
       try {
         const project = await api.getProject(id);
         await api.hydrateTakeBlobs(project);
@@ -2355,7 +2370,81 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     selectedClip: null,
-    selectClip: (selection) => set({ selectedClip: selection }),
+    extraSelected: [],
+    selectClip: (selection) => set({ selectedClip: selection, extraSelected: [] }),
+    toggleClipSelected: (sel) => {
+      const { selectedClip, extraSelected } = get();
+      if (!selectedClip || selectedClip.trackId !== sel.trackId) {
+        set({ selectedClip: sel, extraSelected: [] });
+        return;
+      }
+      if (sel.clipId === selectedClip.clipId) {
+        // Taking the main one out: the next one (if any) becomes the main one.
+        const [next, ...rest] = extraSelected;
+        set(next ? { selectedClip: { trackId: sel.trackId, clipId: next }, extraSelected: rest } : { selectedClip: null, extraSelected: [] });
+        return;
+      }
+      set({ extraSelected: extraSelected.includes(sel.clipId) ? extraSelected.filter((id) => id !== sel.clipId) : [...extraSelected, sel.clipId] });
+    },
+    selectClips: (trackId, clipIds, add = false) => {
+      const { selectedClip, extraSelected } = get();
+      const kept = add && selectedClip?.trackId === trackId ? [selectedClip.clipId, ...extraSelected] : [];
+      const all = [...new Set([...kept, ...clipIds])];
+      if (all.length === 0) set({ selectedClip: null, extraSelected: [] });
+      else set({ selectedClip: { trackId, clipId: all[0] }, extraSelected: all.slice(1) });
+    },
+    selectAllInChannel: () => {
+      const { project, selectedClip } = get();
+      const track = project?.tracks.find((t) => t.id === selectedClip?.trackId);
+      if (!track || !selectedClip || !get().canEditClips(track) || track.clips.length === 0) return;
+      const rest = track.clips.filter((c) => c.id !== selectedClip.clipId).map((c) => c.id);
+      set({ extraSelected: rest });
+    },
+    joinSelected: async () => {
+      const { project, selectedClip, extraSelected } = get();
+      const track = project?.tracks.find((t) => t.id === selectedClip?.trackId);
+      const uid = currentUserId();
+      if (!project || !track || !selectedClip || !uid || !get().canEditClips(track) || get().recordingTrackId) return;
+      const ids = new Set([selectedClip.clipId, ...extraSelected]);
+      const chosen = track.clips.filter((c) => ids.has(c.id));
+      if (chosen.length < 2) return;
+      const rest = track.clips.filter((c) => !ids.has(c.id));
+      // Consecutive pieces of one recording simply become one clip again: nothing to render or store.
+      const merged = mergeContiguous(chosen);
+      if (merged) {
+        if (await get().commitClips(track.id, [...rest, merged])) set({ selectedClip: { trackId: track.id, clipId: merged.id }, extraSelected: [] });
+        return;
+      }
+      // Otherwise what is heard of them (fades and overlaps included) becomes one new recording that replaces them.
+      set({ importingTrackId: track.id, editError: null });
+      try {
+        const buffers = new Map<string, AudioBuffer>();
+        for (const c of chosen) {
+          const b = engine.getTakeBuffer(c.takeId);
+          if (!b) throw new Error("one of the recordings is not loaded yet");
+          buffers.set(c.takeId, b);
+        }
+        const range = joinRange(chosen);
+        const rendered = await renderClipsToBuffer(chosen, buffers, range);
+        const blob = encodeWavFloat32(rendered);
+        if (blob.size > MAX_IMPORT_BYTES) {
+          set({ editError: `Those clips are too long to join into one recording (about ${Math.round(blob.size / 1024 / 1024)} MB at full quality). Join fewer of them.` });
+          return;
+        }
+        const take = await api.createTake({ projectId: project.id, trackId: track.id, blob, durationSec: rendered.duration, userId: uid });
+        await engine.loadTake(take.id, blob);
+        const current = get().project;
+        if (!current) return;
+        set({ project: { ...current, takes: { ...current.takes, [take.id]: take } }, takesVersion: get().takesVersion + 1 });
+        const clip: Clip = { id: crypto.randomUUID(), takeId: take.id, startSec: range.startSec, sourceStartSec: 0, durationSec: rendered.duration, z: nextZ(track.clips), fadeInSec: 0, fadeOutSec: 0 };
+        if (await get().commitClips(track.id, [...rest, clip])) set({ selectedClip: { trackId: track.id, clipId: clip.id }, extraSelected: [] });
+      } catch (err) {
+        console.error("Failed to join the clips:", err);
+        set({ editError: `Couldn't join those clips${errorDetail(err)}` });
+      } finally {
+        set({ importingTrackId: null });
+      }
+    },
     historyCounts: { undo: 0, redo: 0 },
     takesVersion: 0,
     editError: null,
@@ -2421,10 +2510,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     deleteSelected: async () => {
-      const { project, selectedClip } = get();
+      const { project, selectedClip, extraSelected } = get();
       const track = project?.tracks.find((t) => t.id === selectedClip?.trackId);
       if (!project || !track || !selectedClip) return;
-      await get().commitClips(track.id, track.clips.filter((c) => c.id !== selectedClip.clipId));
+      const ids = new Set([selectedClip.clipId, ...extraSelected]);
+      await get().commitClips(track.id, track.clips.filter((c) => !ids.has(c.id)));
     },
 
     // Arrow keys: one grid step (or 10 ms with snapping off). Alt+arrow: 1 ms.
