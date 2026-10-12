@@ -1,7 +1,7 @@
 import { useProjectStore } from "../../store/useProjectStore";
 import { SNAP_OPTIONS, type SnapResolution } from "../../lib/grid";
 import type { SongPanel } from "../Transport";
-import { UndoIcon, CutIcon, JoinIcon, QuantiseIcon, DuplicateIcon, TrashIcon, MagnetIcon, ChevronDownIcon } from "../icons/Icons";
+import { UndoIcon, CutIcon, JoinIcon, SpinnerIcon, QuantiseIcon, DuplicateIcon, TrashIcon, MagnetIcon, ChevronDownIcon } from "../icons/Icons";
 
 export function EditToolbar({ panel, onPanel }: { panel: SongPanel; onPanel: (panel: SongPanel) => void }) {
   const pxPerBeat = useProjectStore((s) => s.pxPerBeat);
@@ -26,6 +26,7 @@ export function EditToolbar({ panel, onPanel }: { panel: SongPanel; onPanel: (pa
   const deleteSelected = useProjectStore((s) => s.deleteSelected);
   const joinSelected = useProjectStore((s) => s.joinSelected);
   const manySelected = useProjectStore((s) => s.extraSelected.length > 0);
+  const joining = useProjectStore((s) => s.joiningTrackId !== null);
   const recording = useProjectStore((s) => s.recordingTrackId !== null);
   const canEditSelection = useProjectStore((s) => {
     const sel = s.selectedClip;
@@ -59,8 +60,14 @@ export function EditToolbar({ panel, onPanel }: { panel: SongPanel; onPanel: (pa
             <button className="lb" onClick={splitSelected} disabled={!clipTools} title="Split at playhead (S)" aria-label="Split">
               <CutIcon size={14} />
             </button>
-            <button className="lb" onClick={joinSelected} disabled={!clipTools || !manySelected} title="Join the selected clips into one clip (J or ⌘J). Select several by dragging across them, or with Shift or ⌘-click." aria-label="Join clips">
-              <JoinIcon size={14} />
+            <button className="lb" onClick={joinSelected} disabled={!clipTools || !manySelected || joining} title={joining ? "Joining the clips…" : "Join the selected clips into one clip (J or ⌘J). Select several by dragging across them, or with Shift or ⌘-click."} aria-label="Join clips" aria-busy={joining}>
+              {joining ? (
+                <span className="busy-spin">
+                  <SpinnerIcon size={14} />
+                </span>
+              ) : (
+                <JoinIcon size={14} />
+              )}
             </button>
             <button className="lb" onClick={duplicateSelected} disabled={!clipTools} title="Duplicate (⌘D)" aria-label="Duplicate">
               <DuplicateIcon size={14} />

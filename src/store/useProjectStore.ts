@@ -6,7 +6,7 @@ import * as api from "../lib/projectApi";
 import { listInputDevices, probeChannelCount, resolveInputDeviceId, type InputDevice, DEFAULT_DEVICE_ID } from "../lib/inputDevices";
 import { listOutputDevices, type OutputDevice } from "../lib/outputDevices";
 import { nextZ, splitClip, duplicateClip, moveClip, audibleSegments } from "../lib/clips";
-import { encodeWavFloat32 } from "../lib/wav";
+import { encodeTake } from "../lib/wav";
 import { detectLoopBpm } from "../lib/tempoDetect";
 import { mergeContiguous, joinRange } from "../lib/joinClips";
 import { renderClipsToBuffer } from "../lib/joinRender";
@@ -39,6 +39,11 @@ function errorDetail(err: unknown): string {
 // uploading a dropped file, so a too-long file gets a clear explanation
 // instead of a raw storage error after the upload already ran.
 const MAX_IMPORT_BYTES = 50 * 1024 * 1024;
+
+/** Heads-up when a take had to be turned down to fit full scale (see fitToFullScale in lib/wav.ts). */
+function loweredNotice(label: string, db: number): string {
+  return `${label} was louder than full scale, so it was turned down by ${db < 0.1 ? "less than 0.1" : db.toFixed(1)} dB to keep it from clipping.`;
+}
 
 const MIN_BPM = 20;
 const MAX_BPM = 300;
@@ -384,6 +389,8 @@ interface ProjectState {
   importAudioFile: (trackId: string, file: File, atSec: number) => Promise<void>;
   /** A channel currently importing a dropped file (for a small "Importing…" hint). */
   importingTrackId: string | null;
+  /** The channel whose selected clips are being joined right now (a busy indicator shows on it and on the Join button). */
+  joiningTrackId: string | null;
   /** A dropped loop whose tempo differs from the project's: waiting for the person to choose what to do. */
   loopTempoPrompt: LoopTempoPrompt | null;
   /** Fits the loop to the project's tempo ("match"), leaves it ("keep"), or (Owner, before any recording) sets the project to the loop's tempo ("project"). */
@@ -754,15 +761,16 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }
   };
 
-  /** Adds a decoded recording to a channel as a new clip: stored as a take (32-bit float WAV), loaded, placed, undoable. */
+  /** Adds a decoded recording to a channel as a new clip: stored as a take (24-bit PCM WAV), loaded, placed, undoable. */
   const placeImportedBuffer = async (trackId: string, fileName: string, buffer: AudioBuffer, atSec: number) => {
     const { project } = get();
     const uid = currentUserId();
     if (!project || !uid) return;
-    // Re-encoded as 32-bit float WAV so every take in the song is the same lossless format, whatever the dropped file
-    // originally was — but that makes long files huge (a minute of mono 48kHz is ~11.5 MB), easily past Supabase's
-    // per-file storage limit. Better to say so plainly than let the upload fail with a raw storage error.
-    const blob = encodeWavFloat32(buffer);
+    // Re-encoded as 24-bit PCM WAV so every take in the song is the same lossless format, whatever the dropped file
+    // originally was — but long files are still big (a minute of mono 48kHz is ~8.6 MB, stereo twice that), easily
+    // past Supabase's per-file storage limit. Better to say so plainly than let the upload fail with a raw storage error.
+    // A file that goes past full scale (a float bounce from a DAW) is turned down just enough to fit, not clipped.
+    const { blob, loweredDb } = encodeTake(buffer);
     if (blob.size > MAX_IMPORT_BYTES) {
       const maxMinutes = (MAX_IMPORT_BYTES / (blob.size / buffer.duration) / 60).toFixed(1);
       set({
@@ -796,6 +804,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       project: { ...current, takes: { ...current.takes, [take.id]: take } },
       takesVersion: get().takesVersion + 1,
       selectedClip: { trackId, clipId: clip.id },
+      ...(loweredDb > 0 ? { recordingNotice: loweredNotice(`"${fileName}"`, loweredDb) } : {}),
     });
     applyTrackClips(trackId, next);
     updateHistoryCounts();
@@ -2404,7 +2413,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const { project, selectedClip, extraSelected } = get();
       const track = project?.tracks.find((t) => t.id === selectedClip?.trackId);
       const uid = currentUserId();
-      if (!project || !track || !selectedClip || !uid || !get().canEditClips(track) || get().recordingTrackId) return;
+      if (!project || !track || !selectedClip || !uid || !get().canEditClips(track) || get().recordingTrackId || get().joiningTrackId) return;
       const ids = new Set([selectedClip.clipId, ...extraSelected]);
       const chosen = track.clips.filter((c) => ids.has(c.id));
       if (chosen.length < 2) return;
@@ -2416,7 +2425,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         return;
       }
       // Otherwise what is heard of them (fades and overlaps included) becomes one new recording that replaces them.
-      set({ importingTrackId: track.id, editError: null });
+      // It takes a moment (render, save, upload): the busy indicator stays up for at least a short while so it is seen.
+      const startedAt = Date.now();
+      set({ joiningTrackId: track.id, editError: null });
       try {
         const buffers = new Map<string, AudioBuffer>();
         for (const c of chosen) {
@@ -2426,7 +2437,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         }
         const range = joinRange(chosen);
         const rendered = await renderClipsToBuffer(chosen, buffers, range);
-        const blob = encodeWavFloat32(rendered);
+        const { blob, loweredDb } = encodeTake(rendered);
         if (blob.size > MAX_IMPORT_BYTES) {
           set({ editError: `Those clips are too long to join into one recording (about ${Math.round(blob.size / 1024 / 1024)} MB at full quality). Join fewer of them.` });
           return;
@@ -2437,12 +2448,20 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         if (!current) return;
         set({ project: { ...current, takes: { ...current.takes, [take.id]: take } }, takesVersion: get().takesVersion + 1 });
         const clip: Clip = { id: crypto.randomUUID(), takeId: take.id, startSec: range.startSec, sourceStartSec: 0, durationSec: rendered.duration, z: nextZ(track.clips), fadeInSec: 0, fadeOutSec: 0 };
-        if (await get().commitClips(track.id, [...rest, clip])) set({ selectedClip: { trackId: track.id, clipId: clip.id }, extraSelected: [] });
+        if (await get().commitClips(track.id, [...rest, clip])) {
+          set({
+            selectedClip: { trackId: track.id, clipId: clip.id },
+            extraSelected: [],
+            ...(loweredDb > 0 ? { recordingNotice: loweredNotice("The joined clip", loweredDb) } : {}),
+          });
+        }
       } catch (err) {
         console.error("Failed to join the clips:", err);
         set({ editError: `Couldn't join those clips${errorDetail(err)}` });
       } finally {
-        set({ importingTrackId: null });
+        const wait = 600 - (Date.now() - startedAt);
+        if (wait > 0) await new Promise((r) => setTimeout(r, wait));
+        set({ joiningTrackId: null });
       }
     },
     historyCounts: { undo: 0, redo: 0 },
@@ -2806,6 +2825,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     seek: (sec) => engine.seek(sec),
 
     importingTrackId: null,
+    joiningTrackId: null,
     loopTempoPrompt: null,
     cancelLoopTempo: () => set({ loopTempoPrompt: null }),
     confirmLoopTempo: async ({ mode, bpm }) => {

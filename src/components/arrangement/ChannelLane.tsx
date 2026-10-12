@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { SpinnerIcon } from "../icons/Icons";
 import type { Group, Track } from "../../types/project";
 import { useProjectStore } from "../../store/useProjectStore";
 import { snapTo, stepSec } from "../../lib/grid";
@@ -27,6 +28,7 @@ export function ChannelLane({ track, group, number, style, onGripDown, pxPerSec,
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const importAudioFile = useProjectStore((s) => s.importAudioFile);
   const importing = useProjectStore((s) => s.importingTrackId === track.id);
+  const joining = useProjectStore((s) => s.joiningTrackId === track.id);
   const laneScale = useProjectStore((s) => s.laneScales[track.id] ?? 1);
   const [dragOver, setDragOver] = useState(false);
   const selectClips = useProjectStore((s) => s.selectClips);
@@ -125,6 +127,14 @@ export function ChannelLane({ track, group, number, style, onGripDown, pxPerSec,
         onDrop={onDrop}
       >
         {hint && <span className="lane-hint">{hint}</span>}
+        {joining && (
+          <div className="lane-busy" role="status" aria-live="polite">
+            <span className="busy-spin">
+              <SpinnerIcon size={18} />
+            </span>
+            Joining clips…
+          </div>
+        )}
         {marquee && <div className="lane-marquee" style={{ left: marquee.x0, width: marquee.x1 - marquee.x0 }} />}
         {clips.map((clip) => (
           <ClipView

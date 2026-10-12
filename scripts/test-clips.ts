@@ -22,6 +22,7 @@ import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
 import { readFileSync, readdirSync } from "node:fs";
 import { mergeContiguous, joinRange } from "../src/lib/joinClips.ts";
+import { encodeWavPcm24Channels, fitToFullScale, peakOf } from "../src/lib/wav.ts";
 import { wavePath, autoBoost } from "../src/lib/wavePath.ts";
 import { detectLoopBpm, bpmFromFileName } from "../src/lib/tempoDetect.ts";
 import { timeStretch } from "../src/lib/timeStretch.ts";
@@ -664,6 +665,44 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("one clip alone is not a join", mergeContiguous([a]) === null);
   const range = joinRange([clip("a", 1, 2, 1), clip("b", 4, 1, 2)]);
   check("the joined range runs from the first sound to the last", range.startSec === 1 && range.endSec === 5);
+}
+
+// ---- 24-bit takes (lib/wav.ts)
+{
+  const readWav = async (blob: Blob) => {
+    const v = new DataView(await blob.arrayBuffer());
+    const tag = (o: number) => String.fromCharCode(v.getUint8(o), v.getUint8(o + 1), v.getUint8(o + 2), v.getUint8(o + 3));
+    const numChannels = v.getUint16(22, true);
+    const bits = v.getUint16(34, true);
+    const dataSize = v.getUint32(40, true);
+    const frames = dataSize / (numChannels * 3);
+    const chans = Array.from({ length: numChannels }, () => new Float32Array(frames));
+    let o = 44;
+    for (let i = 0; i < frames; i++) for (let ch = 0; ch < numChannels; ch++) {
+      let x = v.getUint8(o) | (v.getUint8(o + 1) << 8) | (v.getUint8(o + 2) << 16);
+      if (x & 0x800000) x -= 0x1000000;
+      chans[ch][i] = x / 8388607;
+      o += 3;
+    }
+    return { riff: tag(0), wave: tag(8), format: v.getUint16(20, true), numChannels, rate: v.getUint32(24, true), byteRate: v.getUint32(28, true), blockAlign: v.getUint16(32, true), bits, dataSize, total: v.byteLength, chans };
+  };
+  const n = 4800;
+  const left = Float32Array.from({ length: n }, (_, i) => 0.8 * Math.sin((2 * Math.PI * 440 * i) / 48000));
+  const right = Float32Array.from({ length: n }, (_, i) => -0.3 * Math.sin((2 * Math.PI * 220 * i) / 48000));
+  const w = await readWav(encodeWavPcm24Channels([left, right], 48000));
+  check("24-bit WAV header: RIFF/WAVE, PCM, 24 bits, rate, channels", w.riff === "RIFF" && w.wave === "WAVE" && w.format === 1 && w.bits === 24 && w.rate === 48000 && w.numChannels === 2);
+  check("24-bit WAV sizes: block align, byte rate, data and file length", w.blockAlign === 6 && w.byteRate === 288000 && w.dataSize === n * 6 && w.total === 44 + n * 6);
+  const maxErr = Math.max(...[0, 1].map((ch) => { const src = ch ? right : left; let m = 0; for (let i = 0; i < n; i++) m = Math.max(m, Math.abs(w.chans[ch][i] - src[i])); return m; }));
+  check("24-bit round trip is accurate to half a step (about -144 dB)", maxErr <= 0.5 / 8388607 + 1e-9, `max error ${maxErr.toExponential(2)}`);
+  check("a 24-bit take is three quarters the size of 32-bit float", w.total - 44 === ((n * 2 * 4) * 3) / 4);
+  const edge = await readWav(encodeWavPcm24Channels([Float32Array.from([1, -1, 1.5, -1.5, 0])], 44100));
+  check("full scale and beyond are clamped, never wrapped", edge.chans[0][0] === 1 && edge.chans[0][1] < -0.99999 && edge.chans[0][2] === 1 && edge.chans[0][3] < -0.99999 && edge.chans[0][4] === 0);
+  const quiet = [Float32Array.from([0.5, -0.9])];
+  const kept = fitToFullScale(quiet);
+  check("a take within full scale is left untouched", kept.loweredDb === 0 && kept.channels === quiet);
+  const hot = fitToFullScale([Float32Array.from([0.5, -2]), Float32Array.from([1.2, 0])]);
+  check("a take above full scale is turned down to just under it", Math.abs(peakOf(hot.channels) - 0.999) < 1e-6 && Math.abs(hot.loweredDb - 20 * Math.log10(2 / 0.999)) < 1e-6);
+  check("turning down keeps the balance between channels", Math.abs(hot.channels[1][0] / hot.channels[0][1] - 1.2 / -2) < 1e-6);
 }
 
 process.exit(fail ? 1 : 0);

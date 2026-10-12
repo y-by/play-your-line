@@ -2,7 +2,7 @@
 // timeline, and records a new take against the current mix.
 
 import { buildAudioConstraints } from "./inputDevices";
-import { encodeWavFloat32 } from "./wav";
+import { encodeTake } from "./wav";
 import { computeTakePlacement, measureClickLatencies, summarizeLatencies } from "./latency";
 import { audibleSegments, clipsEnd, type ClipData } from "./clips";
 import { scheduleSegment } from "./segmentPlayback";
@@ -887,7 +887,7 @@ export class AudioEngine {
   /**
    * Captures raw, uncompressed Float32 PCM straight off the input — no
    * MediaRecorder, no codec (Opus/AAC), no lossy re-encoding. What you play
-   * is exactly what gets written to the take (as 32-bit float WAV on stop).
+   * is exactly what gets written to the take (as 24-bit PCM WAV on stop).
    *
    * @param deviceId  A specific input device (mic or audio interface) to
    *                  record from, or undefined/"default" for the system default.
@@ -1155,7 +1155,7 @@ export class AudioEngine {
 
     const buffer = this.ctx.createBuffer(1, Math.max(1, samples.length), capture.sampleRate);
     buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0);
-    return { blob: encodeWavFloat32(buffer), timelineOffsetSec, latencySec, durationSec: buffer.duration };
+    return { blob: encodeTake(buffer).blob, timelineOffsetSec, latencySec, durationSec: buffer.duration };
   }
 
   /**

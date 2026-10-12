@@ -51,7 +51,7 @@ length · stacking order*.
 ### Adding audio: record, or drop a file
 
 Besides recording, you can drag an audio file straight onto your own channel from your
-computer. It's decoded, re-encoded as the same 32-bit float WAV every recording uses, uploaded,
+computer. It's decoded, re-encoded as the same 24-bit WAV every recording uses (turned down just enough if it goes past full scale), uploaded,
 and lands as a clip exactly where you dropped it (snapped to the grid, hold Alt to place freely).
 This works only on a channel you own, and never while a recording is in progress. Because it's
 re-encoded to full-quality WAV, a very long file can exceed Supabase's per-file storage limit —
@@ -146,7 +146,7 @@ Good to know:
   clears its leftover files. Nobody's recordings are removed by anyone else.
 - **How much space you use:** Supabase → Project Settings → Usage, or run in the
   SQL Editor: `select round(sum((metadata->>'size')::bigint)/1048576.0) as mb, count(*) as files from storage.objects where bucket_id = 'takes';`
-  Recordings are 32-bit float WAV, about **11.5 MB per minute per channel**.
+  New recordings are 24-bit WAV, about **8.6 MB per minute per channel** (older ones are 32-bit float, 11.5 MB a minute).
 
 ### The screen: control bar, loop and phones
 
@@ -291,7 +291,7 @@ flowchart TD
   pick --> rec["Recorder<br/>raw samples, no codec"]
   rec --> fix["Timing fix<br/>shift earlier by the delay"]
   delay["Measured delay<br/>(Calibrate)"] --> fix
-  fix --> wav["WAV file<br/>32-bit float"]
+  fix --> wav["WAV file<br/>24-bit"]
   wav --> cloud["Supabase Storage<br/>private takes bucket"]
 ```
 
@@ -331,7 +331,7 @@ src/
     projectApi.ts              every Supabase read / write
     coverImage.ts              shrinks a cover image before upload
     errorMessage.ts            reads the message out of a Supabase error
-    mixdown.ts, wav.ts         export and 32-bit float WAV encoding
+    mixdown.ts, wav.ts         export; 24-bit take / 32-bit float export WAV encoding
     mp3.ts                     MP3 encoding of the mix (the Published listening copy)
     takeCache.ts               recordings kept on the device (Cache Storage), so each is downloaded once
     inputDevices.ts, outputDevices.ts
@@ -370,6 +370,7 @@ engine follows:
   remaining audio exactly where it was played, so it stays locked to the click.
 - **No damage on the way in.** Echo cancellation, noise suppression and
   auto-gain (speech-call defaults that ruin instrument tone) are switched off.
-  Audio is captured as raw samples and stored as **32-bit float WAV** — no lossy
-  codec anywhere. Export uses the same format.
+  Audio is captured as raw samples and stored as **24-bit WAV** — no lossy
+  codec anywhere (an interface captures 24 bits at most; the browser decodes it back to
+  32-bit float exactly). Export Mix is 32-bit float WAV.
 
