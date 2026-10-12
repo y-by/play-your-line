@@ -59,7 +59,7 @@ export function EditToolbar({ panel, onPanel }: { panel: SongPanel; onPanel: (pa
             <button className="lb" onClick={splitSelected} disabled={!clipTools} title="Split at playhead (S)" aria-label="Split">
               <CutIcon size={14} />
             </button>
-            <button className="lb" onClick={joinSelected} disabled={!clipTools || !manySelected} title="Join the selected clips into one clip (J). Select several with Shift or ⌘-click." aria-label="Join clips">
+            <button className="lb" onClick={joinSelected} disabled={!clipTools || !manySelected} title="Join the selected clips into one clip (J or ⌘J). Select several by dragging across them, or with Shift or ⌘-click." aria-label="Join clips">
               <JoinIcon size={14} />
             </button>
             <button className="lb" onClick={duplicateSelected} disabled={!clipTools} title="Duplicate (⌘D)" aria-label="Duplicate">

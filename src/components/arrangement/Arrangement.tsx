@@ -352,7 +352,9 @@ export function Arrangement() {
         void s.duplicateSelected();
       } else if (!meta && key === "s") {
         void s.splitSelected();
-      } else if (!meta && key === "j") {
+      } else if (key === "j") {
+        // J or ⌘/Ctrl-J joins the selected clips (the browser's own ⌘J, its downloads list, is held back).
+        e.preventDefault();
         void s.joinSelected();
       } else if (meta && key === "a") {
         if (s.selectedClip) {
