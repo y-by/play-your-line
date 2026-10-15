@@ -43,3 +43,18 @@ advisor will keep listing them.
 The trigger functions `guard_track_columns`, `guard_project_notes`, `guard_tempo_lock`, `guard_track_assignment`,
 `guard_mixer_change`. Triggers run without the permission to call them, so it is removed (0045). The debug functions
 `debug_whoami` and `debug_test_insert` are dropped (0045).
+
+## Owner dashboard (0046)
+
+| Function | Who | What it checks |
+| --- | --- | --- |
+| `pyl_pre_request`, `is_admin`, `is_blocked`, `can_see_hidden_project` | Everyone, even signed out | They answer about the caller only (or say no when signed out). The first runs before every API request and refuses a blocked account; the others are used by the access rules, including the public Published list. |
+| `my_account_status`, `touch_last_seen` | Signed-in users | Only the caller's own row. |
+| `admin_users`, `admin_projects`, `admin_activity`, `admin_set_blocked`, `admin_force_signout`, `admin_set_hidden`, `admin_unpublish`, `admin_set_mixer`, `admin_remove_member`, `admin_transfer_ownership`, `require_admin` | Signed-in users | Each calls `require_admin` first: only a person with `user_status.is_admin` gets past it. |
+| `admin_storage_by_project` | Nobody directly | Used inside `admin_projects`. |
+
+Rules added: the admin READS every row of every project table and every file in `takes`, `covers` and `previews`, and may
+delete files there and any project row (for "Delete project"). The admin does NOT get write access to channels, clips,
+notes or mixes: observing is read-only in the database, not only on screen. A blocked account is stopped three ways: the
+pre-request check (every REST / RPC call), a restrictive "not blocked" rule on every table and on storage, and the app's
+blocked screen. `user_status` has no write rules at all; only the functions above change it.

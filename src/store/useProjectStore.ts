@@ -2,6 +2,7 @@ import { create } from "zustand";
 import type { ProjectNote, Project, Track, Clip, ChannelFx, MasterMix, Group } from "../types/project";
 import { AudioEngine, type RecordingResult } from "../lib/audioEngine";
 import { useAuthStore } from "./useAuthStore";
+import { useAccountStore } from "./useAccountStore";
 import * as api from "../lib/projectApi";
 import { listInputDevices, probeChannelCount, resolveInputDeviceId, type InputDevice, DEFAULT_DEVICE_ID } from "../lib/inputDevices";
 import { listOutputDevices, type OutputDevice } from "../lib/outputDevices";
@@ -378,6 +379,8 @@ interface ProjectState {
   realtimeStatus: RealtimeStatus | "off";
   /** Who has this song open right now. */
   presentUsers: PresentUser[];
+  /** True when the signed-in person holds no role in this song (e.g. the system owner observing it from /admin). */
+  hasNoRole: () => boolean;
   /** Stop listening for changes and playback (call when leaving the song). */
   leaveProject: () => void;
 
@@ -1288,7 +1291,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     stopRealtime();
     const uid = currentUserId();
     const name = useAuthStore.getState().profile?.displayName ?? "Someone";
-    const me = uid ? { userId: uid, name } : null;
+    // The system owner observing a song they are not in stays out of the "who's here" dots.
+    const observing = useAccountStore.getState().isAdmin && myRoles(get().project).length === 0;
+    const me = uid && !observing ? { userId: uid, name } : null;
     // Live updates are a bonus: if they can't start, the song still opens (just without them).
     try {
       unsubscribeRealtime = subscribeToProject(projectId, {
@@ -2814,6 +2819,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
 
     realtimeStatus: "off",
     presentUsers: [],
+    hasNoRole: () => !!get().project && myRoles(get().project).length === 0,
     leaveProject: () => {
       engine.pause();
       engine.stopMonitoring();

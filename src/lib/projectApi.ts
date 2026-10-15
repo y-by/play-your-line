@@ -190,7 +190,9 @@ export async function listPublishedProjects(): Promise<Project[]> {
     .eq("status", "published")
     .order("published_at", { ascending: false });
   if (error) throw error;
-  return (data ?? []).map((row) => mapProject(row, [], {}));
+  // A project the system owner hid (0046) is filtered by the database for everyone else; the owner can still read
+  // it, so it is left out here too.
+  return (data ?? []).filter((row) => row.hidden !== true).map((row) => mapProject(row, [], {}));
 }
 
 /** Who is in each project, for the cards: the Owner first, then the Mixer, then each channel's player. */

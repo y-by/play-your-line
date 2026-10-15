@@ -9,6 +9,8 @@ import { HelpPage } from "./pages/HelpPage";
 import { JoinPage } from "./pages/JoinPage";
 import { Tooltips } from "./components/Tooltips";
 import { SignInGate } from "./components/SignInGate";
+import { AccountWatch } from "./components/AccountWatch";
+import { AdminPage } from "./pages/AdminPage";
 import "./app.css";
 
 export default function App() {
@@ -21,6 +23,7 @@ export default function App() {
   return (
     <BrowserRouter>
       <Tooltips />
+      <AccountWatch />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route
@@ -33,6 +36,7 @@ export default function App() {
         />
         <Route path="/songs" element={<SongsListPage />} />
         <Route path="/help" element={<HelpPage />} />
+        <Route path="/admin" element={<AdminPage />} />
         <Route path="/invite/:token" element={<InvitePage />} />
         <Route path="/join/:token" element={<JoinPage />} />
       </Routes>

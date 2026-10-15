@@ -20,6 +20,7 @@ import { looksAnchored } from "../src/lib/anchor.ts";
 import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
+import { formatBytes, timeAgo, isOnline, ONLINE_WINDOW_MS } from "../src/lib/adminFormat.ts";
 import { readFileSync, readdirSync } from "node:fs";
 import { mergeContiguous, joinRange } from "../src/lib/joinClips.ts";
 import { encodeWavPcm24Channels, fitToFullScale, peakOf } from "../src/lib/wav.ts";
@@ -703,6 +704,16 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   const hot = fitToFullScale([Float32Array.from([0.5, -2]), Float32Array.from([1.2, 0])]);
   check("a take above full scale is turned down to just under it", Math.abs(peakOf(hot.channels) - 0.999) < 1e-6 && Math.abs(hot.loweredDb - 20 * Math.log10(2 / 0.999)) < 1e-6);
   check("turning down keeps the balance between channels", Math.abs(hot.channels[1][0] / hot.channels[0][1] - 1.2 / -2) < 1e-6);
+}
+
+{
+  // Owner dashboard helpers
+  check("bytes read as B, KB, MB and GB", formatBytes(512) === "512 B" && formatBytes(2048) === "2 KB" && formatBytes(5 * 1024 * 1024) === "5.0 MB" && formatBytes(1.5 * 1024 ** 3) === "1.50 GB");
+  const now = Date.parse("2026-10-15T12:00:00Z");
+  const ago = (ms: number) => new Date(now - ms).toISOString();
+  check("time ago: now, minutes, hours, days", timeAgo(ago(20_000), now) === "now" && timeAgo(ago(4 * 60_000), now) === "4 min ago" && timeAgo(ago(3 * 3600_000), now) === "3 h ago" && timeAgo(ago(2 * 86400_000), now) === "2 d ago");
+  check("time ago: never seen", timeAgo(null, now) === "never");
+  check("online only within the heartbeat window", isOnline(ago(60_000), now) && !isOnline(ago(ONLINE_WINDOW_MS + 1), now) && !isOnline(null, now));
 }
 
 process.exit(fail ? 1 : 0);

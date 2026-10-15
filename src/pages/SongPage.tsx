@@ -8,6 +8,8 @@ import { NoteAlert } from "../components/notes/NoteAlert";
 import { NoteCards } from "../components/notes/NoteCards";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { ErrorToast } from "../components/ErrorToast";
+import { useAccountStore } from "../store/useAccountStore";
+import { EyeIcon } from "../components/icons/Icons";
 
 export function SongPage() {
   const { id } = useParams<{ id: string }>();
@@ -18,6 +20,8 @@ export function SongPage() {
   const isInitiator = useProjectStore((s) => s.isInitiator());
   const leaveProject = useProjectStore((s) => s.leaveProject);
   const [panel, setPanel] = useState<SongPanel>(null);
+  const isAdmin = useAccountStore((s) => s.isAdmin);
+  const observing = useProjectStore((s) => isAdmin && s.hasNoRole());
 
   useEffect(() => {
     if (id) loadProject(id);
@@ -47,6 +51,17 @@ export function SongPage() {
 
   return (
     <div className="app">
+      {observing && (
+        <div className="observer-banner" role="status">
+          <EyeIcon size={15} />
+          <span>
+            <strong>Observing</strong> as the system owner. Read-only: you can listen, nothing is changed or saved.
+          </span>
+          <Link to="/admin" className="observer-back">
+            Back to Admin
+          </Link>
+        </div>
+      )}
       <Transport panel={panel} onPanel={setPanel} />
 
 

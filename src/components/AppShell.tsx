@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
+import { useAccountStore } from "../store/useAccountStore";
 import { createProject } from "../lib/projectApi";
 import { errorMessage } from "../lib/errorMessage";
-import { GlobeIcon, HelpIcon, HomeIcon, PlusCircleIcon, UserIcon, WaveformIcon } from "./icons/Icons";
+import { GlobeIcon, HelpIcon, HomeIcon, PlusCircleIcon, ShieldIcon, UserIcon, WaveformIcon } from "./icons/Icons";
 
 /**
  * The frame around the project lists: a side menu on desktop, a tab bar at the bottom on phones.
@@ -13,6 +14,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
   const userId = useAuthStore((s) => s.userId);
   const profile = useAuthStore((s) => s.profile);
   const signOut = useAuthStore((s) => s.signOut);
+  const isAdmin = useAccountStore((s) => s.isAdmin);
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -57,6 +59,12 @@ export function AppShell({ title, children }: { title: string; children: React.R
             <HelpIcon size={18} />
             Help
           </NavLink>
+          {isAdmin && (
+            <NavLink to="/admin" className={({ isActive }) => (isActive ? "shell-link active" : "shell-link")}>
+              <ShieldIcon size={18} />
+              Admin
+            </NavLink>
+          )}
         </nav>
         <button className="export-btn shell-new" onClick={handleCreate} disabled={creating}>
           <PlusCircleIcon size={14} />
@@ -88,6 +96,11 @@ export function AppShell({ title, children }: { title: string; children: React.R
             <NavLink to="/help" className="link-btn" onClick={() => setYouOpen(false)}>
               Help
             </NavLink>
+            {isAdmin && (
+              <NavLink to="/admin" className="link-btn" onClick={() => setYouOpen(false)}>
+                Admin
+              </NavLink>
+            )}
             <button className="link-btn" onClick={signOut}>
               Sign out
             </button>

@@ -101,6 +101,11 @@ final mix. Solo is never saved.
 
 **Live updates.** When someone else changes the project, you see it appear without refreshing.
 
+**Owner dashboard (system owner only).** `Admin` in the side menu (phone: You → Admin) lists every person (online,
+last project, storage) and every project. The system owner can open any project as a read-only observer, block a
+person (with a reason) or sign them out everywhere, and unpublish, hide, delete or reassign any project. Set up by
+migration `0046`; the admin is the account named at its end.
+
 **Shortcuts.** `Space` play / stop · `Enter` back to start · `R` record · `S` split ·
 `⌘/Ctrl+D` duplicate · `Delete` remove clip · `⌘/Ctrl+Z` undo (`⇧` redo) · arrows nudge · `Esc` deselect.
 
