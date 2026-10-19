@@ -20,11 +20,19 @@ export function LoopTempoPrompt() {
     <div className="settings-backdrop" onClick={() => (cancel(), done())}>
       <div className="settings-panel plugin-skin loop-tempo" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Loop tempo">
         <div className="settings-header">
-          <h2>Loop tempo</h2>
+          <h2>{prompt.source === "ask" ? "File tempo" : "Loop tempo"}</h2>
         </div>
         <section className="settings-section">
           <p className="settings-note">
-            <b>{prompt.fileName}</b> {prompt.source === "filename" ? "says it is" : "sounds like"} about <b>{prompt.bpm}</b> BPM. The song is at <b>{prompt.projectBpm}</b> BPM.
+            {prompt.source === "ask" ? (
+              <>
+                What is the tempo of <b>{prompt.fileName}</b>? The song is at <b>{prompt.projectBpm}</b> BPM. Type the file's tempo to fit it to the song, or keep it as it is.
+              </>
+            ) : (
+              <>
+                <b>{prompt.fileName}</b> {prompt.source === "filename" ? "says it is" : "sounds like"} about <b>{prompt.bpm}</b> BPM. The song is at <b>{prompt.projectBpm}</b> BPM.
+              </>
+            )}
           </p>
           <div className="settings-row">
             <span>This loop's tempo</span>
@@ -34,7 +42,7 @@ export function LoopTempoPrompt() {
           <div className="loop-tempo-actions">
             <button
               className="settings-toggle active"
-              disabled={!valid}
+              disabled={!valid || Math.abs(loopBpm - prompt.projectBpm) < 0.05}
               onClick={() => {
                 void confirm({ mode: "match", bpm: loopBpm });
                 done();
@@ -42,6 +50,17 @@ export function LoopTempoPrompt() {
               title="Make the loop play at the song's tempo. The pitch stays the same."
             >
               Fit to {prompt.projectBpm} BPM
+            </button>
+            <button
+              className="settings-toggle active"
+              disabled={!valid || Math.abs(loopBpm - prompt.projectBpm) < 0.05}
+              onClick={() => {
+                void confirm({ mode: "slice", bpm: loopBpm });
+                done();
+              }}
+              title="For drums and other separate hits: cut at each hit and move it into place, so every hit keeps its exact sound (nothing is stretched)"
+            >
+              Fit, keep the hits' sound
             </button>
             <button
               className="settings-toggle"
@@ -70,7 +89,7 @@ export function LoopTempoPrompt() {
               Cancel
             </button>
           </div>
-          <p className="settings-note">Fitting changes the speed without changing the pitch. It works best on loops; very large changes can sound a little rough.</p>
+          <p className="settings-note">Fit to the song stretches the whole sound without changing the pitch: good for sustained sounds, but it softens drum hits. Fit, keep the hits' sound cuts the loop at each hit and moves the hits instead: best for drums and other separate hits, but long rings are cut short when the tempo goes faster.</p>
         </section>
       </div>
     </div>

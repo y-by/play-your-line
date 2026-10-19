@@ -58,6 +58,31 @@ re-encoded to full-quality WAV, a very long file can exceed Supabase's per-file 
 the app checks this before uploading and tells you roughly how many minutes fit, rather than
 letting the upload fail with a raw storage error.
 
+Several files dropped together (stems from a DAW) each get a new channel of their own, assigned to the person who dropped them (the Owner's new channel
+would otherwise belong to nobody, and nobody edits a channel that is not theirs). The files are converted and uploaded three at a time
+(`importAudioFiles`, `importingTrackIds`). A WAV that carries a start time (the `bext` time reference, `lib/bwf.ts`) is placed there instead of at
+the drop point. **Tempo:** a loop found at another tempo asks what to do; with Settings > "Ask for the tempo of every file" on, every file asks.
+Fitting is either a time-stretch (`lib/timeStretch.ts`, WSOLA, pitch kept) or `lib/sliceFit.ts`: cut at each hit (`lib/onsets.ts`) and move each
+hit to its new place at its own speed, so hits keep their exact sound.
+
+### Moving a clip to another channel
+
+A take belongs to one channel and its file lives under that channel's folder, so a move cuts the clip's audio (plus a 2 s handle each side,
+`lib/moveClip.ts`) sample for sample into a NEW take, uploads it under the destination channel, and calls `move_clip` (migration 0048), which in one
+step adds the take, removes the clip from the old channel and adds it to the new one with its fades. Only between two channels of the same player,
+by that player or the Owner (the Owner also chooses the time). The old take stays until the unused-file cleanup. Dragging shows a copy of the
+clip following the pointer and a dashed outline in the target channel (`clip-ghost`, `clip-landing`) that stays, pulsing, until the clip is there.
+Undo history is cleared on a move (it is kept per channel); drag the clip back to take a move back. The local state must point the moved clip at the NEW take
+at once, or the next save is refused by the database.
+
+### Recording another app (a DAW or a synth)
+
+A browser cannot load plugins, so the sound goes through a free virtual cable (BlackHole on a Mac, VB-Cable on Windows) and Play Your Line records from the
+cable as an input (mono). Settings > Audio > Input has a guide (`components/CableGuide.tsx`, rules in `lib/cableCheck.ts`) that shows only the next step:
+no cable found, cable not chosen (button to use it), the output would feed the cable (button to choose a safe output), waiting for sound (live level), all set.
+It reads device names, which the browser only shows after the microphone was allowed. "Show me how" holds the animated route (`RouteDiagram.tsx`)
+and short Mac and Windows steps; the Help page has the longer guide with pictures (`public/help`). Research: `docs/RESEARCH-local-daw-routing.md`.
+
 ### Rules of the timeline
 
 | Rule | What it means |

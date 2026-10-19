@@ -12,7 +12,7 @@ import { MasterWave } from "./MasterWave";
 /**
  * The master channel, pinned to the bottom of the screen above the notes bar, so nothing covers it: a fader, a left and right level meter with a clip light,
  * mute, and the Tools button (EQ, Compressor, Limiter on the whole song). The Owner and the Mixer change it;
- * everyone hears it but only they see it. The fader only turns the song down.
+ * everyone hears it but only they see it. The fader goes from silence up to +6 dB, like a channel fader.
  */
 export function MasterStrip({
   scrollRef,
@@ -131,12 +131,12 @@ export function MasterStrip({
               min={MIN_DB}
               max={MAX_DB}
               step={1}
-              value={Math.min(0, db)}
+              value={db}
               disabled={!canMix}
-              // Same travel and scale as a channel fader, so 0 dB is in the same place; the master stops there: it only turns the song down.
-              onChange={(e) => setVolume(dbToGain(Math.min(0, Number(e.target.value))))}
+              // Same travel and scale as a channel fader, up to +6 dB; the safety limiter catches anything that would clip.
+              onChange={(e) => setVolume(dbToGain(Number(e.target.value)))}
               aria-label="Master volume in decibels"
-              title={canMix ? `${db} dB — the master only turns the whole song down (0 dB is the top)` : `${db} dB — only the Owner and the Mixer can change the master`}
+              title={canMix ? `${db} dB — the master fader goes up to +6 dB; the limiter is the safety net` : `${db} dB — only the Owner and the Mixer can change the master`}
             />
             <FaderScale />
           </div>

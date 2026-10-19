@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { Clip, Take, Track } from "../../types/project";
 import { useProjectStore } from "../../store/useProjectStore";
 import { clipEnd, moveClip, setClipFade, trimClipEnd, trimClipStart } from "../../lib/clips";
@@ -30,12 +31,18 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
   const selectClip = useProjectStore((s) => s.selectClip);
   const toggleClipSelected = useProjectStore((s) => s.toggleClipSelected);
   const commitClips = useProjectStore((s) => s.commitClips);
+  const moveClipToTrack = useProjectStore((s) => s.moveClipToTrack);
+  const setMoveLanding = useProjectStore((s) => s.setMoveLanding);
+  const canMoveFrom = useProjectStore((s) => s.canMoveClipsFrom(track));
+  const beingMoved = useProjectStore((s) => s.movingClipId === clip.id);
   const marks = useProjectStore((s) => (s.quantiseMarks?.clipId === clip.id ? s.quantiseMarks.times : null));
 
   // While dragging, the clip follows the pointer locally; nothing is saved until you let go.
   const [preview, setPreview] = useState<Clip | null>(null);
   const [dragMode, setDragMode] = useState<DragMode | null>(null);
-  const drag = useRef<{ mode: DragMode; startX: number; original: Clip; latest: Clip; moved: boolean } | null>(null);
+  // The clip follows the pointer between channels (a copy drawn over everything), so you see what you are placing.
+  const [ghost, setGhost] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const drag = useRef<{ mode: DragMode; startX: number; startY: number; original: Clip; latest: Clip; moved: boolean; target: string | null; grab: { dx: number; dy: number; w: number; h: number } } | null>(null);
 
   const shown = preview ?? clip;
   const widthPx = Math.max(3, shown.durationSec * pxPerSec);
@@ -58,7 +65,8 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
   const snap = (sec: number, free: boolean) => (snapEnabled && !free ? snapTo(sec, step) : sec);
 
   const begin = (mode: DragMode, e: React.PointerEvent<HTMLElement>) => {
-    if (!canEdit) return;
+    // Someone who cannot edit this clip may still drag it to another channel of the same player (the Owner, for any player).
+    if (!canEdit && !(mode === "move" && canMoveFrom)) return;
     e.stopPropagation();
     e.preventDefault();
     // Shift or ⌘/Ctrl-click adds the clip to the selection (or takes it out) instead of starting a drag.
@@ -72,16 +80,32 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
       // Capture is only a convenience; dragging still works while the pointer stays over the clip.
     }
     selectClip({ trackId: track.id, clipId: clip.id });
-    drag.current = { mode, startX: e.clientX, original: clip, latest: clip, moved: false };
+    const box = e.currentTarget.getBoundingClientRect();
+    drag.current = { mode, startX: e.clientX, startY: e.clientY, original: clip, latest: clip, moved: false, target: null, grab: { dx: e.clientX - box.left, dy: e.clientY - box.top, w: box.width, h: box.height } };
   };
 
   const onMove = (e: React.PointerEvent) => {
     const d = drag.current;
     if (!d) return;
     const dx = e.clientX - d.startX;
-    if (!d.moved && Math.abs(dx) < 3) return;
+    if (!d.moved && Math.abs(dx) < 3 && Math.abs(e.clientY - d.startY) < 3) return;
     d.moved = true;
     setDragMode(d.mode);
+    if (d.mode === "move" && canMoveFrom) {
+      // The channel under the pointer, when the clip may go there: it is highlighted and the clip moves on release.
+      const state = useProjectStore.getState();
+      let target: string | null = null;
+      for (const el of document.elementsFromPoint(e.clientX, e.clientY)) {
+        const id = el.closest<HTMLElement>("[data-lane-id]")?.dataset.laneId;
+        if (!id) continue;
+        const other = state.project?.tracks.find((t) => t.id === id);
+        if (other && other.id !== track.id && state.canMoveClipTo(track, other)) target = other.id;
+        break;
+      }
+      d.target = target;
+      // The copy shows once the pointer leaves the clip's own channel; until then the clip just slides along its channel.
+      setGhost(target || Math.abs(e.clientY - d.startY) > d.grab.h ? { left: e.clientX - d.grab.dx, top: e.clientY - d.grab.dy, width: d.grab.w, height: d.grab.h } : null);
+    }
     const delta = dx / pxPerSec;
     const free = e.altKey;
     let next: Clip;
@@ -97,15 +121,23 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
       next = trimClipEnd(d.original, snap(clipEnd(d.original) + delta, free), take?.durationSec ?? clipEnd(d.original));
     }
     d.latest = next;
-    setPreview(next);
+    // Someone who cannot edit this clip (the Owner on a player's clip) only changes its channel: the clip stays where it is
+    // until it is dropped on another channel, where the outline shows the place they chose.
+    if (canEdit || d.mode !== "move") setPreview(next);
+    // Where the clip would land in the channel under it (snapped like any move), outlined there.
+    setMoveLanding(d.target ? { trackId: d.target, startSec: next.startSec, durationSec: next.durationSec } : null);
   };
 
   const onEnd = () => {
     const d = drag.current;
     drag.current = null;
     setDragMode(null);
+    setGhost(null);
+    // A drop on another channel keeps its outline until the move is done (the store clears it); anything else clears it now.
+    if (!d?.target) setMoveLanding(null);
     if (!d) return;
-    if (d.moved) void commitClips(track.id, track.clips.map((c) => (c.id === clip.id ? d.latest : c)));
+    if (d.moved && d.target) void moveClipToTrack(clip.id, track.id, d.target, d.latest.startSec);
+    else if (d.moved && canEdit) void commitClips(track.id, track.clips.map((c) => (c.id === clip.id ? d.latest : c)));
     setPreview(null);
   };
 
@@ -120,7 +152,7 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
     if (next !== clip) void commitClips(track.id, track.clips.map((c) => (c.id === clip.id ? next : c)));
   };
 
-  const className = ["clip", selected ? "selected" : "", canEdit ? "editable" : "", preview ? "dragging" : ""]
+  const className = ["clip", selected ? "selected" : "", canEdit ? "editable" : "", !canEdit && canMoveFrom ? "movable" : "", preview ? "dragging" : "", ghost || beingMoved ? "ghosted" : ""]
     .filter(Boolean)
     .join(" ");
 
@@ -180,6 +212,15 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
           <div className="clip-handle right" onPointerDown={(e) => begin("trim-end", e)} />
         </>
       )}
+      {ghost &&
+        createPortal(
+          <div className="clip-ghost" style={{ left: ghost.left, top: ghost.top, width: ghost.width, height: ghost.height, "--clip-color": track.color } as React.CSSProperties}>
+            <svg className="clip-wave" viewBox={`0 0 ${columns} ${WAVE_HEIGHT}`} preserveAspectRatio="none" aria-hidden="true">
+              <path d={wave} fill={track.color} />
+            </svg>
+          </div>,
+          document.body,
+        )}
     </div>
   );
 }

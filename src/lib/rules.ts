@@ -79,6 +79,16 @@ export const RULES: Rule[] = [
     enforcedBy: "policies on clips, takes and storage: only the channel's own player (0009)",
     note: "Nobody touches a player's recordings but that player. The Owner cannot record on or edit someone else's channel.",
   },
+  {
+    id: "move-clip",
+    what: "Move a clip to another channel of the same player",
+    owner: true,
+    mixer: false,
+    player: own("their own channels"),
+    listener: false,
+    enforcedBy: "function move_clip and the Owner's upload rule on take files (0048)",
+    note: "Both channels must belong to the same player: nobody moves a clip to another player's channel. This is the only thing the Owner may do to a player's recordings.",
+  },
   { id: "people", what: "Invite a Mixer or Listeners, add someone by email, choose the Mixer", owner: true, mixer: false, player: false, listener: false, enforcedBy: "functions set_mixer, add_project_member; policies on project_invites (0014, 0031)" },
   { id: "write-notes", what: "Write notes, tag people with @", owner: true, mixer: true, player: true, listener: false, enforcedBy: "function can_write_notes and note policies (0032)", note: "A Player needs a channel to write notes. Listeners only read the notes shared with them." },
   {

@@ -539,6 +539,55 @@ export async function createTake(params: {
   };
 }
 
+/**
+ * Moves a clip to another channel of the same player: uploads the cut piece as a new recording under the destination
+ * channel's folder, then move_clip (one step in the database, 0048) adds the take, removes the clip from the old channel
+ * and adds `newClip` to the new one. The database checks who may and that both channels are the same player's.
+ */
+export async function moveClipToChannel(params: {
+  projectId: string;
+  clipId: string;
+  toTrackId: string;
+  blob: Blob;
+  takeDurationSec: number;
+  newClip: Clip;
+  userId: string;
+}): Promise<Take> {
+  const client = requireSupabase();
+  const takeId = crypto.randomUUID();
+  const storagePath = `${params.projectId}/${params.toTrackId}/${takeId}.wav`;
+  const { error: uploadError } = await client.storage.from("takes").upload(storagePath, params.blob, { contentType: "audio/wav", upsert: false });
+  if (uploadError) throw uploadError;
+  const c = params.newClip;
+  const { error } = await client.rpc("move_clip", {
+    p_clip_id: params.clipId,
+    p_to_track_id: params.toTrackId,
+    p_new_take_id: takeId,
+    p_take_duration_sec: params.takeDurationSec,
+    p_new_clip_id: c.id,
+    p_start_sec: c.startSec,
+    p_source_start_sec: c.sourceStartSec,
+    p_duration_sec: c.durationSec,
+    p_z: c.z,
+    p_fade_in_sec: c.fadeInSec,
+    p_fade_out_sec: c.fadeOutSec,
+  });
+  if (error) {
+    // The audio is not used by anything: clear it so it does not wait for the cleanup (best effort).
+    await client.storage.from("takes").remove([storagePath]).catch(() => undefined);
+    throw error;
+  }
+  return {
+    id: takeId,
+    trackId: params.toTrackId,
+    storagePath,
+    blob: params.blob,
+    durationSec: params.takeDurationSec,
+    createdBy: params.userId,
+    createdAt: Date.now(),
+  };
+}
+
 /** Insert or update clips of one channel (no read-back needed: ids are made client-side). */
 export async function upsertClips(trackId: string, clips: Clip[]): Promise<void> {
   if (clips.length === 0) return;

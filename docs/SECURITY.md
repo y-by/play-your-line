@@ -58,3 +58,14 @@ delete files there and any project row (for "Delete project"). The admin does NO
 notes or mixes: observing is read-only in the database, not only on screen. A blocked account is stopped three ways: the
 pre-request check (every REST / RPC call), a restrictive "not blocked" rule on every table and on storage, and the app's
 blocked screen. `user_status` has no write rules at all; only the functions above change it.
+
+## Master up to +6 dB and moving clips (0047, 0048)
+
+| Function / rule | Who | What it checks |
+| --- | --- | --- |
+| `set_master_mix` (replaced in 0047) | Signed-in Owner or Mixer of that project | The volume is 0 to 2 (up to +6 dB), the effects are a small object. The `projects` check on `master_volume` was widened to match. |
+| `move_clip` (0048) | Signed-in, not blocked | The clip exists; both channels are in the same project and assigned to the SAME player; the caller is that player or the project's Owner; the clip fits inside the new take; the new take's file is already in storage under the destination channel. Then one step: add the take, remove the old clip, add the new clip. Execute is revoked from `public` and `anon`. |
+| Storage insert rule "initiator uploads a moved take file" (0048) | The project's Owner | May put a file under the folder of a channel that has a player, so the Owner can move a player's clip. It only lets a file land: no take row or clip is created except through `move_clip`, which checks everything above. A stray file is removed by the unused-file cleanup. |
+
+The Owner still cannot record on, trim, split, fade or delete a player's clips; the only thing the Owner may do to a player's recordings is move a clip
+between that player's own channels.

@@ -23,6 +23,10 @@ import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
 import { formatBytes, timeAgo, isOnline, ONLINE_WINDOW_MS } from "../src/lib/adminFormat.ts";
 import { readFileSync, readdirSync } from "node:fs";
 import { mergeContiguous, joinRange } from "../src/lib/joinClips.ts";
+import { readBwfStartSec } from "../src/lib/bwf.ts";
+import { planMoveSlice, canMoveBetween, MOVE_HANDLE_SEC } from "../src/lib/moveClip.ts";
+import { sliceFit } from "../src/lib/sliceFit.ts";
+import { cableSteps, looksLikeCable, outputFeedsCable, guideState, osOf, safeOutput } from "../src/lib/cableCheck.ts";
 import { encodeWavPcm24Channels, fitToFullScale, peakOf } from "../src/lib/wav.ts";
 import { wavePath, autoBoost } from "../src/lib/wavePath.ts";
 import { detectLoopBpm, bpmFromFileName } from "../src/lib/tempoDetect.ts";
@@ -498,7 +502,8 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("a lowered master fader is not neutral", !isNeutralMaster({ ...DEFAULT_MASTER, volume: 0.5 }));
   check("a switched-on limiter is not neutral", !isNeutralMaster({ ...DEFAULT_MASTER, fx: { ...DEFAULT_MASTER.fx, fxOn: true } }));
   check("effects with the power off are neutral whatever the knobs say", isNeutralMaster({ ...DEFAULT_MASTER, fx: { ...DEFAULT_MASTER.fx, eqLow: 6 } }));
-  check("the master volume only turns down: above 1 is clamped, below 0 too", clampMasterVolume(2) === 1 && clampMasterVolume(-1) === 0 && clampMasterVolume(NaN) === 1);
+  check("the master volume goes up to +6 dB (gain 1.995): above that is clamped, below 0 too", Math.abs(clampMasterVolume(1.9) - 1.9) < 1e-9 && Math.abs(clampMasterVolume(5) - 10 ** (6 / 20)) < 1e-9 && clampMasterVolume(-1) === 0 && clampMasterVolume(NaN) === 1);
+  check("a master raised above 0 dB is not neutral", !isNeutralMaster({ ...DEFAULT_MASTER, volume: 1.5 }));
   const row = { master_volume: 0.5, master_fx: { fxOn: true, eqLow: 40, compRatio: 99, delayOn: true, delayMix: 0.9, reverbMix: 0.9, limiterOn: false, nonsense: 1 } };
   const m = masterFromRow(row);
   check("a saved master is read back", m.volume === 0.5 && m.fx.fxOn === true && m.limiterOn === false);
@@ -714,6 +719,84 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("time ago: now, minutes, hours, days", timeAgo(ago(20_000), now) === "now" && timeAgo(ago(4 * 60_000), now) === "4 min ago" && timeAgo(ago(3 * 3600_000), now) === "3 h ago" && timeAgo(ago(2 * 86400_000), now) === "2 d ago");
   check("time ago: never seen", timeAgo(null, now) === "never");
   check("online only within the heartbeat window", isOnline(ago(60_000), now) && !isOnline(ago(ONLINE_WINDOW_MS + 1), now) && !isOnline(null, now));
+}
+
+// ---- WAV time stamp (lib/bwf.ts)
+{
+  const wav = (withBext: boolean, ref: number, rate = 48000) => {
+    const bext = withBext ? 8 + 602 : 0;
+    const buf = new ArrayBuffer(12 + 24 + bext + 8 + 4);
+    const v = new DataView(buf);
+    const w = (at: number, t: string) => { for (let i = 0; i < t.length; i++) v.setUint8(at + i, t.charCodeAt(i)); };
+    w(0, "RIFF"); v.setUint32(4, buf.byteLength - 8, true); w(8, "WAVE");
+    w(12, "fmt "); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true); v.setUint32(24, rate, true);
+    let at = 36;
+    if (withBext) { w(at, "bext"); v.setUint32(at + 4, 602, true); v.setUint32(at + 8 + 338, ref % 4294967296, true); v.setUint32(at + 8 + 342, Math.floor(ref / 4294967296), true); at += 8 + 602; }
+    w(at, "data"); v.setUint32(at + 4, 4, true);
+    return buf;
+  };
+  check("a WAV time stamp is read as seconds from the start of the song", readBwfStartSec(wav(true, 96000)) === 2);
+  check("a time stamp beyond 32 bits is read whole", readBwfStartSec(wav(true, 4294967296 + 48000, 48000)) === 4294967296 / 48000 + 1);
+  check("a WAV without a time stamp gives nothing", readBwfStartSec(wav(false, 0)) === null);
+  check("something that is not a WAV gives nothing", readBwfStartSec(new ArrayBuffer(100)) === null && readBwfStartSec(new ArrayBuffer(4)) === null);
+}
+
+// ---- Moving a clip to another channel (lib/moveClip.ts)
+{
+  const mid = planMoveSlice({ sourceStartSec: 10, durationSec: 5 }, 60);
+  check("a moved piece keeps a 2 s handle each side", mid.sliceStartSec === 10 - MOVE_HANDLE_SEC && mid.sliceEndSec === 15 + MOVE_HANDLE_SEC && mid.newSourceStartSec === MOVE_HANDLE_SEC);
+  const edge = planMoveSlice({ sourceStartSec: 0.5, durationSec: 59 }, 60);
+  check("the handle stops at the ends of the recording", edge.sliceStartSec === 0 && edge.sliceEndSec === 60 && edge.newSourceStartSec === 0.5);
+  const a = { id: "a", assignedUserId: "dana" }, b = { id: "b", assignedUserId: "dana" }, c = { id: "c", assignedUserId: "sam" }, free = { id: "d", assignedUserId: null };
+  check("a player moves a clip between their own channels", canMoveBetween({ userId: "dana", isOwner: false }, a, b));
+  check("the Owner moves a clip between a player's channels", canMoveBetween({ userId: "owner", isOwner: true }, a, b));
+  check("nobody moves a clip to another player's channel, not even the Owner", !canMoveBetween({ userId: "dana", isOwner: false }, a, c) && !canMoveBetween({ userId: "owner", isOwner: true }, a, c));
+  check("another player cannot move someone's clip", !canMoveBetween({ userId: "sam", isOwner: false }, a, b));
+  check("an unassigned channel is never a target or a source", !canMoveBetween({ userId: "owner", isOwner: true }, a, free) && !canMoveBetween({ userId: "owner", isOwner: true }, free, a));
+  check("moving onto the same channel is no move", !canMoveBetween({ userId: "dana", isOwner: false }, a, a));
+}
+
+// ---- Fitting a drum loop by slicing (lib/sliceFit.ts)
+{
+  const sr = 44100, secs = 2, n = sr * secs;
+  const loop = new Float32Array(n);
+  const hit = (at: number, f: number) => { for (let k = 0; k < 0.3 * sr && at + k < n; k++) loop[at + k] += 0.8 * Math.exp(-k / (0.05 * sr)) * Math.sin(2 * Math.PI * f * k / sr); };
+  [0, 0.5, 1, 1.5].forEach((t, i) => hit(Math.round(t * sr), 200 + i * 150));
+  const onsets = [0.5, 1, 1.5];
+  const faster = sliceFit([loop], sr, 0.8, onsets)[0];
+  check("a faster fit is shorter by the ratio", Math.abs(faster.length - Math.round(n * 0.8)) <= 1);
+  // The second hit now starts at 0.4 s, and its first 30 ms are the original samples (nothing was stretched).
+  let maxDiff = 0;
+  const at2 = Math.round((0.5 - 0.004) * sr * 0.8), src2 = Math.round((0.5 - 0.004) * sr);
+  for (let k = Math.round(0.003 * sr); k < Math.round(0.03 * sr); k++) maxDiff = Math.max(maxDiff, Math.abs(faster[at2 + k] - loop[src2 + k]));
+  check("each hit keeps its exact sound at the new tempo", maxDiff < 1e-6, `max difference ${maxDiff}`);
+  const slower = sliceFit([loop], sr, 1.25, onsets)[0];
+  const at3 = Math.round((1 - 0.004) * sr * 1.25), src3 = Math.round((1 - 0.004) * sr);
+  let d3 = 0;
+  for (let k = Math.round(0.003 * sr); k < Math.round(0.03 * sr); k++) d3 = Math.max(d3, Math.abs(slower[at3 + k] - loop[src3 + k]));
+  check("a slower fit is longer and keeps the hits exact too", Math.abs(slower.length - Math.round(n * 1.25)) <= 1 && d3 < 1e-6);
+  let peak = 0; for (let i = 0; i < slower.length; i++) peak = Math.max(peak, Math.abs(slower[i]));
+  check("slicing never adds loudness", peak <= 1.6);
+  check("with no hits found the file is only moved as one piece", sliceFit([loop], sr, 0.5, []).length === 1 && sliceFit([loop], sr, 0.5, [])[0].length === Math.round(n * 0.5));
+}
+
+// ---- Setup check for recording another app (lib/cableCheck.ts)
+{
+  const inputs = [{ deviceId: "m", label: "MacBook Pro Microphone" }, { deviceId: "b", label: "BlackHole 2ch" }, { deviceId: "z", label: "ZoomAudioDevice" }];
+  const outputs = [{ deviceId: "h", label: "Headphones" }, { deviceId: "mo", label: "Multi-Output Device" }];
+  const base = { inputs, inputId: "m", outputs, outputId: "h", outputRoutable: true };
+  check("virtual cable names are recognised, other devices are not", looksLikeCable("BlackHole 2ch") && looksLikeCable("CABLE Output (VB-Audio Virtual Cable)") && looksLikeCable("Loopback Audio") && !looksLikeCable("MacBook Pro Microphone") && !looksLikeCable("ZoomAudioDevice") && !looksLikeCable("Steam Streaming Microphone"));
+  check("a Multi-Output Device or the cable itself as the output would feed the cable", outputFeedsCable("Multi-Output Device") && outputFeedsCable("BlackHole 2ch") && !outputFeedsCable("Headphones") && !outputFeedsCable("MacBook Pro Speakers"));
+  check("no cable: one step that says to install one", (() => { const s = cableSteps({ ...base, inputs: [inputs[0]] }); return s.length === 1 && s[0].id === "cable" && s[0].state === "todo"; })());
+  check("cable found but not chosen: offers to use it", (() => { const s = cableSteps(base); return s[0].state === "ok" && s[1].state === "todo" && s[1].useInput?.deviceId === "b"; })());
+  check("cable chosen and a normal output: all three steps are fine", cableSteps({ ...base, inputId: "b" }).every((x) => x.state === "ok"));
+  check("a Multi-Output Device as the output is a warning", cableSteps({ ...base, inputId: "b", outputId: "mo" })[2].state === "warn");
+  const none = cableSteps({ ...base, inputs: [inputs[0]] }), notChosen = cableSteps(base), echo = cableSteps({ ...base, inputId: "b", outputId: "mo" }), good = cableSteps({ ...base, inputId: "b" });
+  check("the guide shows the first thing that is not right", guideState(none, false).key === "nocable" && guideState(notChosen, false).key === "notinput" && guideState(echo, false).key === "echo");
+  check("with everything right, it waits for sound, then says it works", guideState(good, false).key === "quiet" && guideState(good, false).step === 4 && guideState(good, true).key === "works");
+  check("the computer is told from the browser's name", osOf("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)") === "mac" && osOf("Mozilla/5.0 (Windows NT 10.0; Win64; x64)") === "win" && osOf("Mozilla/5.0 (X11; Linux x86_64)") === "other");
+  check("the replacement output is the first one that does not feed the cable", safeOutput(outputs)?.label === "Headphones" && safeOutput([outputs[1]]) === null);
+  check("a browser that cannot show the output gets a plain note", cableSteps({ ...base, inputId: "b", outputRoutable: false })[2].state === "info");
 }
 
 process.exit(fail ? 1 : 0);

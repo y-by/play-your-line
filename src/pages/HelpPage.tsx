@@ -23,7 +23,17 @@ function HelpContent() {
               <details key={t.id} id={t.id} className="help-item" open={t.id === wanted} ref={t.id === wanted ? target : undefined}>
                 <summary>{t.question}</summary>
                 {t.answer.map((p, i) => (
-                  <p key={i}>{p}</p>
+                  <div key={i}>
+                    <p>{p}</p>
+                    {t.figures
+                      ?.filter((f) => f.after === i)
+                      .map((f) => (
+                        <figure key={f.src} className="help-figure">
+                          <img src={f.src} alt={f.alt} loading="lazy" />
+                          <figcaption>{f.caption}</figcaption>
+                        </figure>
+                      ))}
+                  </div>
                 ))}
               </details>
             ))}

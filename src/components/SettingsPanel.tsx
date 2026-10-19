@@ -6,6 +6,7 @@ import { fetchCoverUrls } from "../lib/projectApi";
 import { useAuthStore } from "../store/useAuthStore";
 import { CloseIcon } from "./icons/Icons";
 import { InputSourceSelector } from "./InputSourceSelector";
+import { CableGuide } from "./CableGuide";
 import { DEFAULT_DEVICE_ID } from "../lib/inputDevices";
 
 export function SettingsPanel() {
@@ -41,6 +42,8 @@ export function SettingsPanel() {
   const setDisplayName = useAuthStore((s) => s.setDisplayName);
   const tooltipsOn = useProjectStore((s) => s.tooltipsOn);
   const setTooltipsOn = useProjectStore((s) => s.setTooltipsOn);
+  const askFileTempo = useProjectStore((s) => s.askFileTempo);
+  const setAskFileTempo = useProjectStore((s) => s.setAskFileTempo);
   const [tab, setTab] = useState<"general" | "audio" | "click" | "project">("general");
   const navigate = useNavigate();
   const projectTitle = useProjectStore((s) => s.project?.title ?? null);
@@ -194,6 +197,20 @@ export function SettingsPanel() {
         </section>
 
         <section className="settings-section">
+          <h3>Dropping audio files</h3>
+          <div className="settings-row">
+            <span>Ask for the tempo of every file</span>
+            <button className={askFileTempo ? "settings-toggle active" : "settings-toggle"} onClick={() => setAskFileTempo(!askFileTempo)} aria-pressed={askFileTempo}>
+              {askFileTempo ? "On" : "Off"}
+            </button>
+          </div>
+          <p className="settings-note">
+            Off: only a loop that is found (its name says 96bpm, or its beats are clear) at another tempo is asked about. On: every file you drop asks for its tempo
+            (you type it, or read it from the file name) and can be fitted to the song, so drums from another project line up with yours.
+          </p>
+        </section>
+
+        <section className="settings-section">
           <h3>Help</h3>
           <p className="settings-note">
             <a href="/help" target="_blank" rel="noreferrer">
@@ -211,6 +228,7 @@ export function SettingsPanel() {
         <section className="settings-section">
           <h3>Input</h3>
           <InputSourceSelector />
+          <CableGuide />
         </section>
 
         <section className="settings-section">

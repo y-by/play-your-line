@@ -14,8 +14,11 @@ export const DEFAULT_MASTER: MasterMix = {
 /** The safety limiter's ceiling: peaks are squeezed towards this level. */
 export const LIMITER_CEILING_DB = -1;
 
+/** The top of the master fader: +6 dB, the same top as a channel fader. */
+export const MASTER_MAX_GAIN = Math.pow(10, 6 / 20);
+
 export function clampMasterVolume(v: number): number {
-  return Number.isFinite(v) ? Math.min(1, Math.max(0, v)) : 1;
+  return Number.isFinite(v) ? Math.min(MASTER_MAX_GAIN, Math.max(0, v)) : 1;
 }
 
 /** The effects the master uses: the delay and reverb of a channel never run on it. */
@@ -51,7 +54,7 @@ export function masterFxToJson(m: Pick<MasterMix, "fx" | "limiterOn">): Record<s
 
 /** True when the master changes nothing about the sound (volume 1, effects out of the path or neutral). */
 export function isNeutralMaster(m: MasterMix): boolean {
-  if (m.volume < 0.999) return false;
+  if (Math.abs(m.volume - 1) > 0.001) return false;
   if (!m.fx.fxOn) return true;
   const noEq = Math.abs(m.fx.eqLow) + Math.abs(m.fx.eqMid) + Math.abs(m.fx.eqHigh) <= 0.05 && m.fx.eqLowCutHz <= 21;
   const noComp = m.fx.compRatio <= 1.02 && m.fx.compMakeupDb <= 0.05;

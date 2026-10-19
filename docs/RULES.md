@@ -20,6 +20,7 @@ A test fails if this file is out of date.
 | Channel Tools (EQ, Compressor, Delay, Reverb, Tuner) | ✅ | ✅ | their own channel, until the Owner or Mixer locks it | – |
 | Lock or unlock a player's channel effects | ✅ | ✅ | – | – |
 | Record and edit clips | their own channel | their own channel | their own channel | – |
+| Move a clip to another channel of the same player | ✅ | – | their own channels | – |
 | Invite a Mixer or Listeners, add someone by email, choose the Mixer | ✅ | – | – | – |
 | Write notes, tag people with @ | ✅ | ✅ | ✅ | – |
 | Edit a note, mark it done or reopen it | ✅ | their own notes | their own notes | – |
@@ -43,6 +44,7 @@ The screen hides what you cannot do, but the database is what really stops it.
 | Channel Tools (EQ, Compressor, Delay, Reverb, Tuner) | trigger guard_track_columns (0018, 0034, 0040) |  |
 | Lock or unlock a player's channel effects | trigger guard_track_columns (0034) |  |
 | Record and edit clips | policies on clips, takes and storage: only the channel's own player (0009) | Nobody touches a player's recordings but that player. The Owner cannot record on or edit someone else's channel. |
+| Move a clip to another channel of the same player | function move_clip and the Owner's upload rule on take files (0048) | Both channels must belong to the same player: nobody moves a clip to another player's channel. This is the only thing the Owner may do to a player's recordings. |
 | Invite a Mixer or Listeners, add someone by email, choose the Mixer | functions set_mixer, add_project_member; policies on project_invites (0014, 0031) |  |
 | Write notes, tag people with @ | function can_write_notes and note policies (0032) | A Player needs a channel to write notes. Listeners only read the notes shared with them. |
 | Edit a note, mark it done or reopen it | trigger guard_project_notes (0033, 0041) |  |

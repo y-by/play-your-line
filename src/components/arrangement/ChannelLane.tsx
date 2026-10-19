@@ -27,7 +27,10 @@ export function ChannelLane({ track, group, number, style, onGripDown, pxPerSec,
   const extraSelected = useProjectStore((s) => s.extraSelected);
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const importAudioFile = useProjectStore((s) => s.importAudioFile);
-  const importing = useProjectStore((s) => s.importingTrackId === track.id);
+  const importAudioFiles = useProjectStore((s) => s.importAudioFiles);
+  const landingBusy = useProjectStore((s) => !!s.movingClipId);
+  const landing = useProjectStore((s) => (s.moveLanding?.trackId === track.id ? s.moveLanding : null));
+  const importing = useProjectStore((s) => s.importingTrackIds.includes(track.id));
   const joining = useProjectStore((s) => s.joiningTrackId === track.id);
   const laneScale = useProjectStore((s) => s.laneScales[track.id] ?? 1);
   const [dragOver, setDragOver] = useState(false);
@@ -69,17 +72,19 @@ export function ChannelLane({ track, group, number, style, onGripDown, pxPerSec,
   const onDrop = (e: React.DragEvent<HTMLDivElement>) => {
     setDragOver(false);
     if (!canEdit || !!recordingTrackId) return;
-    const file = e.dataTransfer.files[0];
-    if (!file) return;
+    const files = Array.from(e.dataTransfer.files);
+    if (!files.length) return;
     e.preventDefault();
-    void importAudioFile(track.id, file, dropAt(e));
+    // One file goes onto this channel; several (stems from a DAW) each get a new channel of their own.
+    if (files.length > 1) void importAudioFiles(files, dropAt(e));
+    else void importAudioFile(track.id, files[0], dropAt(e));
   };
 
   return (
     <div className={group ? "arr-row lane in-group" : "arr-row lane"} data-lane-id={track.id} style={{ "--track-color": track.color, "--lane-scale": laneScale, ...(group ? { "--group-color": group.color } : {}), ...style } as React.CSSProperties}>
       <ChannelInfo track={track} number={number} onGripDown={onGripDown} />
       <div
-        className={["arr-lane", recordingTrackId === track.id && "recording", dragOver && "drop-target"].filter(Boolean).join(" ")}
+        className={["arr-lane", recordingTrackId === track.id && "recording", (dragOver || landing) && "drop-target"].filter(Boolean).join(" ")}
         style={{ width: timelinePx }}
         onPointerDown={(e) => {
           // A mouse or pen drag on empty space selects clips; a touch, or someone who cannot edit here, just clears the selection.
@@ -147,6 +152,7 @@ export function ChannelLane({ track, group, number, style, onGripDown, pxPerSec,
             pxPerSec={pxPerSec}
           />
         ))}
+        {landing && <div className={landingBusy ? "clip-landing busy" : "clip-landing"} style={{ left: landing.startSec * pxPerSec, width: Math.max(3, landing.durationSec * pxPerSec), "--clip-color": track.color } as React.CSSProperties} />}
         <LiveRecordingClip track={track} pxPerSec={pxPerSec} />
         <ChordStrip track={track} pxPerSec={pxPerSec} />
       </div>

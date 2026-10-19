@@ -12,10 +12,13 @@ import { detectLoopBpm } from "../lib/tempoDetect";
 import { mergeContiguous, joinRange } from "../lib/joinClips";
 import { renderClipsToBuffer } from "../lib/joinRender";
 import { timeStretch } from "../lib/timeStretch";
+import { sliceFit } from "../lib/sliceFit";
 import { detectChords, type ChordSegment } from "../lib/chords";
 import { detectOnsets } from "../lib/onsets";
 import { quantiseClip, planMoves } from "../lib/quantise";
 import { stepSec, beatSec, type SnapResolution } from "../lib/grid";
+import { readBwfStartSec } from "../lib/bwf";
+import { planMoveSlice, canMoveBetween } from "../lib/moveClip";
 import { clipEnd as clipEndSec } from "../lib/clips";
 import { effectiveChannelMix } from "../lib/mix";
 import { subscribeToProject, type RealtimeStatus, type PresentUser } from "../lib/realtime";
@@ -116,6 +119,9 @@ interface ProjectState {
   /** Whether the hints that appear when pointing at a button are shown. Kept on this device. */
   tooltipsOn: boolean;
   setTooltipsOn: (on: boolean) => void;
+  /** Ask for the tempo of every audio file dropped (not only of loops that are found), so any file can be fitted to the song. Kept on this device. */
+  askFileTempo: boolean;
+  setAskFileTempo: (on: boolean) => void;
   countInBars: number;
   setCountInBars: (bars: number) => void;
   isPlaying: boolean;
@@ -145,6 +151,8 @@ interface ProjectState {
   probeSettingsInput: (force?: boolean) => Promise<void>;
   setInputDevice: (deviceId: string) => Promise<void>;
   setInputChannel: (channelIndex: number | null) => void;
+  /** Listen to the chosen input so its level shows (the "record another app" check); off stops it again when nothing else needs it. */
+  watchInputLevel: (on: boolean) => void;
   /** Which input of the Settings device one channel records from (kept on this device); channels without a pick use the Settings choice. */
   channelInputs: Record<string, ChannelInput>;
   setChannelInput: (trackId: string, input: ChannelInput | null) => Promise<void>;
@@ -389,15 +397,29 @@ interface ProjectState {
   seek: (sec: number) => void;
 
   /** Imports an audio file dropped on a channel as a new clip, placed at `atSec`. */
-  importAudioFile: (trackId: string, file: File, atSec: number) => Promise<void>;
+  importAudioFile: (trackId: string, file: File, atSec: number, opts?: { skipLoopCheck?: boolean }) => Promise<void>;
+  /** Several files dropped at once (stems from a DAW): one new channel per file, named after the file. */
+  importAudioFiles: (files: File[], atSec: number) => Promise<void>;
+  /** Where a dragged clip would land: the channel under it, the place on the timeline and its length (shown as an outline there), or null. */
+  moveLanding: { trackId: string; startSec: number; durationSec: number } | null;
+  setMoveLanding: (landing: { trackId: string; startSec: number; durationSec: number } | null) => void;
+  /** The clip whose move is being saved right now (its outline stays in the new channel until the clip appears there). */
+  movingClipId: string | null;
+  /** Whether this person may move clips off this channel (their own channels, or any player's channels for the Owner). */
+  canMoveClipsFrom: (track: Track) => boolean;
+  /** Whether a clip on `from` may go to `to`: the same player's channel. */
+  canMoveClipTo: (from: Track, to: Track) => boolean;
+  /** Moves a clip to another channel of the same player (the recording is cut into a new one there). */
+  moveClipToTrack: (clipId: string, fromTrackId: string, toTrackId: string, startSec: number) => Promise<void>;
   /** A channel currently importing a dropped file (for a small "Importing…" hint). */
-  importingTrackId: string | null;
+  /** Channels an import is working on right now (several at once when stems are dropped together). */
+  importingTrackIds: string[];
   /** The channel whose selected clips are being joined right now (a busy indicator shows on it and on the Join button). */
   joiningTrackId: string | null;
   /** A dropped loop whose tempo differs from the project's: waiting for the person to choose what to do. */
   loopTempoPrompt: LoopTempoPrompt | null;
   /** Fits the loop to the project's tempo ("match"), leaves it ("keep"), or (Owner, before any recording) sets the project to the loop's tempo ("project"). */
-  confirmLoopTempo: (choice: { mode: "match" | "keep" | "project"; bpm: number }) => Promise<void>;
+  confirmLoopTempo: (choice: { mode: "match" | "slice" | "keep" | "project"; bpm: number }) => Promise<void>;
   cancelLoopTempo: () => void;
 
   startRecording: (trackId: string) => Promise<void>;
@@ -417,6 +439,15 @@ const LATENCY_STORAGE_KEY = "pyl.latencyMs";
 const COUNT_IN_STORAGE_KEY = "pyl.countIn";
 const COUNT_IN_BARS_KEY = "pyl.countInBars";
 const TOOLTIPS_KEY = "pyl.tooltips";
+const ASK_FILE_TEMPO_KEY = "pyl.askFileTempo";
+
+// importAudioFile waits here while the tempo window is open, so files dropped together ask one after the other.
+let loopPromptResolve: (() => void) | null = null;
+const releaseLoopPrompt = () => {
+  const done = loopPromptResolve;
+  loopPromptResolve = null;
+  done?.();
+};
 /** A count-in is one bar of clicks: 4 for 4/4 (this is only the fallback). */
 const COUNT_IN_BEATS = 4;
 const SNAP_ENABLED_KEY = "pyl.snapEnabled";
@@ -478,7 +509,8 @@ export interface LoopTempoPrompt {
   buffer: AudioBuffer;
   /** The tempo found in the file name or the audio. */
   bpm: number;
-  source: "filename" | "audio";
+  /** "ask": nothing was found, the person is asked for the tempo (Settings > Ask for the tempo of every file). */
+  source: "filename" | "audio" | "ask";
   projectBpm: number;
 }
 
@@ -765,6 +797,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
   };
 
   /** Adds a decoded recording to a channel as a new clip: stored as a take (24-bit PCM WAV), loaded, placed, undoable. */
+  const markImporting = (id: string, on: boolean) =>
+    set((s) => ({ importingTrackIds: on ? [...s.importingTrackIds.filter((x) => x !== id), id] : s.importingTrackIds.filter((x) => x !== id) }));
+
   const placeImportedBuffer = async (trackId: string, fileName: string, buffer: AudioBuffer, atSec: number) => {
     const { project } = get();
     const uid = currentUserId();
@@ -1578,6 +1613,22 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         // storage unavailable — the setting just won't persist
       }
     },
+    askFileTempo: (() => {
+      try {
+        return localStorage.getItem(ASK_FILE_TEMPO_KEY) === "on";
+      } catch {
+        return false;
+      }
+    })(),
+    setAskFileTempo: (on) => {
+      set({ askFileTempo: on });
+      try {
+        if (on) localStorage.setItem(ASK_FILE_TEMPO_KEY, "on");
+        else localStorage.removeItem(ASK_FILE_TEMPO_KEY);
+      } catch {
+        // storage unavailable — the setting just won't persist
+      }
+    },
     tooltipsOn: readStoredTooltips(),
     setTooltipsOn: (on) => {
       set({ tooltipsOn: on });
@@ -1668,6 +1719,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       } catch (err) {
         console.error("Could not start input monitoring:", err);
       }
+    },
+
+    watchInputLevel: (on) => {
+      if (on) {
+        if (get().recordingTrackId) return;
+        startInputMeter().catch((err) => console.error("Could not start input monitoring:", err));
+      } else stopInputMeterIfIdle();
     },
 
     setInputChannel: (channelIndex) => {
@@ -2830,25 +2888,39 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     pause: () => engine.pause(),
     seek: (sec) => engine.seek(sec),
 
-    importingTrackId: null,
+    importingTrackIds: [],
     joiningTrackId: null,
     loopTempoPrompt: null,
-    cancelLoopTempo: () => set({ loopTempoPrompt: null }),
+    cancelLoopTempo: () => {
+      set({ loopTempoPrompt: null });
+      releaseLoopPrompt();
+    },
     confirmLoopTempo: async ({ mode, bpm }) => {
       const prompt = get().loopTempoPrompt;
       const project = get().project;
       if (!prompt || !project) return;
-      set({ loopTempoPrompt: null, importingTrackId: prompt.trackId, editError: null });
+      set({ loopTempoPrompt: null, editError: null });
+      markImporting(prompt.trackId, true);
       try {
         let buffer = prompt.buffer;
         const loopBpm = Math.min(300, Math.max(40, bpm));
         if (mode === "project") {
           await get().setTempo(loopBpm);
-        } else if (mode === "match") {
+        } else if (mode === "match" || mode === "slice") {
           // Let the "Importing…" hint show before the number crunching starts.
           await new Promise((r) => setTimeout(r, 30));
           const channels = Array.from({ length: buffer.numberOfChannels }, (_, c) => buffer.getChannelData(c));
-          const stretched = timeStretch(channels, buffer.sampleRate, loopBpm / project.bpm);
+          const ratio = loopBpm / project.bpm;
+          let stretched: Float32Array[] | null = null;
+          if (mode === "slice") {
+            // Cut at the hits and move each to its place at the new tempo: the hits keep their exact sound.
+            const mono = new Float32Array(buffer.length);
+            for (const ch of channels) for (let i = 0; i < mono.length; i++) mono[i] += ch[i] / channels.length;
+            const hits = detectOnsets(mono, buffer.sampleRate, 0, buffer.duration, { sensitivity: 0.5 });
+            if (hits.length >= 2) stretched = sliceFit(channels, buffer.sampleRate, ratio, hits);
+            else set({ recordingNotice: `No separate hits were found in "${prompt.fileName}", so it was stretched instead.` });
+          }
+          stretched ??= timeStretch(channels, buffer.sampleRate, ratio);
           const out = new AudioBuffer({ length: stretched[0].length, sampleRate: buffer.sampleRate, numberOfChannels: stretched.length });
           stretched.forEach((data, c) => out.copyToChannel(new Float32Array(data), c));
           buffer = out;
@@ -2858,22 +2930,36 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         console.error("Failed to fit the loop:", err);
         set({ editError: `Couldn't add "${prompt.fileName}"${errorDetail(err)}` });
       } finally {
-        set({ importingTrackId: null });
+        markImporting(prompt.trackId, false);
+        releaseLoopPrompt();
       }
     },
-    importAudioFile: async (trackId, file, atSec) => {
+    importAudioFile: async (trackId, file, atSec, opts) => {
       const { project } = get();
       const track = project?.tracks.find((t) => t.id === trackId);
       const uid = currentUserId();
-      if (!project || !track || !uid || !get().canEditClips(track)) return;
+      if (!project || !track || !uid) return;
+      if (!get().canEditClips(track)) {
+        set({ editError: `You can only add audio to a channel that is yours, so "${file.name}" was not added.` });
+        return;
+      }
       if (!file.type.startsWith("audio/") && !/\.(wav|mp3|m4a|aac|ogg|flac|aiff?)$/i.test(file.name)) {
         set({ editError: `"${file.name}" doesn't look like an audio file.` });
         return;
       }
 
-      set({ importingTrackId: trackId, editError: null });
+      set({ editError: null });
+      markImporting(trackId, true);
       try {
         const arrayBuffer = await file.arrayBuffer();
+        // A stem exported from a DAW can carry the place it starts at (WAV time stamp): use it instead of the drop point.
+        // Read before decoding, which takes the buffer away.
+        const stamped = readBwfStartSec(arrayBuffer);
+        if (stamped !== null && stamped > 0.01) {
+          atSec = stamped;
+          const bar = Math.floor(stamped / (beatSec(project.bpm) * project.beatsPerBar)) + 1;
+          set({ recordingNotice: `"${file.name}" carries its own start time, so it was placed at bar ${bar}.` });
+        }
         // A short-lived context just for decoding — the engine's own context
         // stays untouched until the take is ready to place.
         const decodeCtx = new AudioContext();
@@ -2884,9 +2970,15 @@ export const useProjectStore = create<ProjectState>((set, get) => {
           await decodeCtx.close();
         }
         // A loop at another tempo than the song: ask what to do with it (a recording that is not a loop is left alone).
-        const found = detectLoopBpm(buffer.getChannelData(0), buffer.sampleRate, file.name);
-        if (found && Math.abs(found.bpm - project.bpm) / project.bpm > 0.01) {
-          set({ loopTempoPrompt: { trackId, fileName: file.name, atSec, buffer, bpm: found.bpm, source: found.source, projectBpm: project.bpm } });
+        // With "ask for the tempo of every file" on, files that are not found to be loops are asked about too (and dropped stems are checked).
+        const askAlways = get().askFileTempo;
+        const found = opts?.skipLoopCheck && !askAlways ? null : detectLoopBpm(buffer.getChannelData(0), buffer.sampleRate, file.name);
+        if ((found && Math.abs(found.bpm - project.bpm) / project.bpm > 0.01) || (!found && askAlways)) {
+          set({ loopTempoPrompt: { trackId, fileName: file.name, atSec, buffer, bpm: found?.bpm ?? project.bpm, source: found?.source ?? "ask", projectBpm: project.bpm } });
+          // Wait for the answer, so several files dropped together are asked one after the other.
+          await new Promise<void>((resolve) => {
+            loopPromptResolve = resolve;
+          });
           return;
         }
         await placeImportedBuffer(trackId, file.name, buffer, atSec);
@@ -2894,8 +2986,119 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         console.error("Failed to import audio file:", err);
         set({ editError: `Couldn't add "${file.name}"${errorDetail(err)}` });
       } finally {
-        set({ importingTrackId: null });
+        markImporting(trackId, false);
       }
+    },
+
+    moveLanding: null,
+    movingClipId: null,
+    setMoveLanding: (landing) => {
+      const cur = get().moveLanding;
+      if (cur === landing || (cur && landing && cur.trackId === landing.trackId && cur.startSec === landing.startSec && cur.durationSec === landing.durationSec)) return;
+      set({ moveLanding: landing });
+    },
+    canMoveClipsFrom: (track) => {
+      const { project } = get();
+      const uid = currentUserId();
+      if (!project || !uid || !track.assignedUserId || get().recordingTrackId) return false;
+      if (!(track.assignedUserId === uid || get().isInitiator())) return false;
+      return project.tracks.some((t) => canMoveBetween({ userId: uid, isOwner: get().isInitiator() }, track, t));
+    },
+    canMoveClipTo: (from, to) => canMoveBetween({ userId: currentUserId(), isOwner: get().isInitiator() }, from, to),
+    moveClipToTrack: async (clipId, fromTrackId, toTrackId, startSec) => {
+      const { project } = get();
+      const uid = currentUserId();
+      const from = project?.tracks.find((t) => t.id === fromTrackId);
+      const to = project?.tracks.find((t) => t.id === toTrackId);
+      const clip = from?.clips.find((c) => c.id === clipId);
+      if (!project || !uid || !from || !to || !clip) return;
+      if (!get().canMoveClipTo(from, to)) {
+        set({ editError: "A clip can only move to another channel of the same player." });
+        return;
+      }
+      if (get().recordingTrackId || get().joiningTrackId) return;
+      markImporting(to.id, true);
+      // The outline marking the drop stays in the new channel, and the old clip stays dimmed, until the clip is there.
+      set({ editError: null, moveLanding: { trackId: to.id, startSec: Math.max(0, startSec), durationSec: clip.durationSec }, movingClipId: clip.id });
+      try {
+        const source = engine.getTakeBuffer(clip.takeId);
+        const take = project.takes[clip.takeId];
+        if (!source || !take) throw new Error("the recording is not loaded yet");
+        // Copy the piece (with a handle each side) sample for sample, so nothing about the sound changes.
+        const plan = planMoveSlice(clip, source.duration);
+        const first = Math.floor(plan.sliceStartSec * source.sampleRate);
+        const last = Math.min(source.length, Math.ceil(plan.sliceEndSec * source.sampleRate));
+        const piece = new AudioBuffer({ length: Math.max(1, last - first), numberOfChannels: source.numberOfChannels, sampleRate: source.sampleRate });
+        for (let ch = 0; ch < source.numberOfChannels; ch++) piece.copyToChannel(source.getChannelData(ch).subarray(first, last), ch);
+        const { blob } = encodeTake(piece);
+        if (blob.size > MAX_IMPORT_BYTES) throw new Error("that clip is too long to move (about " + Math.round(blob.size / 1024 / 1024) + " MB)");
+        const newSourceStart = clip.sourceStartSec - first / source.sampleRate;
+        const newClip: Clip = { ...clip, id: crypto.randomUUID(), startSec: Math.max(0, startSec), sourceStartSec: newSourceStart, z: nextZ(to.clips) };
+        const newTake = await api.moveClipToChannel({ projectId: project.id, clipId: clip.id, toTrackId: to.id, blob, takeDurationSec: piece.duration, newClip, userId: uid });
+        await engine.loadTake(newTake.id, blob);
+        const current = get().project;
+        if (!current) return;
+        // The clip now plays the NEW recording (its start inside it was measured in the new one): a clip left pointing at the
+        // old recording would sound shifted and be refused by the database the next time it is saved (a cut, a trim).
+        const placed: Clip = { ...newClip, takeId: newTake.id };
+        const tracks = current.tracks.map((t) => {
+          if (t.id === from.id) return { ...t, clips: t.clips.filter((c) => c.id !== clip.id) };
+          if (t.id === to.id) return { ...t, clips: [...t.clips.filter((c) => c.id !== placed.id), placed] };
+          return t;
+        });
+        set({ project: { ...current, tracks, takes: { ...current.takes, [newTake.id]: newTake } }, takesVersion: get().takesVersion + 1, selectedClip: { trackId: to.id, clipId: placed.id }, extraSelected: [] });
+        applyTrackClips(from.id, tracks.find((t) => t.id === from.id)?.clips ?? []);
+        applyTrackClips(to.id, tracks.find((t) => t.id === to.id)?.clips ?? []);
+        // Undo history is kept per channel, so an older step could bring the moved clip back on the old channel: start it afresh.
+        // (To take a move back, drag the clip back.)
+        undoStack.length = 0;
+        redoStack = [];
+        updateHistoryCounts();
+      } catch (err) {
+        console.error("Failed to move the clip:", err);
+        set({ editError: `Couldn't move that clip${errorDetail(err)}` });
+      } finally {
+        markImporting(to.id, false);
+        set({ moveLanding: null, movingClipId: null });
+      }
+    },
+
+    importAudioFiles: async (files, atSec) => {
+      if (!get().project || !get().isContributor()) return;
+      // First the channels, one after the other (each needs the one before it for its place in the list), so they all
+      // appear at once; then the files are read, converted and uploaded three at a time, which is what takes the time.
+      const jobs: { trackId: string; file: File }[] = [];
+      for (const file of files) {
+        const before = new Set(get().project?.tracks.map((t) => t.id));
+        const name = file.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim().slice(0, 40) || "Stem";
+        await get().addTrack(name);
+        const added = get().project?.tracks.find((t) => !before.has(t.id));
+        if (!added) break; // the channel could not be added; addTrack has said why
+        // The Owner's new channel belongs to nobody, and nobody edits a channel that is not theirs: make it the Owner's own first.
+        const uid = currentUserId();
+        if (!added.assignedUserId && uid) {
+          try {
+            await get().assignTrackToUser(added.id, uid);
+          } catch (err) {
+            console.error("Could not assign the new channel:", err);
+            set({ editError: `Couldn't set up a channel for "${file.name}"${errorDetail(err)}` });
+            break;
+          }
+        }
+        markImporting(added.id, true); // the channel shows its spinner while it waits its turn
+        jobs.push({ trackId: added.id, file });
+      }
+      let next = 0;
+      const worker = async () => {
+        while (next < jobs.length) {
+          const job = jobs[next++];
+          // Stems are not loops, so no tempo question; each one starts where the others do.
+          await get().importAudioFile(job.trackId, job.file, atSec, { skipLoopCheck: true });
+          markImporting(job.trackId, false); // also when the import stopped before it began
+        }
+      };
+      // One at a time when the tempo is asked for each file; otherwise three at a time.
+      await Promise.all(Array.from({ length: Math.min(get().askFileTempo ? 1 : 3, jobs.length) }, worker));
     },
 
     startRecording: async (trackId) => {

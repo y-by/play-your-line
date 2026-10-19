@@ -7,6 +7,8 @@ export interface HelpTopic {
   question: string;
   /** One string per paragraph. */
   answer: string[];
+  /** Pictures shown after a paragraph (index into `answer`); files live in public/help. Only the Help page shows them. */
+  figures?: { after: number; src: string; alt: string; caption: string }[];
 }
 
 export const HELP_GROUPS = ["Getting started", "Recording", "Editing clips", "Mixing and effects", "Notes", "Publishing and sharing", "If something goes wrong"] as const;
@@ -125,12 +127,42 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: "record-other-app",
+    group: "Recording",
+    question: "How do I record the sound of my DAW or a synth (another app) into a channel?",
+    answer: [
+      "A browser cannot load plugins, but it can record any sound your computer can play. The trick is a free virtual cable: your DAW (Logic, Ableton, Reaper, Cubase, GarageBand) plays into the cable, and Play Your Line records from the cable as if it were a microphone. Your MIDI keyboard and your plugins stay in the DAW.",
+      "Mac, one time: install BlackHole 2ch (free, existential.audio, or `brew install blackhole-2ch`). Open Audio MIDI Setup (Spotlight), press + at the bottom left and choose Create Multi-Output Device. Tick your headphones or speakers first, then tick BlackHole 2ch and switch Drift Correction on for BlackHole only. Give everything the same sample rate, for example 48 kHz.",
+      "Mac, every time: in your DAW, set the audio output to that Multi-Output Device (you hear the DAW and the cable gets it). In Play Your Line open Settings > Audio and set Input to BlackHole 2ch and Output to your headphones, not to the Multi-Output Device. Arm your channel and record: the DAW's sound is recorded as one channel.",
+      "Windows: install VB-Audio Virtual Cable (free). In your DAW choose CABLE Input as the output. In Play Your Line set Input to CABLE Output and Output to your headphones. To hear the DAW as well: Sound settings > More sound settings > Recording > double-click CABLE Output > Listen > tick Listen to this device and pick your headphones.",
+      "Good to know. Today a channel records one input (mono): a stereo sound from the DAW is recorded as one channel (stereo takes are planned). Never send Play Your Line's own output into the cable, or the song records itself. If the recording sits a little early or late, set the delay in Settings > Audio > Timing, or nudge the clip. Use Chrome or Edge. If you see a message about two sample rates, set the DAW, the cable and your output to the same rate (48 kHz is a good choice).",
+      "Already have a part from the DAW? Skip all of this: export it as a WAV from the start of the song and drop it on your channel (several files at once make one channel each).",
+    ],
+    figures: [
+      { after: 0, src: "/help/record-route.svg", alt: "Your DAW plays into a virtual cable and also to your headphones; Play Your Line records from the cable", caption: "The route: the DAW's sound goes through the cable into Play Your Line." },
+      { after: 1, src: "/help/shot-mac-multi-output.png", alt: "Audio MIDI Setup: a Multi-Output Device with the interface and BlackHole 2ch ticked, Drift Correction on for BlackHole", caption: "Mac: Audio MIDI Setup, the Multi-Output Device (your device names will differ)." },
+      { after: 2, src: "/help/record-settings.svg", alt: "Play Your Line settings: input BlackHole, output headphones", caption: "In Play Your Line: input = the cable, output = your headphones." },
+      { after: 3, src: "/help/record-windows.svg", alt: "Windows: VB-Cable and Listen to this device", caption: "Windows: VB-Cable and Listen to this device (illustration)." },
+    ],
+  },
+  {
+    id: "move-clip",
+    group: "Recording",
+    question: "How do I move a clip to another channel?",
+    answer: [
+      "Drag the clip up or down onto another channel of yours: the channel it can go to lights up, and the clip moves when you let go. A channel is yours when you are its player. You can have several (for example one for takes and one for doubles).",
+      "The Owner can do the same for any player: drag a clip onto another channel of that same player. Nobody can move a clip to another player's channel, and the Owner cannot change a player's clip in any other way.",
+      "The moved clip keeps its fades and its place in the song, and a short extra bit of the recording on each side so you can still trim it a little. Moving is not an undo step: drag the clip back to take it back.",
+    ],
+  },
+  {
     id: "loop-tempo",
     group: "Recording",
     question: "What happens when I drop a loop that is at another tempo?",
     answer: [
       "Drop an audio file on your channel. If it looks like a loop (its name says something like 96bpm, or its beats are clear) and its tempo is not the song's, a small window asks what to do: Fit it to the song's tempo, keep it as it is, or (the Owner, before anything is recorded) set the song to the loop's tempo.",
-      "Fitting changes the speed without changing the pitch and adds the result as a new recording on your channel. The window shows the tempo it found; if it is wrong, type the right one before you fit. A recording that is not a loop (a voice, a pad, a whole song) is added as it is, with no question.",
+      "Fit to the song stretches the sound without changing the pitch, which suits sustained sounds but softens drum hits. For drums choose Fit, keep the hits' sound: the loop is cut at each hit and the hits are moved into place, so every hit keeps its exact sound (long rings are cut short when the tempo goes faster). Either way the result is added as a new recording on your channel. The window shows the tempo it found; if it is wrong, type the right one before you fit. A recording that is not a loop (a voice, a pad, a whole song) is added as it is, with no question.",
+      "If you know a file's tempo (drums or stems from another project, for example), switch on Settings > General > Ask for the tempo of every file. Then every file you drop asks for its tempo, you type it (or read it from the file name), and Fit to the song makes it line up. Files dropped together are asked one after the other.",
     ],
   },
   {
@@ -178,7 +210,7 @@ export const HELP_TOPICS: HelpTopic[] = [
     question: "What is the master channel?",
     answer: [
       "The master is the last stop for every channel before the speakers. It sits under the last channel: a fader, a left and right level meter with a clip light, a mute button and a Tools box with EQ, Compressor and a safety Limiter.",
-      "The master fader only turns the whole song down. Master mute silences the whole song for you only: it is never saved, nobody else hears the difference and an export is never silent because of it.",
+      "The master fader goes from silence up to +6 dB, like a channel fader (the limiter is the safety net when you push it). Master mute silences the whole song for you only: it is never saved, nobody else hears the difference and an export is never silent because of it.",
       "Only the Owner and the Mixer see and change the master. It is saved with the project and everyone hears it, players included, so what you hear is what the exported mix sounds like. The master effects start switched off, so older songs sound exactly as before.",
       "The Limiter catches the loudest peaks near -1 dB so the song and the MP3 do not distort. It is a safety net, not a mastering tool. Compare plays the song without the master effects, only for you.",
       "If the master changes after a song was published, the refresh button on its card turns amber: update the listening copy so Published Projects plays the new sound.",
