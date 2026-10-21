@@ -660,7 +660,7 @@ function AdminContent() {
             </div>
           ))}
           {healthChecks(health)
-            .filter((c) => c.level !== "ok")
+            .filter((c) => c.level === "bad")
             .map((c) => (
               <p key={c.id} className={`adm-health-note ${c.level}`}>
                 <strong>{c.label}:</strong> {c.note}
