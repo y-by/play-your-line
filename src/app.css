@@ -7803,3 +7803,85 @@ select.sig-select option {
 .add-track-form .input-select {
   flex: 0 0 auto;
 }
+
+/* Notes as a popup (like Channels and People) that can be dragged down to dock at the bottom */
+.notes-popup {
+  position: fixed;
+  right: auto;
+  width: min(460px, calc(100vw - 24px));
+  /* Stays open while you work in the song: above the song, below the other popups' catcher */
+  z-index: 58;
+}
+
+.notes-popup.dragging {
+  transition: none;
+  opacity: 0.92;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+}
+
+.notes-popup-head {
+  cursor: grab;
+  gap: 8px;
+  touch-action: none;
+}
+
+.notes-popup.dragging .notes-popup-head {
+  cursor: grabbing;
+}
+
+.notes-popup-head h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.notes-popup .notes-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: none;
+  overflow: visible;
+  padding: 4px 0 0;
+}
+
+.notes-toolbar {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.notes-flags-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+}
+
+.notes-dock-zone {
+  position: fixed;
+  left: 12px;
+  right: 12px;
+  bottom: 10px;
+  z-index: 300;
+  height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 2px dashed var(--color-label-tertiary);
+  border-radius: 16px;
+  color: var(--color-label-secondary);
+  font-size: 14px;
+  font-weight: 600;
+  background: color-mix(in srgb, var(--color-bg-elevated) 80%, transparent);
+  backdrop-filter: blur(8px);
+  pointer-events: none;
+}
+
+.notes-dock-zone.on {
+  border-color: var(--color-accent);
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 16%, var(--color-bg-elevated));
+}

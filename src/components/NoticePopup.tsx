@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
-import { fetchUnseenNotices, markNoticeSeen, type UserNotice } from "../lib/projectApi";
+import { clearProjectNews, fetchUnseenNotices, markNoticeSeen, type UserNotice } from "../lib/projectApi";
+import { useProjectStore } from "../store/useProjectStore";
 import { noticeCopy } from "../lib/noticeText";
 
 const CHECK_MS = 60_000;
@@ -15,13 +16,25 @@ export function NoticePopup() {
   const userId = useAuthStore((s) => s.userId);
   const navigate = useNavigate();
   const [queue, setQueue] = useState<UserNotice[]>([]);
+  // The project being looked at: being in it already means the notes and changes are in front of the person.
+  const openProjectId = useProjectStore((s) => s.project?.id ?? null);
 
   const check = useCallback(() => {
     if (!userId || document.visibilityState !== "visible") return;
     fetchUnseenNotices(userId)
-      .then(setQueue)
+      .then((list) => {
+        // A note that tags you in the project you have open already shows as the message at the top of the song: no popup for it.
+        const inOpenProject = (n: UserNotice) => n.kind === "note_tagged" && !!openProjectId && n.projectId === openProjectId;
+        for (const n of list.filter(inOpenProject)) markNoticeSeen(n.id).catch(() => {});
+        setQueue(list.filter((n) => !inOpenProject(n)));
+      })
       .catch((err) => console.error("Failed to check for notices:", err));
-  }, [userId]);
+  }, [userId, openProjectId]);
+
+  // Opening a project (from its card or a link) clears its news on the Projects page.
+  useEffect(() => {
+    if (userId && openProjectId) clearProjectNews(userId, openProjectId).catch(() => {});
+  }, [userId, openProjectId]);
 
   useEffect(() => {
     if (!userId) return;

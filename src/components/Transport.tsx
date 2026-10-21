@@ -8,6 +8,7 @@ import { TempoControl } from "./TempoControl";
 import { EditToolbar } from "./arrangement/EditToolbar";
 import { AddChannelPanel } from "./AddChannelPanel";
 import { PeoplePanel } from "./PeoplePanel";
+import { NotesPopup } from "./notes/NotesPopup";
 import { QuantisePanel } from "./QuantisePanel";
 import { ProjectName, ProjectStatus } from "./ProjectBar";
 import { CloseIcon, NoteIcon } from "./icons/Icons";
@@ -26,6 +27,9 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
   const openSettings = useProjectStore((s) => s.openSettings);
   const notesVisible = useProjectStore((s) => s.notesVisible);
   const setNotesVisible = useProjectStore((s) => s.setNotesVisible);
+  const notesDock = useProjectStore((s) => s.notesDock);
+  const notesOpen = useProjectStore((s) => s.notesTrayOpen);
+  const setNotesTrayOpen = useProjectStore((s) => s.setNotesTrayOpen);
   const openNotes = useProjectStore((s) => s.notes.filter((n) => !n.done).length);
   const uid = useAuthStore((s) => s.userId);
   const forMe = useProjectStore((s) => (uid ? s.notes.filter((n) => !n.done && n.mentions.includes(uid)).length : 0));
@@ -47,10 +51,23 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
       )}
       {hasNotesToShow && (
         <button
-          className={notesVisible ? "lb on notes-btn" : "lb notes-btn"}
-          onClick={() => setNotesVisible(!notesVisible)}
-          title={notesVisible ? "Notes are showing — click to hide the notes tray, cards and flags" : "Notes are hidden — click to show them"}
-          aria-pressed={notesVisible}
+          className={(notesDock === "popup" ? notesOpen : notesVisible) ? "lb on notes-btn" : "lb notes-btn"}
+          onClick={() => {
+            if (notesDock === "bottom") return setNotesVisible(!notesVisible);
+            // A popup: the button opens and closes it, and opening it also shows the notes' flags and cards.
+            if (!notesOpen) setNotesVisible(true);
+            setNotesTrayOpen(!notesOpen);
+          }}
+          title={
+            notesDock === "popup"
+              ? notesOpen
+                ? "Close the notes"
+                : "Open the notes"
+              : notesVisible
+                ? "Notes are showing — click to hide the notes tray, cards and flags"
+                : "Notes are hidden — click to show them"
+          }
+          aria-pressed={notesDock === "popup" ? notesOpen : notesVisible}
           aria-label="Notes"
         >
           <NoteIcon size={16} />
@@ -257,6 +274,8 @@ export function Transport({ panel, onPanel }: Props) {
           {hasChannels && <EditToolbar panel={panel} onPanel={onPanel} />}
         </div>
       </div>
+
+      <NotesPopup />
 
       {panel && (
         <>

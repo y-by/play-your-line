@@ -60,9 +60,9 @@ there. Each clip can **fade in and out**: hover or select a clip and drag the sm
 its top-left or top-right (double-click it to remove the fade). A shaded corner and a line show the
 ramp; the fades are heard in playback and in Export Mix, and can be undone.
 
-**Notes.** Switch notes on with the notes button (they are off by default). Write a note, tag
+**Notes.** Press the notes button: the notes open as a window under it, like Channels and People, and stay open while you work. Drag the window's title bar to the bottom of the screen (or press Dock) to dock it there as a tray; the tray has a Pop out button to bring it back (kept on this device). Write a note, tag
 a person with `@`, pin it to any bar, attach it to a channel (it then wears that channel's colour)
-and see it three ways: a tray along the bottom, floating cards (editable, resizable by dragging the bottom-right corner, laid out three to a row on the right or stacked, with Open all / Close all), and flags on the bar ruler. Marking
+and see it three ways: the window or tray, floating cards (editable, resizable by dragging the bottom-right corner, laid out three to a row on the right or stacked, with Open all / Close all), and flags on the bar ruler. Marking
 a note done archives it; only its author or the Owner can mark it done, edit it or reopen it. A person you tag gets an orange `@` badge on the notes button and a message.
 
 **Help.** The menu has a Help page with short answers, grouped by what you are doing. Small "?" buttons in the Tools box, the Tuner and the Notes tray open the short answer for that tool, with a link to the full page. (The answers live in `src/lib/helpContent.ts`.)
@@ -118,6 +118,18 @@ last project, storage) and every project. The system owner can open any project 
 person (with a reason) or sign them out everywhere, and unpublish, hide, delete or reassign any project. Set up by
 migration `0046`; the admin is the account named at its end. A **Health** row (migration `0049`) shows the real storage and database use against the Free plan limits, leftover files, unused takes and missing files; `docs/health-check.sql` is the same check to paste into Supabase.
 
+**Leaving a project, and handing it over.** Anyone can leave a project (Settings > General > Leave this project, or the small cross on a project card for people who are not the Owner), migration `0050`. A channel with no recordings becomes free; a channel with recordings stays in the project, passed to the Owner, so nobody's music is deleted. The Owner cannot just leave: they pick who takes over (someone already in the project) and hand it over first; a lone Owner deletes the project instead.
+
+**News for you (notices).** Things done *to* you leave a notice (migrations `0051`, `0052`, `0056`, table `user_notices`): handed a project, someone left your project, added to a project, put on or taken off a channel, made or un-made Mixer, tagged in a note. It shows as a card in the middle of the screen (checked at sign-in, when you come back to the tab and once a minute; one at a time; "Open project" or "Got it"), and as a news line on that project's card on the Projects page (highlighted orange with a "New" tag, migration `0053`; it goes away when you open the project). Nothing is sent for changes you make to yourself, and a note that tags you in the project you already have open shows only as the message at the top of the song. The same table is where push or email notices can later read from.
+
+**Project cards.** Each card shows your role (Owner, Mixer, Player, Listener) at its top left and the news about you. Drag a card onto another card in the same row (Drafts or Published) to arrange your own list (migration `0054`, per person; mouse only for now).
+
+**Stereo channels.** Add Channel has a Mono / Stereo choice (migration `0055`). A stereo channel records two inputs (left and right: inputs 1 and 2 of an interface, or a pair you pick with the Input button on the channel; a one-input device fills both sides) into one stereo take, tagged ST. It cannot be switched once the channel has recordings. The waveform is the outline of both sides.
+
+**Group waveform.** A group channel draws its own waveform like the master does, in the group's colour: only its channels, as they leave the group (before the master).
+
+**Remembered input and output.** The input and output you choose are remembered on this computer (found again by name if the browser changes an id) and put back when a project opens or a device is plugged in. With nothing chosen, the system default is used as the real device it names, not the browser's "default" entry, which can stay stuck on the wrong device.
+
 **Shortcuts.** `Space` play / stop · `Enter` back to start · `R` record · `S` split ·
 `⌘/Ctrl+D` duplicate · `Delete` remove clip · `⌘/Ctrl+Z` undo (`⇧` redo) · arrows nudge · `Esc` deselect.
 
@@ -164,7 +176,7 @@ The design notes, diagrams, audio timing rules, design system and code layout ar
 
 ## Known limits
 
-- Time signatures from 2/4 to 7/4 (quarter-note beats); 6/8 and other eighth-note meters are not supported. Recording is mono per channel. Choosing a separate output device works only in
+- Time signatures from 2/4 to 7/4 (quarter-note beats); 6/8 and other eighth-note meters are not supported. A stereo channel records two inputs; a mono one records one. Choosing a separate output device works only in
   Chrome / Edge. Editing is desktop-first.
 - No designed error pages yet, and not installable as an app yet.
 

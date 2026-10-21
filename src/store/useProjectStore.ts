@@ -349,8 +349,12 @@ interface ProjectState {
   /** Master switch for the notes tray, the floating cards and the flags on the timeline. Saved on this device. */
   notesVisible: boolean;
   setNotesVisible: (visible: boolean) => void;
+  /** Whether the notes panel is open (as the popup or in the bottom tray, whichever they sit in). */
   notesTrayOpen: boolean;
   setNotesTrayOpen: (open: boolean) => void;
+  /** Where the notes sit: a popup under the toolbar (the default), or docked at the bottom of the screen. Kept on this device. */
+  notesDock: "popup" | "bottom";
+  setNotesDock: (dock: "popup" | "bottom") => void;
   /** A note that just tagged me (shown as a message at the top until dismissed or opened). */
   noteAlert: { id: string; from: string } | null;
   dismissNoteAlert: () => void;
@@ -501,6 +505,7 @@ function readStoredSnapEnabled(): boolean {
 
 
 const NOTES_VISIBLE_KEY = "pyl.notesVisible";
+const NOTES_DOCK_KEY = "pyl.notesDock";
 /** Where a floating note card sits, and the size the owner dragged it to (unset = default size). */
 export type NoteCardState = { x: number; y: number; min: boolean; w?: number; h?: number; free?: boolean };
 
@@ -580,6 +585,14 @@ function readNotesVisible(): boolean {
     return localStorage.getItem(NOTES_VISIBLE_KEY) === "on"; // off by default
   } catch {
     return false;
+  }
+}
+
+function readNotesDock(): "popup" | "bottom" {
+  try {
+    return localStorage.getItem(NOTES_DOCK_KEY) === "bottom" ? "bottom" : "popup";
+  } catch {
+    return "popup";
   }
 }
 
@@ -2775,6 +2788,17 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
     notesTrayOpen: false,
     setNotesTrayOpen: (open) => set({ notesTrayOpen: open }),
+    notesDock: readNotesDock(),
+    setNotesDock: (dock) => {
+      // Docking or popping out keeps the notes open, where they now are.
+      set({ notesDock: dock, notesTrayOpen: true });
+      try {
+        if (dock === "bottom") localStorage.setItem(NOTES_DOCK_KEY, "bottom");
+        else localStorage.removeItem(NOTES_DOCK_KEY);
+      } catch {
+        // storage unavailable — the setting just won't persist
+      }
+    },
     noteAlert: null,
     dismissNoteAlert: () => set({ noteAlert: null }),
     openNoteAlert: () => {
