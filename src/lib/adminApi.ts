@@ -117,6 +117,32 @@ export interface ActivityEvent {
 
 const num = (v: unknown) => (typeof v === "number" ? v : Number(v ?? 0)) || 0;
 
+/** The real numbers behind the Free plan limits (migration 0049). */
+export interface AdminHealth {
+  storageBytes: number;
+  dbBytes: number;
+  leftoverFiles: number;
+  leftoverBytes: number;
+  unusedTakes: number;
+  unusedBytes: number;
+  missingFiles: number;
+}
+
+export async function fetchAdminHealth(): Promise<AdminHealth> {
+  const { data, error } = await client().rpc("admin_health");
+  if (error) throw error;
+  const r = (Array.isArray(data) ? data[0] : data) ?? {};
+  return {
+    storageBytes: num(r.storage_bytes),
+    dbBytes: num(r.db_bytes),
+    leftoverFiles: num(r.leftover_files),
+    leftoverBytes: num(r.leftover_bytes),
+    unusedTakes: num(r.unused_takes),
+    unusedBytes: num(r.unused_bytes),
+    missingFiles: num(r.missing_files),
+  };
+}
+
 export async function fetchAdminUsers(): Promise<AdminUser[]> {
   const { data, error } = await client().rpc("admin_users");
   if (error) throw error;

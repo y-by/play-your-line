@@ -10,6 +10,7 @@ import {
   fetchAdminUsers,
   fetchAdminProjects,
   fetchAdminActivity,
+  fetchAdminHealth,
   setUserBlocked,
   forceSignOut,
   setProjectHidden,
@@ -20,12 +21,13 @@ import {
   adminDeleteProject,
   type AdminUser,
   type AdminProject,
+  type AdminHealth,
   type AdminMember,
   type ActivityEvent,
   type ActivityKind,
   type MemberRole,
 } from "../lib/adminApi";
-import { formatBytes, timeAgo, isOnline } from "../lib/adminFormat";
+import { formatBytes, timeAgo, isOnline, healthChecks, STORAGE_LIMIT_BYTES } from "../lib/adminFormat";
 import { ChevronDownIcon, EyeIcon, RefreshIcon, SearchIcon } from "../components/icons/Icons";
 
 type Tab = "people" | "projects" | "activity";
@@ -35,8 +37,6 @@ const TABS: { id: Tab; label: string }[] = [
   { id: "activity", label: "Activity" },
 ];
 
-/** Supabase Free plan file storage. */
-const STORAGE_LIMIT_BYTES = 1024 ** 3;
 const REFRESH_MS = 30_000;
 
 const ROLE_LABEL: Record<MemberRole, string> = { owner: "Owner", mixer: "Mixer", player: "Player", listener: "Listener" };
@@ -479,6 +479,8 @@ function AdminContent() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [projects, setProjects] = useState<AdminProject[] | null>(null);
   const [events, setEvents] = useState<ActivityEvent[] | null>(null);
+  const [health, setHealth] = useState<AdminHealth | null>(null);
+  const [healthMissing, setHealthMissing] = useState(false);
   const [covers, setCovers] = useState<Record<string, string>>({});
   const [openId, setOpenId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -494,6 +496,13 @@ function AdminContent() {
       setUsers(u);
       setProjects(p);
       setEvents(a);
+      // The Health row needs migration 0049; without it the rest of the dashboard still works.
+      fetchAdminHealth()
+        .then((h) => {
+          setHealth(h);
+          setHealthMissing(false);
+        })
+        .catch(() => setHealthMissing(true));
       setError(null);
       setRefreshedAt(Date.now());
       setNow(Date.now());
@@ -639,6 +648,26 @@ function AdminContent() {
           sub={`${Math.round((totalBytes / STORAGE_LIMIT_BYTES) * 100)}% of 1 GB (Free plan)`}
         />
       </section>
+
+      {healthMissing && !health && <p className="adm-health-hint">The Health row needs migration 0049 (run it in the Supabase SQL editor).</p>}
+      {health && (
+        <section className="adm-health" aria-label="Health">
+          {healthChecks(health).map((c) => (
+            <div key={c.id} className={`adm-health-item ${c.level}`} title={c.note}>
+              <span className="adm-health-dot" aria-hidden />
+              <span className="adm-health-label">{c.label}</span>
+              <span className="adm-health-value">{c.value}</span>
+            </div>
+          ))}
+          {healthChecks(health)
+            .filter((c) => c.level !== "ok")
+            .map((c) => (
+              <p key={c.id} className={`adm-health-note ${c.level}`}>
+                <strong>{c.label}:</strong> {c.note}
+              </p>
+            ))}
+        </section>
+      )}
 
       <div className="adm-bar">
         <div className="adm-seg" role="tablist">

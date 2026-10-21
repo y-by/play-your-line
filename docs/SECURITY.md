@@ -52,6 +52,7 @@ The trigger functions `guard_track_columns`, `guard_project_notes`, `guard_tempo
 | `my_account_status`, `touch_last_seen` | Signed-in users | Only the caller's own row. |
 | `admin_users`, `admin_projects`, `admin_activity`, `admin_set_blocked`, `admin_force_signout`, `admin_set_hidden`, `admin_unpublish`, `admin_set_mixer`, `admin_remove_member`, `admin_transfer_ownership`, `require_admin` | Signed-in users | Each calls `require_admin` first: only a person with `user_status.is_admin` gets past it. |
 | `admin_storage_by_project` | Nobody directly | Used inside `admin_projects`. |
+| `admin_health` (0049) | Signed-in users | Calls `require_admin` first. Read-only: file sizes, database size, leftover files, unused takes, missing files. |
 
 Rules added: the admin READS every row of every project table and every file in `takes`, `covers` and `previews`, and may
 delete files there and any project row (for "Delete project"). The admin does NOT get write access to channels, clips,

@@ -20,7 +20,7 @@ import { looksAnchored } from "../src/lib/anchor.ts";
 import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
-import { formatBytes, timeAgo, isOnline, ONLINE_WINDOW_MS } from "../src/lib/adminFormat.ts";
+import { formatBytes, timeAgo, isOnline, ONLINE_WINDOW_MS, healthChecks, STORAGE_LIMIT_BYTES } from "../src/lib/adminFormat.ts";
 import { readFileSync, readdirSync } from "node:fs";
 import { mergeContiguous, joinRange } from "../src/lib/joinClips.ts";
 import { readBwfStartSec } from "../src/lib/bwf.ts";
@@ -719,6 +719,16 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("time ago: now, minutes, hours, days", timeAgo(ago(20_000), now) === "now" && timeAgo(ago(4 * 60_000), now) === "4 min ago" && timeAgo(ago(3 * 3600_000), now) === "3 h ago" && timeAgo(ago(2 * 86400_000), now) === "2 d ago");
   check("time ago: never seen", timeAgo(null, now) === "never");
   check("online only within the heartbeat window", isOnline(ago(60_000), now) && !isOnline(ago(ONLINE_WINDOW_MS + 1), now) && !isOnline(null, now));
+
+  const MB = 1024 * 1024;
+  const calm = { storageBytes: 500 * MB, dbBytes: 14 * MB, leftoverFiles: 0, leftoverBytes: 0, unusedTakes: 0, unusedBytes: 0, missingFiles: 0 };
+  const level = (h: typeof calm, id: string) => healthChecks(h).find((c) => c.id === id)?.level;
+  check("health: a calm system is all ok", healthChecks(calm).every((c) => c.level === "ok") && healthChecks(calm).length === 5);
+  check("health: storage amber at 85%, red at 100%", level({ ...calm, storageBytes: 0.85 * STORAGE_LIMIT_BYTES }, "storage") === "warn" && level({ ...calm, storageBytes: 0.84 * STORAGE_LIMIT_BYTES }, "storage") === "ok" && level({ ...calm, storageBytes: STORAGE_LIMIT_BYTES }, "storage") === "bad");
+  check("health: the real figure from 2026-10-21 (1786.8 MB) is red", level({ ...calm, storageBytes: 1786.8 * MB }, "storage") === "bad");
+  check("health: database amber at 80%, red at 100%", level({ ...calm, dbBytes: 400 * MB }, "database") === "warn" && level({ ...calm, dbBytes: 500 * MB }, "database") === "bad");
+  check("health: leftover files warn, missing files are red", level({ ...calm, leftoverFiles: 3, leftoverBytes: 9 * MB }, "leftover") === "warn" && level({ ...calm, missingFiles: 1 }, "missing") === "bad");
+  check("health: unused takes warn only from 100 MB up", level({ ...calm, unusedTakes: 5, unusedBytes: 99 * MB }, "unused") === "ok" && level({ ...calm, unusedTakes: 25, unusedBytes: 103 * MB }, "unused") === "warn");
 }
 
 // ---- WAV time stamp (lib/bwf.ts)

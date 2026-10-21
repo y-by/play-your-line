@@ -115,7 +115,7 @@ final mix. Solo is never saved.
 **Owner dashboard (system owner only).** `Admin` in the side menu (phone: You → Admin) lists every person (online,
 last project, storage) and every project. The system owner can open any project as a read-only observer, block a
 person (with a reason) or sign them out everywhere, and unpublish, hide, delete or reassign any project. Set up by
-migration `0046`; the admin is the account named at its end.
+migration `0046`; the admin is the account named at its end. A **Health** row (migration `0049`) shows the real storage and database use against the Free plan limits, leftover files, unused takes and missing files; `docs/health-check.sql` is the same check to paste into Supabase.
 
 **Shortcuts.** `Space` play / stop · `Enter` back to start · `R` record · `S` split ·
 `⌘/Ctrl+D` duplicate · `Delete` remove clip · `⌘/Ctrl+Z` undo (`⇧` redo) · arrows nudge · `Esc` deselect.

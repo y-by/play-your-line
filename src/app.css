@@ -6600,6 +6600,71 @@ select.sig-select option {
   text-overflow: ellipsis;
 }
 
+.adm-health {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+}
+
+.adm-health-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-card);
+  font-size: 13px;
+}
+
+.adm-health-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--color-green);
+}
+
+.adm-health-item.warn .adm-health-dot {
+  background: #ff9f0a;
+}
+
+.adm-health-item.bad .adm-health-dot {
+  background: var(--color-red);
+}
+
+.adm-health-label {
+  font-weight: 600;
+}
+
+.adm-health-value {
+  color: var(--color-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.adm-health-note {
+  flex-basis: 100%;
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-label-secondary);
+}
+
+.adm-health-note.warn strong {
+  color: #ff9f0a;
+}
+
+.adm-health-note.bad strong {
+  color: var(--color-red);
+}
+
+.adm-health-hint {
+  margin: 0;
+  font-size: 12px;
+  color: var(--color-label-secondary);
+}
+
 .adm-meter {
   display: block;
   height: 4px;
