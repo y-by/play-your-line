@@ -42,6 +42,13 @@ export function noticeCopy(n: UserNotice, who: string, title: string, channel: s
         text: `${who} made you the Mixer of ${title}. You set the final mix: levels, mute, pan and effects of every channel. You can't touch anyone's recordings.`,
         short: `${who} made you the Mixer`,
       };
+    case "note_tagged":
+      return {
+        icon: "💬",
+        heading: `${who} tagged you in a note`,
+        text: `${who} tagged you in a note in ${title}${n.item ? `: "${n.item}"` : "."}`,
+        short: `${who} tagged you in a note`,
+      };
     case "mixer_removed":
       return { icon: "🎛️", heading: "You're no longer the Mixer", text: `${who} chose someone else as the Mixer of ${title}. You're still in the project.`, short: "You're no longer the Mixer" };
   }

@@ -992,13 +992,13 @@ export async function saveGroupMix(groupId: string, patch: Partial<Pick<Group, "
 
 export interface UserNotice {
   id: string;
-  kind: "project_handed_over" | "member_left" | "added_to_project" | "channel_assigned" | "channel_removed" | "mixer_assigned" | "mixer_removed";
+  kind: "project_handed_over" | "member_left" | "added_to_project" | "channel_assigned" | "channel_removed" | "mixer_assigned" | "mixer_removed" | "note_tagged";
   projectId: string | null;
   projectTitle: string | null;
   fromName: string | null;
   /** member_left: how many channels with recordings came to the Owner. */
   detail: number;
-  /** The channel's name, for the channel notices. */
+  /** The channel's name for the channel notices; the start of the note for a tag. */
   item: string | null;
 }
 
@@ -1053,7 +1053,7 @@ export async function fetchMyRoleLabels(userId: string, projects: Project[]): Pr
   return out;
 }
 
-/** The latest news per project for the cards: notices of the last two weeks, and whether the person has not opened the project since. */
+/** The latest news per project for the cards: notices of the last two weeks that the person has not yet cleared by opening the project. */
 export interface ProjectNews {
   notice: UserNotice;
   unread: boolean;
@@ -1067,6 +1067,7 @@ export async function fetchProjectNews(userId: string): Promise<Record<string, P
     .select("id, kind, project_id, project_title, from_name, detail, item, card_cleared_at")
     .eq("user_id", userId)
     .gte("created_at", since)
+    .is("card_cleared_at", null)
     .not("project_id", "is", null)
     .order("created_at", { ascending: true });
   if (error) throw error;
