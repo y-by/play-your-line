@@ -1270,6 +1270,30 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     } catch (err) {
       console.warn("Storage cleanup skipped:", err);
     }
+    await cleanUpLeftoverFilesAsOwner(project);
+  };
+
+  // The Owner also clears files that have NO take at all (a failed save, a deleted channel) in channels they cannot
+  // edit: another player's channel, or one that no longer exists. Only files without a take row are removed, so a
+  // recording a player could still bring back with Undo is never touched. Files younger than 10 minutes are skipped.
+  const cleanUpLeftoverFilesAsOwner = async (project: Project) => {
+    if (!get().isInitiator()) return;
+    try {
+      const takePaths = await api.listTakePaths(project.id);
+      const folders = await api.listChannelFolders(project.id);
+      for (const folder of folders) {
+        const track = project.tracks.find((t) => t.id === folder);
+        if (track && get().canEditClips(track)) continue; // the pass above handles the Owner's own channels
+        const files = await api.listTrackFiles(project.id, folder);
+        const withTake = new Set(files.filter((f) => takePaths.has(`${project.id}/${folder}/${f.name}`)).map((f) => f.name));
+        const leftovers = findOrphanFiles(files, withTake, Date.now());
+        if (leftovers.length === 0) continue;
+        await api.removeTakeFiles(project.id, folder, leftovers.map((f) => f.name));
+        console.info(`Owner cleanup: removed ${leftovers.length} leftover file(s) from ${track ? `"${track.instrument}"` : "a removed channel"}.`);
+      }
+    } catch (err) {
+      console.warn("Owner storage cleanup skipped:", err);
+    }
   };
 
 

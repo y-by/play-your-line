@@ -526,7 +526,11 @@ export async function createTake(params: {
     duration_sec: params.durationSec,
     created_by: params.userId,
   });
-  if (error) throw error;
+  if (error) {
+    // The audio is not used by anything: remove it now so it does not sit in storage (best effort).
+    await client.storage.from("takes").remove([storagePath]).catch(() => undefined);
+    throw error;
+  }
 
   return {
     id: takeId,
@@ -708,6 +712,30 @@ export async function listTrackFiles(projectId: string, trackId: string): Promis
   return (data ?? [])
     .filter((f) => f.name.endsWith(".wav"))
     .map((f) => ({ name: f.name, createdAtMs: f.created_at ? new Date(f.created_at).getTime() : Date.now() }));
+}
+
+/** Names of every channel folder in the project's storage folder, including channels that no longer exist. */
+export async function listChannelFolders(projectId: string): Promise<string[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.storage.from("takes").list(projectId, { limit: 1000 });
+  if (error) throw error;
+  return (data ?? []).filter((e) => !e.id).map((e) => e.name);
+}
+
+/** The storage paths of every take row of the project (any channel). A file whose path is not here has no take. */
+export async function listTakePaths(projectId: string): Promise<Set<string>> {
+  const client = requireSupabase();
+  const paths = new Set<string>();
+  for (let from = 0; ; from += 1000) {
+    const { data, error } = await client
+      .from("takes")
+      .select("storage_path")
+      .like("storage_path", `${projectId}/%`)
+      .range(from, from + 999);
+    if (error) throw error;
+    for (const row of data ?? []) paths.add(row.storage_path as string);
+    if ((data ?? []).length < 1000) return paths;
+  }
 }
 
 export async function removeTakeFiles(projectId: string, trackId: string, fileNames: string[]): Promise<void> {
