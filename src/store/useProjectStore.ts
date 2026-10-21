@@ -183,7 +183,8 @@ interface ProjectState {
   openSettings: () => void;
   closeSettings: () => void;
 
-  addTrack: (instrument: string) => Promise<void>;
+  /** `stereo`: the channel records two inputs as one stereo take (chosen when it is added). */
+  addTrack: (instrument: string, stereo?: boolean) => Promise<void>;
   /** Initiator only, and only while the channel is empty. */
   removeTrack: (trackId: string) => Promise<void>;
   // Channel order on screen. The initiator's arrangement is the song's default
@@ -1881,7 +1882,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     openSettings: () => set({ settingsOpen: true }),
     closeSettings: () => set({ settingsOpen: false }),
 
-    addTrack: async (instrument) => {
+    addTrack: async (instrument, stereo = false) => {
       const { project } = get();
       // Anyone already in the song may add a new channel; only the Owner invites a
       // player to it (see createInvite).
@@ -1893,7 +1894,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const mine = !get().isInitiator() && uid ? uid : null;
       const myName = useAuthStore.getState().profile?.displayName ?? null;
       try {
-        const track = await api.addTrack(project.id, instrument, color, position, mine, myName);
+        const track = await api.addTrack(project.id, instrument, color, position, mine, myName, stereo);
         // Read the song again: a live change may have arrived while we were saving.
         const latest = get().project;
         if (!latest || latest.tracks.some((t) => t.id === track.id)) return;
@@ -3168,7 +3169,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         await engine.resume();
         const input = inputForTrack(trackId);
         const resolvedDeviceId = await resolveInputDeviceId(input.deviceId);
-        await engine.startRecording(resolvedDeviceId, input.channelIndex);
+        await engine.startRecording(resolvedDeviceId, input.channelIndex, track.stereo);
         const mismatch = engine.getCaptureRateMismatch();
         if (mismatch) {
           const khz = (hz: number) => `${Math.round(hz / 100) / 10} kHz`;

@@ -39,6 +39,8 @@ export interface Track {
   fxLocked: boolean;
   /** The group this channel plays through (null = straight to the master). */
   groupId: string | null;
+  /** A stereo channel records two inputs (left and right) as one stereo take. Chosen when the channel is added. */
+  stereo: boolean;
 }
 
 /** A group channel (bus): holds several channels and has its own fader, mute, pan and effects. Saved on the project. */

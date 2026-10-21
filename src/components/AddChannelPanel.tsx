@@ -30,6 +30,7 @@ export function AddChannelPanel() {
   const [groupName, setGroupName] = useState("");
   const isParticipant = useProjectStore((s) => s.isContributor());
   const [instrument, setInstrument] = useState("");
+  const [stereo, setStereo] = useState(false);
   const [inviteLinks, setInviteLinks] = useState<Record<string, string>>({});
   const [copiedTrackId, setCopiedTrackId] = useState<string | null>(null);
   const [assigningTrackId, setAssigningTrackId] = useState<string | null>(null);
@@ -43,7 +44,7 @@ export function AddChannelPanel() {
 
   const submit = async () => {
     if (!instrument.trim()) return;
-    await addTrack(instrument.trim());
+    await addTrack(instrument.trim(), stereo);
     setInstrument("");
   };
 
@@ -148,6 +149,16 @@ export function AddChannelPanel() {
           onChange={(e) => setInstrument(e.target.value)}
           onKeyDown={(e) => e.key === "Enter" && submit()}
         />
+        <select
+          className="input-select"
+          value={stereo ? "stereo" : "mono"}
+          onChange={(e) => setStereo(e.target.value === "stereo")}
+          aria-label="Mono or stereo"
+          title="Mono records one input. Stereo records two inputs (left and right) as one stereo take, for a keyboard, a stereo mic pair or a stereo synth. It can't be changed once the channel has recordings."
+        >
+          <option value="mono">Mono</option>
+          <option value="stereo">Stereo</option>
+        </select>
         <button onClick={submit}>
           <PlusCircleIcon />
           Add Channel

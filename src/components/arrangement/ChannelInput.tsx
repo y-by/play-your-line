@@ -62,12 +62,25 @@ export function ChannelInput({ track }: { track: Track }) {
                 disabled={busy}
                 onChange={(e) => void setChannelInput(track.id, { deviceId, channelIndex: e.target.value === "mix" ? null : Number(e.target.value) })}
               >
-                <option value="mix">All inputs</option>
-                {Array.from({ length: count }, (_, i) => (
-                  <option key={i} value={i}>
-                    Input {i + 1}
-                  </option>
-                ))}
+                {track.stereo ? (
+                  <>
+                    <option value="mix">Inputs 1 + 2 (left, right)</option>
+                    {Array.from({ length: Math.max(0, count - 1) }, (_, i) => (
+                      <option key={i} value={i}>
+                        Inputs {i + 1} + {i + 2}
+                      </option>
+                    ))}
+                  </>
+                ) : (
+                  <>
+                    <option value="mix">All inputs</option>
+                    {Array.from({ length: count }, (_, i) => (
+                      <option key={i} value={i}>
+                        Input {i + 1}
+                      </option>
+                    ))}
+                  </>
+                )}
               </select>
             </label>
           </div>,

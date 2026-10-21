@@ -34,6 +34,7 @@ import { timeStretch } from "../src/lib/timeStretch.ts";
 import { RULES, can, readmeTable, rulesMarkdown, README_MARK_START, README_MARK_END } from "../src/lib/rules.ts";
 import { resolveMix, buildRows, visibleLanes, groupedOrder, parseGroupFx, groupFromRow, groupFxToJson } from "../src/lib/groups.ts";
 import type { Group } from "../src/types/project.ts";
+import { computeTakePeaks } from "../src/lib/waveform.ts";
 import { chooseDevice, defaultDeviceFor } from "../src/lib/inputDevices.ts";
 import { DEFAULT_MASTER, parseMasterFx, masterFromRow, masterFxToJson, clampMasterVolume, isNeutralMaster, masterFxOnly } from "../src/lib/master.ts";
 
@@ -808,6 +809,16 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("the computer is told from the browser's name", osOf("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)") === "mac" && osOf("Mozilla/5.0 (Windows NT 10.0; Win64; x64)") === "win" && osOf("Mozilla/5.0 (X11; Linux x86_64)") === "other");
   check("the replacement output is the first one that does not feed the cable", safeOutput(outputs)?.label === "Headphones" && safeOutput([outputs[1]]) === null);
   check("a browser that cannot show the output gets a plain note", cableSteps({ ...base, inputId: "b", outputRoutable: false })[2].state === "info");
+}
+
+// ---- Stereo takes ----
+{
+  const fake = (left: number[], right: number[] | null) =>
+    ({ sampleRate: 4, duration: left.length / 4, numberOfChannels: right ? 2 : 1, getChannelData: (c: number) => Float32Array.from(c === 0 ? left : (right as number[])) }) as unknown as AudioBuffer;
+  const mono = computeTakePeaks(fake([0.2, -0.2, 0.2, -0.2], null), 0, 1, 1);
+  const st = computeTakePeaks(fake([0.2, -0.2, 0.2, -0.2], [0.9, -0.1, 0.1, -0.7]), 0, 1, 1);
+  check("a mono take is drawn from its one side", Math.abs(mono[1] - 0.2) < 1e-6 && Math.abs(mono[0] + 0.2) < 1e-6);
+  check("a stereo take is drawn as the outline of both sides", Math.abs(st[1] - 0.9) < 1e-6 && Math.abs(st[0] + 0.7) < 1e-6);
 }
 
 // ---- Remembered audio devices ----

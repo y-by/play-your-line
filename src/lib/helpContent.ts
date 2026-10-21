@@ -55,6 +55,16 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: "stereo-channel",
+    group: "Recording",
+    question: "What is a stereo channel, and how do I record one?",
+    answer: [
+      "When you add a channel you can choose Mono or Stereo. A mono channel records one input. A stereo channel records two inputs, left and right, as one stereo take: good for a keyboard or synth with a left and a right output, or a pair of microphones.",
+      "With an audio interface, a stereo channel records inputs 1 and 2 as left and right. To use other inputs (say 3 and 4), press Input on the channel and pick the pair. With a device that has only one input, both sides get the same signal.",
+      "A stereo channel shows a small ST next to its name. You can't switch a channel between mono and stereo once it has recordings, so choose when you add it. Stereo audio files you drop onto any channel are kept in stereo.",
+    ],
+  },
+  {
     id: "record",
     group: "Recording",
     question: "How do I record?",

@@ -4,7 +4,7 @@ import type { Clip, Take, Track } from "../../types/project";
 import { useProjectStore } from "../../store/useProjectStore";
 import { clipEnd, moveClip, setClipFade, trimClipEnd, trimClipStart } from "../../lib/clips";
 import { snapTo, stepSec } from "../../lib/grid";
-import { computePeaks } from "../../lib/waveform";
+import { computeTakePeaks } from "../../lib/waveform";
 import { autoBoost, wavePath } from "../../lib/wavePath";
 
 type DragMode = "move" | "trim-start" | "trim-end" | "fade-in" | "fade-out";
@@ -53,7 +53,7 @@ export function ClipView({ track, clip, take, canEdit, selected, pxPerSec }: Pro
   const wave = useMemo(() => {
     const buffer = engine.getTakeBuffer(clip.takeId);
     if (!buffer) return "";
-    const peaks = computePeaks(buffer.getChannelData(0), buffer.sampleRate, shown.sourceStartSec, shown.durationSec, columns);
+    const peaks = computeTakePeaks(buffer, shown.sourceStartSec, shown.durationSec, columns);
     // Quiet takes are drawn a little larger (up to 4x) so they stay readable.
     return wavePath(peaks, columns, WAVE_HEIGHT, autoBoost(peaks));
     // takesVersion says when a recording has arrived (the buffer is not React state).

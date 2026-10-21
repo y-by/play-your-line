@@ -7785,3 +7785,21 @@ select.sig-select option {
   outline: 2px dashed var(--color-accent);
   outline-offset: 3px;
 }
+
+/* Stereo channels: the small tag after the name */
+.stereo-tag {
+  margin-left: 5px;
+  padding: 0 4px;
+  border-radius: 4px;
+  font-size: 9px;
+  font-style: normal;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--color-accent);
+  background: color-mix(in srgb, var(--color-accent) 18%, transparent);
+  vertical-align: 1px;
+}
+
+.add-track-form .input-select {
+  flex: 0 0 auto;
+}

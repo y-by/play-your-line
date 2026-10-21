@@ -143,6 +143,8 @@ export class AudioEngine {
   private recorderMonoGain: GainNode | null = null;
   private recorderSource: MediaStreamAudioSourceNode | null = null;
   private recorderChunks: Float32Array[] = [];
+  /** The right side of a stereo take (null for a mono one). */
+  private recorderChunksRight: Float32Array[] | null = null;
   // Peaks of the take so far, for the live waveform: one min/max pair per LIVE_BIN samples.
   private livePeaks = new Float32Array(8192);
   private livePeakCount = 0; // number of floats used in livePeaks
@@ -904,8 +906,9 @@ export class AudioEngine {
     return this.captureRateMismatch;
   }
 
-  async startRecording(deviceId?: string | null, channelIndex?: number | null): Promise<void> {
-    const audioConstraints = buildAudioConstraints(deviceId, channelIndex);
+  async startRecording(deviceId?: string | null, channelIndex?: number | null, stereo = false): Promise<void> {
+    // A stereo take uses the input `channelIndex` and the one after it (the first two when none is picked).
+    const audioConstraints = buildAudioConstraints(deviceId, stereo ? (channelIndex ?? 0) + 1 : channelIndex);
     const rawStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
     this.rawInputStream = rawStream;
     // Chrome reports the input device's own latency (seconds) when it knows it.
@@ -919,7 +922,19 @@ export class AudioEngine {
     this.recorderSource = source;
     let recordSource: AudioNode = source;
 
-    if (channelIndex != null) {
+    if (stereo) {
+      // Left = input `first`, right = the next one; a one-input device fills both sides with its signal.
+      const availableChannels = rawStream.getAudioTracks()[0]?.getSettings().channelCount ?? 1;
+      const first = Math.min(channelIndex ?? 0, Math.max(0, availableChannels - 1));
+      const second = first + 1 < availableChannels ? first + 1 : first;
+      const splitter = this.ctx.createChannelSplitter(Math.max(2, availableChannels));
+      const merger = this.ctx.createChannelMerger(2);
+      source.connect(splitter);
+      splitter.connect(merger, first, 0);
+      splitter.connect(merger, second, 1);
+      this.channelGraph = { source, splitter, merger };
+      recordSource = merger;
+    } else if (channelIndex != null) {
       const availableChannels = rawStream.getAudioTracks()[0]?.getSettings().channelCount ?? 1;
       if (channelIndex < availableChannels) {
         const splitter = this.ctx.createChannelSplitter(Math.max(2, availableChannels));
@@ -935,7 +950,7 @@ export class AudioEngine {
     // stereo default mic doesn't silently drop one channel — the worklet
     // itself always deals with a single channel.
     const monoGain = this.ctx.createGain();
-    monoGain.channelCount = 1;
+    monoGain.channelCount = stereo ? 2 : 1;
     monoGain.channelCountMode = "explicit";
     monoGain.channelInterpretation = "speakers";
     recordSource.connect(monoGain);
@@ -944,9 +959,12 @@ export class AudioEngine {
     const workletNode = new AudioWorkletNode(this.ctx, "pcm-recorder-processor", {
       numberOfInputs: 1,
       numberOfOutputs: 1,
-      channelCount: 1,
+      channelCount: stereo ? 2 : 1,
+      channelCountMode: "explicit",
+      processorOptions: { stereo },
     });
     this.recorderChunks = [];
+    this.recorderChunksRight = stereo ? [] : null;
     this.resetLivePeaks();
     this.recorderSampleRate = this.ctx.sampleRate;
     this.recorderStartFrame = null;
@@ -956,6 +974,14 @@ export class AudioEngine {
       if (data instanceof Float32Array) {
         this.recorderChunks.push(data);
         this.addLivePeaks(data);
+      } else if (data?.type === "stereo") {
+        const { left, right } = data as unknown as { left: Float32Array; right: Float32Array };
+        this.recorderChunks.push(left);
+        this.recorderChunksRight?.push(right);
+        // The live picture and meter follow whichever side is louder.
+        const louder = new Float32Array(left.length);
+        for (let i = 0; i < left.length; i++) louder[i] = Math.abs(left[i]) >= Math.abs(right[i]) ? left[i] : right[i];
+        this.addLivePeaks(louder);
       } else if (data?.type === "start") {
         this.recorderStartFrame = data.frame ?? null;
       } else if (data?.type === "flush-done") {
@@ -1089,7 +1115,7 @@ export class AudioEngine {
   }
 
   /** Stops the capture and returns the raw samples plus the audio-clock frame of sample 0. */
-  private async stopCapture(): Promise<{ samples: Float32Array; sampleRate: number; startFrame: number | null } | null> {
+  private async stopCapture(): Promise<{ samples: Float32Array; right: Float32Array | null; sampleRate: number; startFrame: number | null } | null> {
     const node = this.recorderNode;
     if (!node) {
       this.releaseCaptureGraph();
@@ -1113,7 +1139,17 @@ export class AudioEngine {
       offset += chunk.length;
     }
     this.recorderChunks = [];
-    return { samples, sampleRate: this.recorderSampleRate || this.ctx.sampleRate, startFrame: this.recorderStartFrame };
+    let right: Float32Array | null = null;
+    if (this.recorderChunksRight) {
+      right = new Float32Array(totalLength);
+      let at = 0;
+      for (const chunk of this.recorderChunksRight) {
+        right.set(chunk, at);
+        at += chunk.length;
+      }
+      this.recorderChunksRight = null;
+    }
+    return { samples, right, sampleRate: this.recorderSampleRate || this.ctx.sampleRate, startFrame: this.recorderStartFrame };
   }
 
   /**
@@ -1132,6 +1168,7 @@ export class AudioEngine {
     }
 
     let samples = capture.samples;
+    let right = capture.right;
     let timelineOffsetSec = 0;
     const latencySec = this.effectiveLatencySec();
 
@@ -1145,7 +1182,10 @@ export class AudioEngine {
         earliestPositionSec: anchor.position,
       });
       timelineOffsetSec = placement.offsetSec;
-      if (placement.dropSamples > 0) samples = samples.subarray(Math.min(placement.dropSamples, samples.length));
+      if (placement.dropSamples > 0) {
+        samples = samples.subarray(Math.min(placement.dropSamples, samples.length));
+        if (right) right = right.subarray(Math.min(placement.dropSamples, right.length));
+      }
     }
 
     // Stopped during the count-in (or immediately after): nothing worth keeping.
@@ -1153,8 +1193,9 @@ export class AudioEngine {
       return { blob: new Blob(), timelineOffsetSec: 0, latencySec, durationSec: 0 };
     }
 
-    const buffer = this.ctx.createBuffer(1, Math.max(1, samples.length), capture.sampleRate);
+    const buffer = this.ctx.createBuffer(right ? 2 : 1, Math.max(1, samples.length), capture.sampleRate);
     buffer.copyToChannel(samples as Float32Array<ArrayBuffer>, 0);
+    if (right) buffer.copyToChannel(right.subarray(0, samples.length) as Float32Array<ArrayBuffer>, 1);
     return { blob: encodeTake(buffer).blob, timelineOffsetSec, latencySec, durationSec: buffer.duration };
   }
 

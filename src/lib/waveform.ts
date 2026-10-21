@@ -38,6 +38,22 @@ export function computePeaks(
   return out;
 }
 
+/**
+ * Peaks for drawing a clip from any recording: a stereo take is drawn as the outline of both sides (the lowest and
+ * highest sample of left and right in each slice), a mono one as before.
+ */
+export function computeTakePeaks(buffer: AudioBuffer, startSec: number, durationSec: number, columns: number): Float32Array {
+  const left = computePeaks(buffer.getChannelData(0), buffer.sampleRate, startSec, durationSec, columns);
+  if (buffer.numberOfChannels < 2) return left;
+  const right = computePeaks(buffer.getChannelData(1), buffer.sampleRate, startSec, durationSec, columns);
+  const out = new Float32Array(columns * 2);
+  for (let c = 0; c < columns; c++) {
+    out[c * 2] = Math.min(left[c * 2], right[c * 2]);
+    out[c * 2 + 1] = Math.max(left[c * 2 + 1], right[c * 2 + 1]);
+  }
+  return out;
+}
+
 /** Peaks across both channels of a rendered mix: for each of `columns` slices, [min, max] over left and right. */
 export function computeStereoPeaks(buffer: AudioBuffer, columns: number): Float32Array {
   const left = computePeaks(buffer.getChannelData(0), buffer.sampleRate, 0, buffer.duration, columns);

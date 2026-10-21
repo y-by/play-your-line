@@ -83,6 +83,7 @@ export function mapTrack(row: any, clips: Clip[], assignedPlayerName: string | n
     fx: fxFromRow(row),
     fxLocked: !!row.fx_locked,
     groupId: row.group_id ?? null,
+    stereo: !!row.stereo,
   };
 }
 
@@ -431,13 +432,14 @@ export async function addTrack(
   color: string,
   position: number,
   assignedUserId: string | null = null,
-  assignedName: string | null = null
+  assignedName: string | null = null,
+  stereo = false
 ): Promise<Track> {
   const client = requireSupabase();
   const id = crypto.randomUUID();
   const { error: insertError } = await client
     .from("tracks")
-    .insert({ id, project_id: projectId, instrument, color, position, ...(assignedUserId ? { assigned_user_id: assignedUserId } : {}) });
+    .insert({ id, project_id: projectId, instrument, color, position, ...(stereo ? { stereo: true } : {}), ...(assignedUserId ? { assigned_user_id: assignedUserId } : {}) });
   if (insertError) throw insertError;
   const { data, error } = await client.from("tracks").select("*").eq("id", id).single();
   if (error) throw error;

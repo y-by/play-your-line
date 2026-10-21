@@ -125,6 +125,11 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
               title={canRename ? "Rename this channel" : undefined}
             >
               {track.instrument}
+              {track.stereo && (
+                <em className="stereo-tag" title="Stereo channel: records two inputs, left and right">
+                  ST
+                </em>
+              )}
             </button>
           )}
           <span className={status ? "info-name status" : track.assignedUserId ? "info-name" : "info-name unclaimed"}>
