@@ -29,10 +29,16 @@ export async function renderMix(project: Project): Promise<AudioBuffer> {
  * The same render from recordings that are already decoded, at any sample rate. The master channel's waveform uses
  * it at a low rate (cheap, enough to draw); the export uses it at 48 kHz.
  */
-export async function renderMixFromBuffers(project: Project, buffers: Map<string, AudioBuffer>, sampleRate: number): Promise<AudioBuffer> {
+export async function renderMixFromBuffers(
+  project: Project,
+  buffers: Map<string, AudioBuffer>,
+  sampleRate: number,
+  /** Only this group's channels, heard as they leave the group (fader, effects, pan) and not through the master: the group channel's own waveform. */
+  onlyGroupId?: string
+): Promise<AudioBuffer> {
   const groupOf = (trackGroupId: string | null) => (trackGroupId ? project.groups.find((g) => g.id === trackGroupId) : undefined);
   // A muted channel, or a channel in a muted group, is left out (solo is never part of the final mix).
-  const audibleTracks = project.tracks.filter((t) => !t.muted && t.clips.length > 0 && !groupOf(t.groupId)?.muted);
+  const audibleTracks = project.tracks.filter((t) => !t.muted && t.clips.length > 0 && !groupOf(t.groupId)?.muted && (!onlyGroupId || t.groupId === onlyGroupId));
   const segmentsByTrack = audibleTracks.map((t) => ({ track: t, segments: audibleSegments(t.clips) }));
 
   let totalDuration = 0.01;
@@ -51,8 +57,8 @@ export async function renderMixFromBuffers(project: Project, buffers: Map<string
 
   const impulse = createReverbImpulse(offlineCtx);
   // Every channel goes through the master, as in live playback. (The master's mute is personal, so an export is never silent.)
-  const master = createMasterChain(offlineCtx);
-  master.apply(project.master);
+  const master = onlyGroupId ? passThrough(offlineCtx) : createMasterChain(offlineCtx);
+  if (!onlyGroupId) (master as ReturnType<typeof createMasterChain>).apply(project.master);
   master.output.connect(offlineCtx.destination);
   // Each used group: its fader -> effects -> pan -> master, like a channel.
   const groupInput = new Map<string, GainNode>();
@@ -86,6 +92,12 @@ export async function renderMixFromBuffers(project: Project, buffers: Map<string
   }
 
   return offlineCtx.startRendering();
+}
+
+/** Stands in for the master when a group's own sound is rendered: the signal goes straight out. */
+function passThrough(ctx: BaseAudioContext): { input: AudioNode; output: AudioNode } {
+  const gain = ctx.createGain();
+  return { input: gain, output: gain };
 }
 
 /** The final mix as a lossless WAV file. */

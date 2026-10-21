@@ -6267,6 +6267,11 @@ select.sig-select option {
 
 /* ---- Group channels ---- */
 
+/* A group's own wave (only its channels, before the master), in the group's colour. */
+.group-lane .master-wave {
+  color: color-mix(in srgb, var(--group-color) 80%, transparent);
+}
+
 .group-row {
   min-height: 62px;
 }

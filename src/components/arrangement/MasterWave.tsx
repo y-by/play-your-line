@@ -13,8 +13,9 @@ const DRAW_RATE = 8000;
  * The waveform of the whole song as it comes out of the master: every channel with its fader, pan and effects,
  * through the master's fader, EQ, compressor and limiter. It is drawn again a moment after anything that changes
  * the sound (a clip, a fader, an effect), never while recording. Parts that reach the top are drawn in red.
+ * With a `groupId` it is that group channel's wave instead: only its channels, as they leave the group, before the master.
  */
-export function MasterWave({ pxPerSec }: { pxPerSec: number }) {
+export function MasterWave({ pxPerSec, groupId }: { pxPerSec: number; groupId?: string }) {
   const project = useProjectStore((s) => s.project);
   const engine = useProjectStore((s) => s.engine);
   const takesVersion = useProjectStore((s) => s.takesVersion);
@@ -41,7 +42,7 @@ export function MasterWave({ pxPerSec }: { pxPerSec: number }) {
         return;
       }
       try {
-        const rendered = await renderMixFromBuffers(project, buffers, DRAW_RATE);
+        const rendered = await renderMixFromBuffers(project, buffers, DRAW_RATE, groupId);
         if (alive) setMix(rendered);
       } catch (err) {
         console.warn("Couldn't draw the master waveform:", err);
@@ -53,7 +54,7 @@ export function MasterWave({ pxPerSec }: { pxPerSec: number }) {
     };
     // The signature says when the sound changed; the project object itself changes on every small edit.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signature, recording, engine]);
+  }, [signature, recording, engine, groupId]);
 
   const widthPx = mix ? Math.max(1, mix.duration * pxPerSec) : 0;
   const density = Math.min(2, typeof window === "undefined" ? 1 : window.devicePixelRatio || 1);
@@ -72,7 +73,7 @@ export function MasterWave({ pxPerSec }: { pxPerSec: number }) {
 
   if (!shapes) return null;
   return (
-    <svg className="master-wave" style={{ width: widthPx }} viewBox={`0 0 ${columns} ${HEIGHT}`} preserveAspectRatio="none" role="img" aria-label="Waveform of the whole song through the master">
+    <svg className="master-wave" style={{ width: widthPx }} viewBox={`0 0 ${columns} ${HEIGHT}`} preserveAspectRatio="none" role="img" aria-label={groupId ? "Waveform of this group" : "Waveform of the whole song through the master"}>
       <path d={shapes.wave} fill="currentColor" fillOpacity="0.85" />
       {shapes.clipped && <path d={shapes.clipped} fill="#ff453a" />}
     </svg>

@@ -4,7 +4,7 @@ import { AudioEngine, type RecordingResult } from "../lib/audioEngine";
 import { useAuthStore } from "./useAuthStore";
 import { useAccountStore } from "./useAccountStore";
 import * as api from "../lib/projectApi";
-import { listInputDevices, probeChannelCount, resolveInputDeviceId, type InputDevice, DEFAULT_DEVICE_ID } from "../lib/inputDevices";
+import { listInputDevices, probeChannelCount, resolveInputDeviceId, chooseDevice, defaultDeviceFor, readSavedDevice, saveDevice, type InputDevice, DEFAULT_DEVICE_ID } from "../lib/inputDevices";
 import { listOutputDevices, type OutputDevice } from "../lib/outputDevices";
 import { nextZ, splitClip, duplicateClip, moveClip, audibleSegments } from "../lib/clips";
 import { encodeTake } from "../lib/wav";
@@ -149,7 +149,8 @@ interface ProjectState {
   refreshInputDevices: () => Promise<void>;
   /** Finds how many inputs the Settings device has, without starting the level meter or asking for the microphone. Done once, never while playing or recording. */
   probeSettingsInput: (force?: boolean) => Promise<void>;
-  setInputDevice: (deviceId: string) => Promise<void>;
+  /** `remember` (default) keeps the choice for next time; the automatic pick at start-up passes false. */
+  setInputDevice: (deviceId: string, remember?: boolean) => Promise<void>;
   setInputChannel: (channelIndex: number | null) => void;
   /** Listen to the chosen input so its level shows (the "record another app" check); off stops it again when nothing else needs it. */
   watchInputLevel: (on: boolean) => void;
@@ -164,7 +165,9 @@ interface ProjectState {
   metronomeOutputRoutingSupported: boolean;
   loadingOutputs: boolean;
   refreshOutputDevices: () => Promise<void>;
-  setOutputDevice: (deviceId: string) => Promise<void>;
+  setOutputDevice: (deviceId: string, remember?: boolean) => Promise<void>;
+  /** Puts back the input and output the person chose last time (or the system default) without opening any device. Runs when a project opens and when a device is plugged in or out. */
+  restoreSavedDevices: () => Promise<void>;
   setMetronomeOutputDevice: (deviceId: string | null) => Promise<void>;
 
   // Round-trip latency compensation (null = automatic estimate).
@@ -684,6 +687,7 @@ function readCollapsed(projectId: string): Record<string, boolean> {
 }
 /** The input device whose number of inputs was last looked up, and a look-up that is running. */
 let probedInputFor: string | null = null;
+let devicesWatched = false;
 let inputProbeRunning = false;
 let countInTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -1514,6 +1518,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       pendingGroupSaves.clear();
       fxLastCheckpoint.clear();
       set({ projectLoading: true, projectError: null, project: null, selectedClip: null, extraSelected: [], editError: null, loop: null, loopEnabled: false, armedTrackId: null, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null, noteChannelFilter: null, fxUndoCount: {}, fxCompare: {}, chords: {}, chordsShown: {} });
+      void get().restoreSavedDevices();
       try {
         const project = await api.getProject(id);
         await api.hydrateTakeBlobs(project);
@@ -1701,9 +1706,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         const inputs = await listInputDevices();
         set({ availableInputs: inputs });
         const current = get().inputDeviceId;
-        if (!inputs.some((d) => d.deviceId === current)) {
-          const fallback = inputs[0]?.deviceId ?? DEFAULT_DEVICE_ID;
-          await get().setInputDevice(fallback);
+        const target = chooseDevice(inputs, readSavedDevice("input"));
+        if (target !== current) {
+          await get().setInputDevice(target, false);
         } else {
           const count = await probeChannelCount(current);
           set({ inputChannelCount: count });
@@ -1734,8 +1739,9 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
 
-    setInputDevice: async (deviceId) => {
+    setInputDevice: async (deviceId, remember = true) => {
       probedInputFor = null;
+      if (remember) saveDevice("input", { id: deviceId, label: get().availableInputs.find((d) => d.deviceId === deviceId)?.label ?? "" });
       set({ inputDeviceId: deviceId, inputChannelIndex: null, inputChannelCount: 1 });
       const count = await probeChannelCount(deviceId);
       if (get().inputDeviceId !== deviceId) return;
@@ -1791,19 +1797,42 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         // was created, and nothing played until you reselected a device by
         // hand (the only other place that calls setOutputDevice). Applying it
         // here, every time, makes the shown selection the one actually in use.
-        const current = get().outputDeviceId;
-        const target = outputs.some((d) => d.deviceId === current) ? current : (outputs[0]?.deviceId ?? current);
-        await get().setOutputDevice(target);
+        await get().setOutputDevice(chooseDevice(outputs, readSavedDevice("output")), false);
       } finally {
         set({ loadingOutputs: false });
       }
     },
 
-    setOutputDevice: async (deviceId) => {
+    setOutputDevice: async (deviceId, remember = true) => {
       set({ outputDeviceId: deviceId });
+      if (remember) saveDevice("output", { id: deviceId, label: get().availableOutputs.find((d) => d.deviceId === deviceId)?.label ?? "" });
       // The click follows the main output automatically when it's set to
       // "same as main" (it's wired straight to the same destination).
-      await engine.setOutputDevice(deviceId);
+      // "Default" goes out as the real device it stands for: the browser's own "default" can stay on a device that no longer is the default.
+      await engine.setOutputDevice(deviceId === DEFAULT_DEVICE_ID ? (defaultDeviceFor(get().availableOutputs)?.deviceId ?? deviceId) : deviceId);
+    },
+
+    restoreSavedDevices: async () => {
+      if (!navigator.mediaDevices?.enumerateDevices) return;
+      if (!devicesWatched) {
+        devicesWatched = true;
+        navigator.mediaDevices.addEventListener?.("devicechange", () => void get().restoreSavedDevices());
+      }
+      try {
+        // Without the microphone permission the browser hides names and ids: nothing to match yet, and asking now would be rude.
+        const all = await navigator.mediaDevices.enumerateDevices();
+        const named = (kind: MediaDeviceKind) => all.filter((d) => d.kind === kind && d.label);
+        if (named("audiooutput").length > 0) await get().refreshOutputDevices();
+        const inputs = named("audioinput").map((d) => ({ deviceId: d.deviceId || DEFAULT_DEVICE_ID, label: d.label }));
+        // Not while recording or monitoring: changing the input then would cut it off.
+        if (inputs.length > 0 && !get().recordingTrackId && !get().armedTrackId) {
+          set({ availableInputs: inputs });
+          const target = chooseDevice(inputs, readSavedDevice("input"));
+          if (target !== get().inputDeviceId) set({ inputDeviceId: target, inputChannelIndex: null, inputChannelCount: 1 });
+        }
+      } catch (err) {
+        console.warn("Couldn't restore the audio devices:", err);
+      }
     },
 
     setMetronomeOutputDevice: async (deviceId) => {

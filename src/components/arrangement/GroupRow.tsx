@@ -9,13 +9,14 @@ import { Column } from "./ChannelMeter";
 import { FaderScale } from "./FaderScale";
 import { PanKnob } from "./PanKnob";
 import { GroupTools } from "./GroupTools";
+import { MasterWave } from "./MasterWave";
 
 /**
  * A group channel's row, above the channels in it: a fold arrow, its name, a level meter, mute and solo, a fader, a
  * pan knob and a Tools button. The Owner makes and renames groups; the Owner and the Mixer set the mix; everyone
  * hears it (anyone can fold a group and solo it for themselves). A folded group shows only this row.
  */
-export function GroupRow({ group, members, timelinePx }: { group: Group; members: Track[]; timelinePx: number }) {
+export function GroupRow({ group, members, timelinePx, pxPerSec }: { group: Group; members: Track[]; timelinePx: number; pxPerSec: number }) {
   const canMix = useProjectStore((s) => s.canMix());
   const isOwner = useProjectStore((s) => s.isInitiator());
   const folded = useProjectStore((s) => !!s.collapsedGroups[group.id]);
@@ -124,6 +125,7 @@ export function GroupRow({ group, members, timelinePx }: { group: Group; members
         </div>
       </div>
       <div className="arr-lane group-lane" style={{ width: timelinePx }}>
+        {members.length > 0 && <MasterWave pxPerSec={pxPerSec} groupId={group.id} />}
         <span className="lane-hint">{names ? `${group.name}: ${names}` : "No channels in this group yet"}</span>
       </div>
       {anchor && createPortal(<GroupTools groupId={group.id} initialAnchor={anchor} onClose={() => setAnchor(null)} />, document.body)}

@@ -41,7 +41,8 @@ export async function resolveInputDeviceId(deviceId?: string | null): Promise<st
   if (deviceId && deviceId !== DEFAULT_DEVICE_ID) return deviceId;
   try {
     const devices = await listInputDevices();
-    const concrete = devices.find((d) => d.deviceId !== DEFAULT_DEVICE_ID && d.deviceId !== "communications");
+    // The device the "default" entry is named after; only when that cannot be told, the first real one.
+    const concrete = defaultDeviceFor(devices) ?? devices.find((d) => d.deviceId !== DEFAULT_DEVICE_ID && d.deviceId !== "communications");
     return concrete?.deviceId ?? deviceId ?? null;
   } catch {
     return deviceId ?? null;
@@ -86,4 +87,65 @@ export async function probeChannelCount(deviceId: string): Promise<number> {
   } catch {
     return 1;
   }
+}
+
+// ---- Remembering the chosen devices ---------------------------------------------------------------------
+
+/** What the person chose last: the id, and the name (an id can change; the name is what they know). */
+export interface SavedDevice {
+  id: string;
+  label: string;
+}
+
+const savedKey = (kind: "input" | "output") => `pyl.device.${kind}`;
+
+export function readSavedDevice(kind: "input" | "output"): SavedDevice | null {
+  try {
+    const parsed: unknown = JSON.parse(localStorage.getItem(savedKey(kind)) ?? "null");
+    if (parsed && typeof parsed === "object" && typeof (parsed as SavedDevice).id === "string") {
+      return { id: (parsed as SavedDevice).id, label: String((parsed as SavedDevice).label ?? "") };
+    }
+  } catch {
+    // storage unavailable or unreadable: nothing is remembered
+  }
+  return null;
+}
+
+export function saveDevice(kind: "input" | "output", device: SavedDevice): void {
+  try {
+    localStorage.setItem(savedKey(kind), JSON.stringify(device));
+  } catch {
+    // storage unavailable: the choice just won't be remembered
+  }
+}
+
+/** "Default - Audient EVO4" -> "Audient EVO4". */
+const plainName = (label: string) => label.replace(/^(default|communications)\s*-\s*/i, "").trim();
+const isAlias = (id: string) => id === DEFAULT_DEVICE_ID || id === "communications";
+
+/**
+ * The real device the browser's "default" entry stands for. Chrome lists "Default - <name>" next to the device called
+ * <name>; using that device's own id sidesteps the "default" alias, which can stay stuck on a device that is not the
+ * system's default any more (or does not work).
+ */
+export function defaultDeviceFor(list: InputDevice[]): InputDevice | null {
+  const alias = list.find((d) => d.deviceId === DEFAULT_DEVICE_ID);
+  if (!alias) return null;
+  const name = plainName(alias.label);
+  return list.find((d) => !isAlias(d.deviceId) && plainName(d.label) === name) ?? null;
+}
+
+/**
+ * Which device to use: the one the person chose last time if it is connected (found by id, else by name); if it is
+ * not, or they chose "default", or never chose, the system's default device as a real device.
+ */
+export function chooseDevice(list: InputDevice[], saved: SavedDevice | null): string {
+  if (saved && saved.id !== DEFAULT_DEVICE_ID) {
+    const byId = list.find((d) => d.deviceId === saved.id);
+    if (byId) return byId.deviceId;
+    const name = plainName(saved.label);
+    const byName = name ? list.find((d) => !isAlias(d.deviceId) && plainName(d.label) === name) : undefined;
+    if (byName) return byName.deviceId;
+  }
+  return defaultDeviceFor(list)?.deviceId ?? list.find((d) => d.deviceId === DEFAULT_DEVICE_ID)?.deviceId ?? list[0]?.deviceId ?? DEFAULT_DEVICE_ID;
 }

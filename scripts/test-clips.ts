@@ -34,6 +34,7 @@ import { timeStretch } from "../src/lib/timeStretch.ts";
 import { RULES, can, readmeTable, rulesMarkdown, README_MARK_START, README_MARK_END } from "../src/lib/rules.ts";
 import { resolveMix, buildRows, visibleLanes, groupedOrder, parseGroupFx, groupFromRow, groupFxToJson } from "../src/lib/groups.ts";
 import type { Group } from "../src/types/project.ts";
+import { chooseDevice, defaultDeviceFor } from "../src/lib/inputDevices.ts";
 import { DEFAULT_MASTER, parseMasterFx, masterFromRow, masterFxToJson, clampMasterVolume, isNeutralMaster, masterFxOnly } from "../src/lib/master.ts";
 
 let fail = 0;
@@ -807,6 +808,22 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("the computer is told from the browser's name", osOf("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7)") === "mac" && osOf("Mozilla/5.0 (Windows NT 10.0; Win64; x64)") === "win" && osOf("Mozilla/5.0 (X11; Linux x86_64)") === "other");
   check("the replacement output is the first one that does not feed the cable", safeOutput(outputs)?.label === "Headphones" && safeOutput([outputs[1]]) === null);
   check("a browser that cannot show the output gets a plain note", cableSteps({ ...base, inputId: "b", outputRoutable: false })[2].state === "info");
+}
+
+// ---- Remembered audio devices ----
+{
+  const devices = [
+    { deviceId: "default", label: "Default - Audient EVO4" },
+    { deviceId: "communications", label: "Communications - Audient EVO4" },
+    { deviceId: "mic1", label: "MacBook Pro Microphone" },
+    { deviceId: "evo", label: "Audient EVO4" },
+  ];
+  check("the browser's default entry is told apart by its name", defaultDeviceFor(devices)?.deviceId === "evo");
+  check("nothing remembered: the system default, as the real device", chooseDevice(devices, null) === "evo");
+  check("the remembered device is used when it is connected", chooseDevice(devices, { id: "mic1", label: "MacBook Pro Microphone" }) === "mic1");
+  check("a changed id is found again by its name", chooseDevice(devices, { id: "old-id", label: "MacBook Pro Microphone" }) === "mic1");
+  check("a remembered device that is unplugged falls back to the default", chooseDevice(devices, { id: "gone", label: "Scarlett 2i2" }) === "evo");
+  check("having chosen \"default\" follows the system default", chooseDevice(devices, { id: "default", label: "Default - Audient EVO4" }) === "evo");
 }
 
 process.exit(fail ? 1 : 0);

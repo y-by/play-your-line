@@ -397,7 +397,7 @@ export function Arrangement() {
           <Ruler totalBars={totalBars} barPx={barPx} pxPerSec={pxPerSec} />
           {rows.map((row) =>
             row.kind === "group" ? (
-              <GroupRow key={`group-${row.group.id}`} group={row.group} members={row.members} timelinePx={timelinePx} />
+              <GroupRow key={`group-${row.group.id}`} group={row.group} members={row.members} timelinePx={timelinePx} pxPerSec={pxPerSec} />
             ) : (
               <ChannelLane
                 key={row.track.id}
