@@ -7,6 +7,7 @@ import { useAuthStore } from "../store/useAuthStore";
 import { CloseIcon } from "./icons/Icons";
 import { InputSourceSelector } from "./InputSourceSelector";
 import { CableGuide } from "./CableGuide";
+import { LeaveProject } from "./LeaveProject";
 import { DEFAULT_DEVICE_ID } from "../lib/inputDevices";
 
 export function SettingsPanel() {
@@ -219,6 +220,8 @@ export function SettingsPanel() {
             about recording, effects, notes and sharing. It opens in a new tab, so your project stays as it is.
           </p>
         </section>
+
+        <LeaveProject onLeft={() => { closeSettings(); navigate("/"); }} />
 
           </>
         )}

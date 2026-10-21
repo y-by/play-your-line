@@ -18,6 +18,7 @@ A test fails if this file is out of date.
 | Group channels: create, rename, delete, put channels in them | ✅ | – | – | – |
 | Group channels: volume, mute, pan, Tools (effects) | ✅ | ✅ | – | – |
 | Channel Tools (EQ, Compressor, Delay, Reverb, Tuner) | ✅ | ✅ | their own channel, until the Owner or Mixer locks it | – |
+| Leave the project | ✅ | ✅ | ✅ | ✅ |
 | Lock or unlock a player's channel effects | ✅ | ✅ | – | – |
 | Record and edit clips | their own channel | their own channel | their own channel | – |
 | Move a clip to another channel of the same player | ✅ | – | their own channels | – |
@@ -42,6 +43,7 @@ The screen hides what you cannot do, but the database is what really stops it.
 | Group channels: create, rename, delete, put channels in them | functions create_track_group, rename_track_group, delete_track_group, set_track_group; trigger guard_track_columns (0044) |  |
 | Group channels: volume, mute, pan, Tools (effects) | function set_group_mix (0044) | Everyone hears the saved group settings, and anyone can fold a group or solo it for themselves. |
 | Channel Tools (EQ, Compressor, Delay, Reverb, Tuner) | trigger guard_track_columns (0018, 0034, 0040) |  |
+| Leave the project | function leave_project (0050) | The Owner names who takes over first. Recordings stay: channels with recordings pass to the Owner, empty channels become free. |
 | Lock or unlock a player's channel effects | trigger guard_track_columns (0034) |  |
 | Record and edit clips | policies on clips, takes and storage: only the channel's own player (0009) | Nobody touches a player's recordings but that player. The Owner cannot record on or edit someone else's channel. |
 | Move a clip to another channel of the same player | function move_clip and the Owner's upload rule on take files (0048) | Both channels must belong to the same player: nobody moves a clip to another player's channel. This is the only thing the Owner may do to a player's recordings. |

@@ -44,6 +44,17 @@ export const HELP_TOPICS: HelpTopic[] = [
     ],
   },
   {
+    id: "leave-project",
+    group: "Getting started",
+    question: "How do I leave a project?",
+    answer: [
+      "Anyone who is not the Owner can leave: open the project, then Settings > General > Leave this project. On the Projects list there is also a small cross on the project's card.",
+      "Nothing you recorded is deleted. A channel of yours with no recordings becomes free for someone else; a channel with recordings stays in the project with the Owner, who can keep or delete it. If you were the Mixer, the Owner can pick a new one.",
+      "The Owner can't just leave. In Settings > General pick who takes over, and the project is handed to them. If nobody else is in the project, delete it instead (Settings > Project).",
+      "Once you have left, you can only come back if the Owner invites you again.",
+    ],
+  },
+  {
     id: "record",
     group: "Recording",
     question: "How do I record?",

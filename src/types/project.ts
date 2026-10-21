@@ -122,6 +122,8 @@ export interface Project {
   createdAt: number;
   updatedAt: number;
   publishedAt: number | null;
+  /** The place this person dragged it to in their own list (smaller = earlier); null = not placed, so newest first after the placed ones. */
+  sortOrder: number | null;
   tracks: Track[];
   /** Every take referenced by a clip in this song, by id. */
   takes: Record<string, Take>;

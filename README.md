@@ -34,6 +34,7 @@ tempo and click, mute / solo / volume, and trimming that never destroys a record
 | Group channels: create, rename, delete, put channels in them | ✅ | – | – | – |
 | Group channels: volume, mute, pan, Tools (effects) | ✅ | ✅ | – | – |
 | Channel Tools (EQ, Compressor, Delay, Reverb, Tuner) | ✅ | ✅ | their own channel, until the Owner or Mixer locks it | – |
+| Leave the project | ✅ | ✅ | ✅ | ✅ |
 | Lock or unlock a player's channel effects | ✅ | ✅ | – | – |
 | Record and edit clips | their own channel | their own channel | their own channel | – |
 | Move a clip to another channel of the same player | ✅ | – | their own channels | – |

@@ -80,7 +80,8 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
     await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin },
+      // select_account: always show Google's account chooser, so someone with several accounts (or testing with a second one) can pick.
+      options: { redirectTo: window.location.origin, queryParams: { prompt: "select_account" } },
     });
   },
 

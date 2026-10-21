@@ -563,7 +563,7 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   const migrations = readdirSync("supabase/migrations").map((f) => f.slice(0, 4));
   const cited = RULES.flatMap((r) => [...r.enforcedBy.matchAll(/\b(\d{4})\b/g)].map((m) => m[1]));
   check("every migration a rule names exists", cited.length > 0 && cited.every((n) => migrations.includes(n)), cited.filter((n) => !migrations.includes(n)).join(" "));
-  check("a Listener may only listen", RULES.every((r) => r.id === "listen" || r.listener === false));
+  check("a Listener may only listen (and leave)", RULES.every((r) => r.id === "listen" || r.id === "leave" || r.listener === false));
   const O = { roles: ["owner" as const] };
   const M = { roles: ["mixer" as const] };
   const P = { roles: ["player" as const] };

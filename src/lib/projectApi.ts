@@ -4,6 +4,7 @@ import { fxFromRow, fxToRow } from "./channelFx";
 import { masterFromRow, masterFxToJson } from "./master";
 import { groupFromRow, groupFxToJson } from "./groups";
 import type { StoredFile } from "./orphans";
+import { roleBadge, rolesOf } from "./roles";
 import { forgetCachedProject, getCachedTake, putCachedTake } from "./takeCache";
 
 function requireSupabase() {
@@ -32,6 +33,7 @@ function mapProject(row: any, tracks: Track[], takes: Record<string, Take>): Pro
     createdAt: new Date(row.created_at).getTime(),
     updatedAt: new Date(row.updated_at).getTime(),
     publishedAt: row.published_at ? new Date(row.published_at).getTime() : null,
+    sortOrder: null,
     tracks,
     takes,
   };
@@ -151,6 +153,37 @@ export async function getProject(id: string): Promise<Project> {
   return project;
 }
 
+/** The order of the person's list: the places they dragged projects to first, then everything else newest first. */
+export function byListOrder(a: Project, b: Project): number {
+  return placedFirst(a, b) || b.updatedAt - a.updatedAt;
+}
+
+/** Placed projects first, by their place; 0 when neither is placed. */
+function placedFirst(a: Project, b: Project): number {
+  if (a.sortOrder !== null && b.sortOrder !== null) return a.sortOrder - b.sortOrder;
+  if (a.sortOrder !== null) return -1;
+  if (b.sortOrder !== null) return 1;
+  return 0;
+}
+
+/** The signed-in person's own places for their projects (0054): project id -> position. */
+async function fetchMyProjectOrder(userId: string): Promise<Record<string, number>> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("user_project_order").select("project_id, position").eq("user_id", userId);
+  // A list that cannot be ordered yet (the database step not run) still shows, newest first.
+  if (error) return {};
+  return Object.fromEntries((data ?? []).map((r) => [r.project_id as string, r.position as number]));
+}
+
+/** Saves the order the person dragged their projects into: these take the places 10, 20, 30 ... */
+export async function saveMyProjectOrder(userId: string, ids: string[]): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("user_project_order")
+    .upsert(ids.map((projectId, i) => ({ user_id: userId, project_id: projectId, position: (i + 1) * 10 })), { onConflict: "user_id,project_id" });
+  if (error) throw error;
+}
+
 export async function listMyProjects(userId: string): Promise<Project[]> {
   const client = requireSupabase();
 
@@ -177,9 +210,10 @@ export async function listMyProjects(userId: string): Promise<Project[]> {
   const byId = new Map<string, (typeof initiated)[number]>();
   for (const p of [...(initiated ?? []), ...assigned]) byId.set(p.id, p);
 
+  const order = await fetchMyProjectOrder(userId);
   return [...byId.values()]
-    .sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime())
-    .map((row) => mapProject(row, [], {}));
+    .map((row) => ({ ...mapProject(row, [], {}), sortOrder: order[row.id] ?? null }))
+    .sort(byListOrder);
 }
 
 export async function listPublishedProjects(): Promise<Project[]> {
@@ -802,6 +836,17 @@ export async function removeListener(projectId: string, userId: string): Promise
   if (error) throw error;
 }
 
+/**
+ * The signed-in person leaves the project (leave_project, 0050). The Owner has to name who takes over. Returns how many of
+ * their channels with recordings were passed to the Owner.
+ */
+export async function leaveProject(projectId: string, newOwnerId: string | null = null): Promise<number> {
+  const client = requireSupabase();
+  const { data, error } = await client.rpc("leave_project", { p_project_id: projectId, p_new_owner: newOwnerId });
+  if (error) throw error;
+  return typeof data === "number" ? data : 0;
+}
+
 export async function fetchListeners(projectId: string): Promise<{ userId: string; name: string | null; canPlay: boolean }[]> {
   const client = requireSupabase();
   const { data, error } = await client.from("project_listeners").select("user_id, can_play").eq("project_id", projectId);
@@ -938,5 +983,117 @@ export async function saveGroupMix(groupId: string, patch: Partial<Pick<Group, "
     p_pan: patch.pan ?? null,
     p_fx: patch.fx ? groupFxToJson(patch.fx) : null,
   });
+  if (error) throw error;
+}
+
+// ---- Notices: a message waiting for the person the next time they open the app (0051) ----------
+
+export interface UserNotice {
+  id: string;
+  kind: "project_handed_over" | "member_left" | "added_to_project" | "channel_assigned" | "channel_removed" | "mixer_assigned" | "mixer_removed";
+  projectId: string | null;
+  projectTitle: string | null;
+  fromName: string | null;
+  /** member_left: how many channels with recordings came to the Owner. */
+  detail: number;
+  /** The channel's name, for the channel notices. */
+  item: string | null;
+}
+
+export async function fetchUnseenNotices(userId: string): Promise<UserNotice[]> {
+  const client = requireSupabase();
+  const { data, error } = await client
+    .from("user_notices")
+    .select("id, kind, project_id, project_title, from_name, detail, item")
+    .eq("user_id", userId)
+    .is("seen_at", null)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map((r) => ({
+    id: r.id as string,
+    kind: r.kind as UserNotice["kind"],
+    projectId: (r.project_id as string | null) ?? null,
+    projectTitle: (r.project_title as string | null) ?? null,
+    fromName: (r.from_name as string | null) ?? null,
+    detail: (r.detail as number) ?? 0,
+    item: (r.item as string | null) ?? null,
+  }));
+}
+
+export async function markNoticeSeen(id: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("user_notices").update({ seen_at: new Date().toISOString() }).eq("id", id);
+  if (error) throw error;
+}
+
+/** What each of these projects means to the signed-in person: the badge on the project card. */
+export async function fetchMyRoleLabels(userId: string, projects: Project[]): Promise<Record<string, string>> {
+  const client = requireSupabase();
+  const [{ data: tracks, error: e1 }, { data: listened, error: e2 }] = await Promise.all([
+    client.from("tracks").select("project_id").eq("assigned_user_id", userId),
+    client.from("project_listeners").select("project_id, can_play").eq("user_id", userId),
+  ]);
+  if (e1) throw e1;
+  if (e2) throw e2;
+  const played = new Set((tracks ?? []).map((t) => t.project_id as string));
+  const added = new Set((listened ?? []).filter((l) => l.can_play).map((l) => l.project_id as string));
+  const heard = new Set((listened ?? []).filter((l) => !l.can_play).map((l) => l.project_id as string));
+  const out: Record<string, string> = {};
+  for (const p of projects) {
+    const label = roleBadge(
+      rolesOf(
+        { initiatorId: p.initiatorId, mixerId: p.mixerId, listenerIds: heard.has(p.id) ? [userId] : [], assignedUserIds: played.has(p.id) || added.has(p.id) ? [userId] : [] },
+        userId
+      )
+    );
+    if (label) out[p.id] = label;
+  }
+  return out;
+}
+
+/** The latest news per project for the cards: notices of the last two weeks, and whether the person has not opened the project since. */
+export interface ProjectNews {
+  notice: UserNotice;
+  unread: boolean;
+}
+
+export async function fetchProjectNews(userId: string): Promise<Record<string, ProjectNews>> {
+  const client = requireSupabase();
+  const since = new Date(Date.now() - 14 * 24 * 3600 * 1000).toISOString();
+  const { data, error } = await client
+    .from("user_notices")
+    .select("id, kind, project_id, project_title, from_name, detail, item, card_cleared_at")
+    .eq("user_id", userId)
+    .gte("created_at", since)
+    .not("project_id", "is", null)
+    .order("created_at", { ascending: true });
+  if (error) throw error;
+  const out: Record<string, ProjectNews> = {};
+  for (const r of data ?? []) {
+    out[r.project_id as string] = {
+      notice: {
+        id: r.id as string,
+        kind: r.kind as UserNotice["kind"],
+        projectId: r.project_id as string,
+        projectTitle: (r.project_title as string | null) ?? null,
+        fromName: (r.from_name as string | null) ?? null,
+        detail: (r.detail as number) ?? 0,
+        item: (r.item as string | null) ?? null,
+      },
+      unread: !r.card_cleared_at || out[r.project_id as string]?.unread === true,
+    };
+  }
+  return out;
+}
+
+/** Opening a project clears the highlight on its card. */
+export async function clearProjectNews(userId: string, projectId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client
+    .from("user_notices")
+    .update({ card_cleared_at: new Date().toISOString() })
+    .eq("user_id", userId)
+    .eq("project_id", projectId)
+    .is("card_cleared_at", null);
   if (error) throw error;
 }

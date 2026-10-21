@@ -433,6 +433,8 @@ interface ProjectState {
   setProjectCover: (file: File | null) => Promise<void>;
   /** Owner only, irreversible: deletes the project and all its recordings. Throws if it couldn't. */
   deleteProject: () => Promise<void>;
+  /** The signed-in person leaves this project for good (the Owner names who takes over). Returns the channels with recordings passed to the Owner. */
+  quitProject: (newOwnerId?: string | null) => Promise<number>;
 }
 
 const LATENCY_STORAGE_KEY = "pyl.latencyMs";
@@ -3314,6 +3316,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       if (!project || !get().isInitiator()) throw new Error("Only the owner can delete a project.");
       engine.pause();
       await api.deleteProject(project.id);
+    },
+
+    quitProject: async (newOwnerId = null) => {
+      const { project } = get();
+      if (!project) throw new Error("No project is open.");
+      engine.pause();
+      return api.leaveProject(project.id, newOwnerId);
     },
 
     unpublish: async () => {

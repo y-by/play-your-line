@@ -10,6 +10,7 @@ import { JoinPage } from "./pages/JoinPage";
 import { Tooltips } from "./components/Tooltips";
 import { SignInGate } from "./components/SignInGate";
 import { AccountWatch } from "./components/AccountWatch";
+import { NoticePopup } from "./components/NoticePopup";
 import { AdminPage } from "./pages/AdminPage";
 import "./app.css";
 
@@ -24,6 +25,7 @@ export default function App() {
     <BrowserRouter>
       <Tooltips />
       <AccountWatch />
+      <NoticePopup />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route

@@ -1,12 +1,13 @@
 import { useState } from "react";
 import type { Project } from "../types/project";
+import { leaveProject } from "../lib/projectApi";
 import { buildListeningCopy, exportMix, setPublished } from "../lib/projectActions";
 import { errorMessage } from "../lib/errorMessage";
-import { ExportIcon, GlobeIcon, RefreshIcon, SpinnerIcon } from "./icons/Icons";
+import { CloseIcon, ExportIcon, GlobeIcon, RefreshIcon, SpinnerIcon } from "./icons/Icons";
 
 /** The two things you can do to a project from the list: publish it (or take it back) and export its mix. */
-export function ProjectCardActions({ project, isOwner, onStatus }: { project: Project; isOwner: boolean; onStatus: (id: string, status: "draft" | "published") => void }) {
-  const [busy, setBusy] = useState<"publish" | "export" | "copy" | null>(null);
+export function ProjectCardActions({ project, isOwner, onStatus, onLeft }: { project: Project; isOwner: boolean; onStatus: (id: string, status: "draft" | "published") => void; onLeft?: (id: string) => void }) {
+  const [busy, setBusy] = useState<"publish" | "export" | "copy" | "leave" | null>(null);
   const [refreshed, setRefreshed] = useState(false);
   const published = project.status === "published";
   // The master changed after the listening copy was made: the Owner is reminded to update it.
@@ -56,6 +57,22 @@ export function ProjectCardActions({ project, isOwner, onStatus }: { project: Pr
     }
   };
 
+  const leave = async (e: React.MouseEvent) => {
+    stop(e);
+    if (busy) return;
+    if (!confirm(`Leave "${project.title}"?\n\nIt disappears from your list. Any channel of yours with recordings stays in the project with the Owner; empty channels become free. You can only come back if the Owner invites you again.`)) return;
+    setBusy("leave");
+    try {
+      await leaveProject(project.id);
+      onLeft?.(project.id);
+    } catch (err) {
+      console.error("Failed to leave the project:", err);
+      alert(errorMessage(err, "Couldn't leave the project. Try again."));
+    } finally {
+      setBusy(null);
+    }
+  };
+
   const doExport = async (e: React.MouseEvent) => {
     stop(e);
     if (busy) return;
@@ -86,6 +103,11 @@ export function ProjectCardActions({ project, isOwner, onStatus }: { project: Pr
       <button className="card-act" onClick={doExport} disabled={!!busy} title="Export the mix as a WAV file" aria-label="Export mix">
         {busy === "export" ? <SpinnerIcon size={14} /> : <ExportIcon size={14} />}
       </button>
+      {!isOwner && onLeft && (
+        <button className="card-act" onClick={leave} disabled={!!busy} title="Leave this project" aria-label="Leave this project">
+          {busy === "leave" ? <SpinnerIcon size={14} /> : <CloseIcon size={14} />}
+        </button>
+      )}
     </div>
   );
 }

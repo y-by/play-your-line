@@ -68,6 +68,7 @@ export const RULES: Rule[] = [
     listener: false,
     enforcedBy: "trigger guard_track_columns (0018, 0034, 0040)",
   },
+  { id: "leave", what: "Leave the project", owner: true, mixer: true, player: true, listener: true, enforcedBy: "function leave_project (0050)", note: "The Owner names who takes over first. Recordings stay: channels with recordings pass to the Owner, empty channels become free." },
   { id: "fx-lock", what: "Lock or unlock a player's channel effects", owner: true, mixer: true, player: false, listener: false, enforcedBy: "trigger guard_track_columns (0034)" },
   {
     id: "record-edit-clips",
