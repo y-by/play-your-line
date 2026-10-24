@@ -116,6 +116,40 @@ export function FeedbackIcon({ size = 15 }: IconProps) {
   );
 }
 
+/** The handle for moving the floating controls: two columns of three dots. */
+export function GripIcon({ size = 15 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+      <circle cx="9" cy="6" r="1.8" />
+      <circle cx="15" cy="6" r="1.8" />
+      <circle cx="9" cy="12" r="1.8" />
+      <circle cx="15" cy="12" r="1.8" />
+      <circle cx="9" cy="18" r="1.8" />
+      <circle cx="15" cy="18" r="1.8" />
+    </svg>
+  );
+}
+
+/** Put the floating controls back in the bar: an arrow up to a bar. */
+export function DockIcon({ size = 15 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 4h14" />
+      <path d="M12 20V9M8 13l4-4 4 4" />
+    </svg>
+  );
+}
+
+/** A bookmark tab with a line through the top: a named mark on the timeline (a song section). */
+export function SectionMarkIcon({ size = 15 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 3h16" />
+      <path d="M7 3v18l5-4 5 4V3" />
+    </svg>
+  );
+}
+
 export function RefreshIcon({ size = 15 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

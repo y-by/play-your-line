@@ -2,6 +2,7 @@ import { useCallback, useRef } from "react";
 import { useProjectStore } from "../../store/useProjectStore";
 import { FollowIcon } from "../icons/Icons";
 import { NoteFlags } from "../notes/NoteFlags";
+import { SectionStrip } from "./SectionStrip";
 import { beatSec, stepSec, snapTo } from "../../lib/grid";
 
 interface Props {
@@ -180,6 +181,7 @@ export function Ruler({ totalBars, barPx, pxPerSec }: Props) {
             </div>
           )}
         </div>
+        <SectionStrip totalBars={totalBars} pxPerSec={pxPerSec} />
       </div>
     </div>
   );

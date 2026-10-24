@@ -3,7 +3,7 @@ import { useAuthStore } from "../store/useAuthStore";
 import { useProjectStore } from "../store/useProjectStore";
 import { formatTime } from "../lib/format";
 import { barAndBeat, TIME_SIGNATURES } from "../lib/grid";
-import { BackToStartIcon, PlayIcon, PauseIcon, StopIcon, LoopIcon, MetronomeIcon, PlusCircleIcon, UserPlusIcon, GearIcon } from "./icons/Icons";
+import { SectionMarkIcon, BackToStartIcon, PlayIcon, PauseIcon, StopIcon, LoopIcon, MetronomeIcon, PlusCircleIcon, UserPlusIcon, GearIcon } from "./icons/Icons";
 import { TempoControl } from "./TempoControl";
 import { EditToolbar } from "./arrangement/EditToolbar";
 import { AddChannelPanel } from "./AddChannelPanel";
@@ -11,6 +11,8 @@ import { PeoplePanel } from "./PeoplePanel";
 import { NotesPopup } from "./notes/NotesPopup";
 import { QuantisePanel } from "./QuantisePanel";
 import { ProjectName, ProjectStatus } from "./ProjectBar";
+import { FloatingControl } from "./FloatingControl";
+import { useSectionUiStore } from "../store/useSectionUiStore";
 import { CloseIcon, NoteIcon } from "./icons/Icons";
 
 export type SongPanel = "add" | "people" | "quantise" | null;
@@ -31,6 +33,8 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
   const notesOpen = useProjectStore((s) => s.notesTrayOpen);
   const setNotesTrayOpen = useProjectStore((s) => s.setNotesTrayOpen);
   const openNotes = useProjectStore((s) => s.notes.filter((n) => !n.done).length);
+  const canEditSections = useProjectStore((s) => s.canEditSections());
+  const openAddSection = useSectionUiStore((s) => s.openAdd);
   const uid = useAuthStore((s) => s.userId);
   const forMe = useProjectStore((s) => (uid ? s.notes.filter((n) => !n.done && n.mentions.includes(uid)).length : 0));
   const hasNotesToShow = useProjectStore((s) => s.canWriteNotes() || s.notes.length > 0);
@@ -76,6 +80,11 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
           ) : (
             openNotes > 0 && <span className="notes-btn-dot">{openNotes > 9 ? "9+" : openNotes}</span>
           )}
+        </button>
+      )}
+      {canEditSections && (
+        <button className="lb" onClick={openAddSection} title="Add a section here (Intro, Verse, Chorus, Part C…): a named mark on the timeline" aria-label="Add a section">
+          <SectionMarkIcon size={16} />
         </button>
       )}
       {isParticipant && (
@@ -155,6 +164,7 @@ export function Transport({ panel, onPanel }: Props) {
   const durationSec = useProjectStore((s) => s.durationSec);
   const play = useProjectStore((s) => s.play);
   const pause = useProjectStore((s) => s.pause);
+  const stopPlaying = useProjectStore((s) => s.stop);
   const seek = useProjectStore((s) => s.seek);
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const recordingPhase = useProjectStore((s) => s.recordingPhase);
@@ -181,13 +191,13 @@ export function Transport({ panel, onPanel }: Props) {
   const recActive = !!recordingTrackId && recordingPhase !== "uploading";
   const busy = !!recordingTrackId;
   // Same action as the Space key: stop a recording if one's running, otherwise stop playback.
-  const stop = () => (recordingTrackId ? void stopRecording() : pause());
+  const stop = () => (recordingTrackId ? void stopRecording() : stopPlaying());
 
   return (
     <div className="cbar">
       <div className="cb-row cb-main">
         <ProjectName />
-        <div className="cb-center">
+        <FloatingControl>
           <div className="lg cb-transport">
             <button className="lb" onClick={() => seek(0)} disabled={busy} title="Back to start" aria-label="Back to start">
               <BackToStartIcon />
@@ -196,7 +206,7 @@ export function Transport({ panel, onPanel }: Props) {
               className={isPlaying ? "lb on" : "lb"}
               onClick={() => (isPlaying ? pause() : play())}
               disabled={busy}
-              title={isPlaying ? "Pause (Space)" : "Play (Space)"}
+              title={isPlaying ? "Pause here: the playhead stays" : "Play (Space)"}
               aria-label={isPlaying ? "Pause" : "Play"}
             >
               {isPlaying ? <PauseIcon /> : <PlayIcon />}
@@ -205,7 +215,7 @@ export function Transport({ panel, onPanel }: Props) {
               className="lb"
               onClick={stop}
               disabled={!isPlaying && !recordingTrackId}
-              title="Stop (Space)"
+              title="Stop (Space): back to where you started"
               aria-label="Stop"
             >
               <StopIcon size={13} />
@@ -263,7 +273,7 @@ export function Transport({ panel, onPanel }: Props) {
           </div>
 
           <ModeButtons className="hide-m cb-modes" />
-        </div>
+        </FloatingControl>
         <ProjectStatus />
       </div>
 

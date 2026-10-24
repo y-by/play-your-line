@@ -100,6 +100,7 @@ export const RULES: Rule[] = [
     enforcedBy: "screen only (everyone in the project can already read the recordings, 0001, 0009)",
     note: "A Player chooses between the Owner's mix and their own monitor mix. The button is hidden from Listeners; the database does not stop a Listener from fetching the files.",
   },
+  { id: "sections", what: "Song sections: add, rename, move or delete the named marks (Intro, Verse, Chorus…)", owner: true, mixer: true, player: false, listener: false, enforcedBy: "policies on song_sections and function can_edit_sections (0058)", note: "Everyone in the project sees the sections and can jump to one or repeat it." },
   { id: "people", what: "Invite a Mixer or Listeners, add someone by email, choose the Mixer", owner: true, mixer: false, player: false, listener: false, enforcedBy: "functions set_mixer, add_project_member; policies on project_invites (0014, 0031)" },
   { id: "write-notes", what: "Write notes, tag people with @", owner: true, mixer: true, player: true, listener: false, enforcedBy: "function can_write_notes and note policies (0032)", note: "A Player needs a channel to write notes. Listeners only read the notes shared with them." },
   {

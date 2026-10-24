@@ -119,6 +119,36 @@ export function audibleSegments(clips: ClipData[]): Segment[] {
 }
 
 /**
+ * The clips that are completely covered by clips above them: nothing of them is heard. (A clip with even a small piece showing is not
+ * hidden.) Checked on the clips themselves, not on the merged pieces, so the second half of a cut clip is never taken for hidden.
+ */
+export function hiddenClipIds(clips: ClipData[]): string[] {
+  const topFirst = [...clips].sort((a, b) => b.z - a.z || (a.id < b.id ? -1 : 1));
+  let covered: Interval[] = [];
+  const hidden: string[] = [];
+  for (const clip of topFirst) {
+    const start = clip.startSec;
+    const end = clipEnd(clip);
+    let cursor = start;
+    let heard = false;
+    for (const [coveredStart, coveredEnd] of covered) {
+      if (coveredEnd <= cursor) continue;
+      if (coveredStart >= end) break;
+      if (coveredStart - cursor >= 0.001) {
+        heard = true;
+        break;
+      }
+      cursor = Math.max(cursor, coveredEnd);
+      if (cursor >= end) break;
+    }
+    if (!heard && end - cursor >= 0.001) heard = true;
+    if (!heard) hidden.push(clip.id);
+    covered = addInterval(covered, [start, end]);
+  }
+  return hidden;
+}
+
+/**
  * Two neighbouring pieces that read one take without a gap or a jump (e.g. the
  * two halves of a clip that was cut in two) are really one continuous sound.
  * Playing them as one avoids a needless fade at the cut.

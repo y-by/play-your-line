@@ -13,6 +13,7 @@ import { canAnchor } from "../../lib/anchor";
 import { useProjectStore } from "../../store/useProjectStore";
 import { useAuthStore } from "../../store/useAuthStore";
 import { XmarkCircleIcon, MicIcon, NoteIcon } from "../icons/Icons";
+import { estimateTakeMb, hiddenTakes } from "../../lib/retakes";
 
 /** The left-hand column of a lane: who plays it, record, mute/solo, volume. */
 export function ChannelInfo({ track, number, onGripDown }: { track: Track; number: number; onGripDown?: (e: React.PointerEvent) => void }) {
@@ -28,6 +29,12 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
   const chordsShown = useProjectStore((s) => !!s.chordsShown[track.id]);
   const detecting = useProjectStore((s) => s.detectingChords === track.id);
   const canMix = useProjectStore((s) => s.canMix());
+  const clearHiddenTakes = useProjectStore((s) => s.clearHiddenTakes);
+  // Older takes lying fully under newer ones: how many, and about how much space they use (only the person who plays the channel sees this).
+  const hiddenCount = useProjectStore((s) => (s.canEditClips(track) ? hiddenTakes(track.clips).length : 0));
+  const hiddenMb = useProjectStore((s) =>
+    s.canEditClips(track) ? Math.round(hiddenTakes(track.clips).reduce((sum, h) => sum + estimateTakeMb(s.project?.takes[h.takeId]?.durationSec ?? 0, track.stereo), 0)) : 0
+  );
   const recordingTrackId = useProjectStore((s) => s.recordingTrackId);
   const recordingPhase = useProjectStore((s) => s.recordingPhase);
   const canEdit = useProjectStore((s) => s.canEditClips(track));
@@ -141,6 +148,19 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
               <button className="note-badge" onClick={() => showChannelNotes(track.id)} title={`${openChannelNotes} open note${openChannelNotes === 1 ? "" : "s"} for this channel`} aria-label="Open this channel's notes">
                 <NoteIcon size={12} />
                 {openChannelNotes}
+              </button>
+            )}
+            {hiddenCount > 0 && !recordingTrackId && (
+              <button
+                className="note-badge hidden-takes"
+                onClick={() => {
+                  if (confirm(`Clear the ${hiddenCount} older take${hiddenCount === 1 ? "" : "s"} hidden under the newest in "${track.instrument}"?\n\nThey use about ${hiddenMb} MB. They are not heard now, and once cleared they cannot be brought back.`)) void clearHiddenTakes(track.id);
+                }}
+                title={`${hiddenCount} older take${hiddenCount === 1 ? "" : "s"} under the newest, about ${hiddenMb} MB. Click to clear them.`}
+                aria-label={`Clear ${hiddenCount} hidden take${hiddenCount === 1 ? "" : "s"}`}
+              >
+                <span aria-hidden="true">⧉</span>
+                {hiddenCount}
               </button>
             )}
             {isInitiator && !track.assignedUserId && (

@@ -22,6 +22,10 @@ import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
 import { feedbackProblem, browserOf, systemOf, deviceSummary, pageInfo, FEEDBACK_MAX } from "../src/lib/feedbackInfo.ts";
 import { levelAdvice, judgeTestTake, rateAdvice, peakToDb, shouldOfferSetup, SETUP_STEPS } from "../src/lib/setupGuide.ts";
+import { clampPosition, snapPosition, moveByKey, parseFloatState, DOCKED } from "../src/lib/floatPosition.ts";
+import { hiddenClipIds } from "../src/lib/clips.ts";
+import { hiddenTakes, clipsToTrim, estimateTakeMb, MAX_HIDDEN_TAKES } from "../src/lib/retakes.ts";
+import { cleanSectionName, sectionColorFor, barStartBeat, barNumberAt, sectionRanges, sectionAtBeat, placeIsFree, SECTION_PRESETS, SECTION_COLORS, type Section } from "../src/lib/sections.ts";
 import { crc32, makeZip, safeFileName, uniqueNames } from "../src/lib/zip.ts";
 import { formatBytes, timeAgo, isOnline, ONLINE_WINDOW_MS, healthChecks, STORAGE_LIMIT_BYTES } from "../src/lib/adminFormat.ts";
 import { readFileSync, readdirSync } from "node:fs";
@@ -781,6 +785,47 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   const DAY = 24 * 60 * 60 * 1000;
   check("setup: offered when new, again after three days when put off, never when done or refused", shouldOfferSetup({ state: "new", at: 0 }) && !shouldOfferSetup({ state: "later", at: 1000 }, 1000 + 2 * DAY) && shouldOfferSetup({ state: "later", at: 1000 }, 1000 + 4 * DAY) && !shouldOfferSetup({ state: "done", at: 0 }) && !shouldOfferSetup({ state: "never", at: 0 }));
   check("setup: six steps in order, each with something to do and what to expect", SETUP_STEPS.map((s) => s.id).join() === "welcome,mic,level,output,test,done" && SETUP_STEPS.every((s) => s.do.length > 0 && s.expect.length > 0 && Array.isArray(s.media)));
+}
+
+// ---- Floating control (lib/floatPosition.ts)
+{
+  const size = { w: 400, h: 60 };
+  const view = { w: 1200, h: 800 };
+  const near = (p: { x: number; y: number }, x: number, y: number) => p.x === x && p.y === y;
+  check("float: a position outside the window is pulled back inside, with a margin", near(clampPosition({ x: -50, y: -5 }, size, view), 8, 8) && near(clampPosition({ x: 5000, y: 5000 }, size, view), 1200 - 400 - 8, 800 - 60 - 8));
+  check("float: a control wider than the window sits at the left margin", near(clampPosition({ x: 300, y: 100 }, { w: 1500, h: 60 }, view), 8, 100));
+  check("float: released near an edge it clicks to it", near(snapPosition({ x: 20, y: 20 }, size, view), 8, 8) && near(snapPosition({ x: 780, y: 725 }, size, view), 792, 732));
+  check("float: released near the middle it clicks to the middle, far from everything it stays", near(snapPosition({ x: 395, y: 300 }, size, view), 400, 300) && near(snapPosition({ x: 200, y: 300 }, size, view), 200, 300));
+  check("float: arrow keys move 10 pixels, 40 with Shift, other keys do nothing", near(moveByKey({ x: 100, y: 100 }, "ArrowRight", false)!, 110, 100) && near(moveByKey({ x: 100, y: 100 }, "ArrowUp", true)!, 100, 60) && moveByKey({ x: 1, y: 1 }, "a", false) === null);
+  check("float: a remembered place is read back, anything else means docked", parseFloatState({ floating: true, x: 40, y: 90 }).floating && parseFloatState({ floating: true, x: "a", y: 1 }) === DOCKED && parseFloatState(null) === DOCKED && parseFloatState({ floating: false, x: 5, y: 5 }) === DOCKED);
+}
+
+// ---- Retakes (lib/clips.ts hiddenClipIds, lib/retakes.ts)
+{
+  const clip = (id: string, takeId: string, startSec: number, durationSec: number, z: number) => ({ id, takeId, startSec, sourceStartSec: 0, durationSec, z, fadeInSec: 0, fadeOutSec: 0 });
+  const stack = [clip("a", "t1", 4, 8, 1), clip("b", "t2", 4, 8, 2), clip("c", "t3", 4, 8, 3)];
+  check("retakes: three takes recorded in the same place leave the two older ones hidden", hiddenClipIds(stack).sort().join() === "a,b");
+  check("retakes: a clip with a piece still showing is not hidden", hiddenClipIds([clip("a", "t1", 0, 10, 1), clip("b", "t2", 2, 4, 2)]).length === 0);
+  check("retakes: a clip covered by two newer clips side by side is hidden", hiddenClipIds([clip("a", "t1", 0, 10, 1), clip("b", "t2", 0, 5, 2), clip("c", "t3", 5, 5, 3)]).join() === "a");
+  check("retakes: the two halves of a cut clip are not mistaken for hidden", hiddenClipIds([clip("a", "t1", 0, 4, 1), clip("b", "t1", 4, 4, 1)]).length === 0);
+  check("retakes: hidden takes come oldest first, and a take with one clip showing is kept", hiddenTakes([...stack, clip("d", "t1", 20, 2, 4)]).map((h) => h.takeId).join() === "t2");
+  const many = Array.from({ length: 9 }, (_, i) => clip(`c${i}`, `t${i}`, 4, 8, i + 1));
+  check("retakes: a channel keeps the last five hidden takes and drops the oldest", MAX_HIDDEN_TAKES === 5 && clipsToTrim(many).join() === "c0,c1,c2" && clipsToTrim(many, 0).length === 8 && clipsToTrim(stack).length === 0);
+  check("retakes: about 8.6 MB a minute for one microphone, twice for stereo", Math.abs(estimateTakeMb(60, false) - 8.64) < 0.01 && Math.abs(estimateTakeMb(60, true) - 17.28) < 0.01);
+}
+
+// ---- Song sections (lib/sections.ts)
+{
+  const sec = (id: string, name: string, atBeat: number): Section => ({ id, projectId: "p", name, color: "#fff", atBeat, beatsPerBar: null });
+  check("sections: names are cleaned (spaces, length)", cleanSectionName("  Part   C ") === "Part C" && cleanSectionName("x".repeat(60)).length === 40 && cleanSectionName("   ") === "");
+  check("sections: a preset name keeps its own colour, in any capitals", sectionColorFor("chorus", []) === SECTION_PRESETS.find((p) => p.name === "Chorus")!.color && sectionColorFor("PART c", ["#000"]) === SECTION_PRESETS.find((p) => p.name === "Part C")!.color);
+  check("sections: a custom name takes the first colour not used yet", sectionColorFor("Breakdown", [SECTION_COLORS[0], SECTION_COLORS[1]]) === SECTION_COLORS[2] && SECTION_COLORS.includes(sectionColorFor("Breakdown", SECTION_COLORS)));
+  check("sections: a place snaps down to the first beat of its bar", barStartBeat(9.6, 4) === 8 && barStartBeat(8, 4) === 8 && barStartBeat(5, 3) === 3 && barStartBeat(-2, 4) === 0 && barNumberAt(9.6, 4) === 3 && barNumberAt(0, 4) === 1);
+  const list = [sec("c", "Chorus", 32), sec("a", "Intro", 0), sec("b", "Verse", 16)];
+  const ranges = sectionRanges(list, 64);
+  check("sections: each section lasts until the next, the last until the end of the song", ranges.map((r) => `${r.section.name}:${r.startBeat}-${r.endBeat}`).join() === "Intro:0-16,Verse:16-32,Chorus:32-64");
+  check("sections: which section a beat is in (none before the first)", sectionAtBeat(list, 20)?.name === "Verse" && sectionAtBeat(list, 16)?.name === "Verse" && sectionAtBeat(list, 100)?.name === "Chorus" && sectionAtBeat([sec("x", "Verse", 8)], 3) === null);
+  check("sections: two sections cannot start at the same place, a section may stay where it is", !placeIsFree(list, 16) && placeIsFree(list, 20) && placeIsFree(list, 16, "b"));
 }
 
 // ---- WAV time stamp (lib/bwf.ts)

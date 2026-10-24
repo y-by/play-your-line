@@ -17,6 +17,8 @@ export interface RealtimeHandlers {
   onGroup: (type: ChangeType, row: Row) => void;
   onListeners: () => void;
   onNote: (type: ChangeType, row: Row) => void;
+  /** Something changed in the song's sections (a small table: the store just reads it again). */
+  onSections: () => void;
   onStatus: (status: RealtimeStatus) => void;
   /** Who has this song open right now (each person once, even on several devices). */
   onPresence: (users: PresentUser[]) => void;
@@ -57,6 +59,7 @@ export function subscribeToProject(projectId: string, handlers: RealtimeHandlers
     .on("postgres_changes", { event: "*", schema: "public", table: "project_notes" }, (p) =>
       handlers.onNote(p.eventType as ChangeType, p.eventType === "DELETE" ? p.old : p.new)
     )
+    .on("postgres_changes", { event: "*", schema: "public", table: "song_sections" }, () => handlers.onSections())
     .on("presence", { event: "sync" }, () => {
       const state = channel.presenceState() as Record<string, { name?: string }[]>;
       handlers.onPresence(Object.entries(state).map(([userId, metas]) => ({ userId, name: metas[0]?.name ?? "Someone" })));

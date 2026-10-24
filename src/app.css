@@ -2363,6 +2363,10 @@
 /* ---------- Control bar, Logic style: grey bar, grouped buttons, dark number display ---------- */
 
 .cbar {
+  /* The header stays at the top while the page scrolls. Its z-index also holds the pop-ups that hang off it and the floating controls. */
+  position: sticky;
+  top: 0;
+  z-index: 60;
   width: 100vw;
   margin-inline: calc(50% - 50vw);
   background: var(--color-bg-elevated);
@@ -2624,12 +2628,6 @@
 
 /* Phones: transport + display on the first row; everything else in a sliding strip below */
 @media (max-width: 700px) {
-  .cbar {
-    position: sticky;
-    top: 0;
-    z-index: 10;
-  }
-
   .hide-m {
     display: none !important;
   }
@@ -4151,12 +4149,7 @@ button.shell-link {
 
 /* ---- Channels / People popups: float over the page under the control bar, never push the channels down ---- */
 
-/* The popups hang off the control bar (it is sticky on a phone, which already anchors them). */
-@media (min-width: 701px) {
-  .cbar {
-    position: relative;
-  }
-}
+/* The popups hang off the control bar (it is sticky, which anchors them). */
 
 .cb-popup-catcher {
   position: fixed;
@@ -8378,4 +8371,216 @@ select.sig-select option {
 
 .setup-banner .zip-cancel {
   color: var(--color-label-secondary);
+}
+
+/* ---- The floating main control: a handle to pull it out of the header and put it wherever suits ---- */
+
+.cb-grip {
+  flex: none;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  margin-right: -10px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: none;
+  color: var(--color-label-tertiary);
+  cursor: grab;
+  touch-action: none;
+  transition: color 0.15s, background 0.15s;
+}
+
+.cb-grip:hover,
+.cb-grip:focus-visible {
+  color: var(--color-accent);
+  background: var(--color-fill);
+}
+
+.cb-grip:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.cb-center.floating {
+  position: fixed;
+  z-index: 61;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  max-width: calc(100vw - 16px);
+  padding: 8px 10px 8px 4px;
+  border: 1px solid var(--color-separator);
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--color-bg-elevated) 90%, transparent);
+  -webkit-backdrop-filter: blur(16px) saturate(1.4);
+  backdrop-filter: blur(16px) saturate(1.4);
+  box-shadow: 0 10px 34px rgba(0, 0, 0, 0.34), 0 2px 6px rgba(0, 0, 0, 0.2);
+  transition: box-shadow 0.18s, transform 0.18s;
+}
+
+.cb-center.floating .cb-grip {
+  color: var(--color-label-secondary);
+}
+
+.cb-center.dragging {
+  transform: scale(1.015);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.45), 0 4px 10px rgba(0, 0, 0, 0.25);
+  user-select: none;
+}
+
+.cb-center.dragging .cb-grip {
+  cursor: grabbing;
+  color: var(--color-accent);
+}
+
+.cb-dock {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid var(--color-separator);
+  border-radius: 8px;
+  background: var(--color-fill);
+  color: var(--color-label-secondary);
+  cursor: pointer;
+}
+
+.cb-dock:hover {
+  color: var(--color-accent);
+  border-color: var(--color-accent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cb-center.floating {
+    transition: none;
+  }
+}
+
+/* ---- The chip that says how many older takes are hidden under the newest ---- */
+
+.note-badge.hidden-takes {
+  color: var(--color-label-secondary);
+}
+
+.note-badge.hidden-takes:hover {
+  color: var(--color-accent);
+}
+
+/* ---- Song sections: the coloured band under the bar numbers, and the dialog that adds and changes them ---- */
+
+.section-strip {
+  position: relative;
+  height: 20px;
+  overflow: hidden;
+  background: rgba(0, 0, 0, 0.12);
+}
+
+.section-band {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 0 3px 0 0;
+  background: color-mix(in srgb, var(--section-color) 30%, transparent);
+  border-left: 3px solid var(--section-color);
+  overflow: hidden;
+}
+
+.section-name {
+  min-width: 0;
+  padding: 0 6px 0 5px;
+  border: 0;
+  background: none;
+  color: var(--color-label);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.section-name:disabled {
+  cursor: not-allowed;
+}
+
+.section-act {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--color-label-secondary);
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.section-act:hover {
+  background: var(--color-fill-secondary);
+  color: var(--color-label);
+}
+
+.sec-presets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sec-presets button {
+  padding: 5px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--section-color);
+  background: transparent;
+  color: var(--pl-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.sec-presets button.on {
+  background: color-mix(in srgb, var(--section-color) 35%, transparent);
+}
+
+.sec-input {
+  min-height: 0;
+  height: 38px;
+  resize: none;
+}
+
+.sec-colors {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.sec-colors button {
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 2px solid transparent;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.sec-colors button.on {
+  border-color: var(--pl-text);
+}
+
+.sec-delete {
+  margin-right: auto;
+  color: #ff8a80;
 }

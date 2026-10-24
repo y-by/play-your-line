@@ -53,6 +53,8 @@ export function SettingsPanel() {
   const isOwner = useProjectStore((s) => s.isInitiator());
   const openFeedback = useFeedbackStore((s) => s.openDialog);
   const openSetupGuide = useSetupStore((s) => s.openGuide);
+  const returnOnStop = useProjectStore((s) => s.returnOnStop);
+  const setReturnOnStop = useProjectStore((s) => s.setReturnOnStop);
   const tabList = (
     [
       ["general", "General"],
@@ -324,6 +326,20 @@ export function SettingsPanel() {
 
         {tab === "click" && (
           <>
+        <section className="settings-section">
+          <h3>Playhead</h3>
+          <div className="settings-row">
+            <span>After stopping, go back to where it started</span>
+            <button className={returnOnStop ? "settings-toggle active" : "settings-toggle"} onClick={() => setReturnOnStop(!returnOnStop)} aria-pressed={returnOnStop}>
+              {returnOnStop ? "On" : "Off"}
+            </button>
+          </div>
+          <p className="settings-note">
+            On: Stop (and the Space bar) put the playhead back where you pressed Play or Record, so the next take lands in the same place and Play
+            hears the take you just made from its start. The play button, pressed again, pauses where it is. Off: everything stops where it is.
+          </p>
+        </section>
+
         <section className="settings-section">
           <h3>Metronome</h3>
           <div className="settings-row">

@@ -6,6 +6,7 @@ import { groupFromRow, groupFxToJson } from "./groups";
 import type { StoredFile } from "./orphans";
 import { roleBadge, rolesOf } from "./roles";
 import { forgetCachedProject, getCachedTake, putCachedTake } from "./takeCache";
+import type { Section } from "./sections";
 
 function requireSupabase() {
   if (!supabase) throw new Error("Supabase is not configured — set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY.");
@@ -1098,5 +1099,39 @@ export async function clearProjectNews(userId: string, projectId: string): Promi
     .eq("user_id", userId)
     .eq("project_id", projectId)
     .is("card_cleared_at", null);
+  if (error) throw error;
+}
+
+// ---- Song sections (migration 0058) -------------------------------------------------------------------------------------
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const mapSection = (r: any): Section => ({ id: r.id, projectId: r.project_id, name: r.name, color: r.color, atBeat: Number(r.at_beat), beatsPerBar: r.beats_per_bar ?? null });
+
+export async function listSections(projectId: string): Promise<Section[]> {
+  const client = requireSupabase();
+  const { data, error } = await client.from("song_sections").select("*").eq("project_id", projectId).order("at_beat", { ascending: true });
+  if (error) throw error;
+  return (data ?? []).map(mapSection);
+}
+
+export async function addSection(section: { projectId: string; name: string; color: string; atBeat: number }, userId: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("song_sections").insert({ project_id: section.projectId, name: section.name, color: section.color, at_beat: section.atBeat, created_by: userId });
+  if (error) throw error;
+}
+
+export async function updateSection(id: string, patch: Partial<{ name: string; color: string; atBeat: number }>): Promise<void> {
+  const client = requireSupabase();
+  const row: Record<string, unknown> = {};
+  if (patch.name !== undefined) row.name = patch.name;
+  if (patch.color !== undefined) row.color = patch.color;
+  if (patch.atBeat !== undefined) row.at_beat = patch.atBeat;
+  const { error } = await client.from("song_sections").update(row).eq("id", id);
+  if (error) throw error;
+}
+
+export async function deleteSection(id: string): Promise<void> {
+  const client = requireSupabase();
+  const { error } = await client.from("song_sections").delete().eq("id", id);
   if (error) throw error;
 }

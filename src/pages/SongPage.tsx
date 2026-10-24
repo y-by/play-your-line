@@ -8,6 +8,7 @@ import { NoteAlert } from "../components/notes/NoteAlert";
 import { NoteCards } from "../components/notes/NoteCards";
 import { SettingsPanel } from "../components/SettingsPanel";
 import { SetupGuide } from "../components/SetupGuide";
+import { SectionDialog } from "../components/SectionDialog";
 import { SetupPrompt } from "../components/SetupPrompt";
 import { ErrorToast } from "../components/ErrorToast";
 import { useAccountStore } from "../store/useAccountStore";
@@ -78,6 +79,7 @@ export function SongPage() {
 
       <SettingsPanel />
       <SetupGuide />
+      <SectionDialog />
       <NotesTray />
       <NoteCards />
       <NoteAlert />

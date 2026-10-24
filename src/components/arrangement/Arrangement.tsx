@@ -334,7 +334,8 @@ export function Arrangement() {
           void s.stopRecording();
           return;
         }
-        if (s.isPlaying) s.pause();
+        // Space stops (and goes back to where it started, unless that is switched off in Settings); the play button pauses in place.
+        if (s.isPlaying) s.stop();
         else s.play();
       } else if (key === "enter") {
         if (!s.recordingTrackId) {

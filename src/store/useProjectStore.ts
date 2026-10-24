@@ -33,6 +33,8 @@ import { clampMasterVolume, DEFAULT_MASTER, masterFromRow, masterFxOnly } from "
 import { rolesOf, roleBadge } from "../lib/roles";
 import { can } from "../lib/rules";
 import { monitorKey, readMonitor } from "../lib/personalMix";
+import { MAX_HIDDEN_TAKES, clipsToTrim } from "../lib/retakes";
+import { barStartBeat, cleanSectionName, placeIsFree, sectionColorFor, type Section } from "../lib/sections";
 
 /** The useful part of a Supabase / network error, for showing to the person. */
 function errorDetail(err: unknown): string {
@@ -402,7 +404,23 @@ interface ProjectState {
   leaveProject: () => void;
 
   play: () => void;
+  /** Pauses where it is (the play button, pressed again, does this). */
   pause: () => void;
+  /** The named marks on the timeline (Intro, Verse, Chorus...). Everyone in the project sees them; the Owner and the Mixer change them. */
+  sections: Section[];
+  canEditSections: () => boolean;
+  /** Adds a mark at the first beat of the bar the playhead is in. Returns an error message, or null when it worked. */
+  addSectionAtPlayhead: (name: string, color?: string) => Promise<string | null>;
+  /** Changes a mark's name or colour, or moves it to the first beat of the bar the playhead is in. */
+  editSection: (id: string, patch: { name?: string; color?: string; moveToPlayhead?: boolean }) => Promise<string | null>;
+  removeSection: (id: string) => Promise<string | null>;
+  /** Removes the older takes that are fully hidden under newer ones in this channel (their files too), keeping the newest `keep` of them. Returns how many takes went. */
+  clearHiddenTakes: (trackId: string, keep?: number) => Promise<number>;
+  /** Stops, and (when "go back to where it started" is on) puts the playhead back where this play or recording began. */
+  stop: () => void;
+  /** After stopping, the playhead returns to where playing or recording started. Kept on this device; on by default. */
+  returnOnStop: boolean;
+  setReturnOnStop: (on: boolean) => void;
   seek: (sec: number) => void;
 
   /** Imports an audio file dropped on a channel as a new clip, placed at `atSec`. */
@@ -464,6 +482,7 @@ const COUNT_IN_BEATS = 4;
 const SNAP_ENABLED_KEY = "pyl.snapEnabled";
 const SNAP_RESOLUTION_KEY = "pyl.snapResolution";
 const FOLLOW_KEY = "pyl.followPlayhead";
+const RETURN_KEY = "pyl.returnOnStop";
 const orderKey = (projectId: string) => `pyl.order.${projectId}`;
 const colorsKey = (projectId: string) => `pyl.colors.${projectId}`;
 
@@ -612,6 +631,17 @@ function writeNoteCards(projectId: string, cards: Record<string, NoteCardState>)
     // not remembering where the cards sit is fine
   }
 }
+
+function readStoredReturnOnStop(): boolean {
+  try {
+    return localStorage.getItem(RETURN_KEY) !== "off"; // on by default
+  } catch {
+    return true;
+  }
+}
+
+/** Where the last play or recording began, so Stop can put the playhead back there. */
+let returnToSec = 0;
 
 function readStoredFollow(): boolean {
   try {
@@ -1331,6 +1361,16 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     }
   };
 
+  const refreshSections = async (projectId: string) => {
+    try {
+      const sections = await api.listSections(projectId);
+      if (get().project?.id === projectId) set({ sections });
+    } catch (err) {
+      // Before the sections migration has been run there is no table yet; the rest of the app is unaffected.
+      console.warn("Couldn't load the sections:", err);
+    }
+  };
+
   const handleNoteChange = (type: "INSERT" | "UPDATE" | "DELETE", row: Record<string, unknown>) => {
     const project = get().project;
     if (!project) return;
@@ -1380,6 +1420,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
             .catch((err) => console.warn("Couldn't refresh the listeners:", err));
         },
         onNote: (type, row) => handleNoteChange(type, row),
+        onSections: () => void refreshSections(projectId),
         onTrack: (type, row) => void handleTrackChange(type, row),
         onClip: (type, row) => void handleClipChange(type, row),
         onStatus: (status) => {
@@ -1561,6 +1602,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         syncMixToEngine();
         set({ noteCards: readNoteCards(project.id), channelInputs: readChannelInputs(project.id), collapsedGroups: readCollapsed(project.id), laneScales: readLaneScales(project.id) });
         void refreshNotes(project.id);
+        void refreshSections(project.id);
         // Bring back the chords the person had switched on here last time.
         void (async () => {
           for (const trackId of readChordsWanted(project.id)) {
@@ -2697,6 +2739,7 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     },
 
     play: () => {
+      returnToSec = get().positionSec;
       engine.resume().then(() => engine.play(get().positionSec));
     },
 
@@ -2953,11 +2996,112 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       engine.pause();
       engine.stopMonitoring();
       stopRealtime();
-      set({ realtimeStatus: "off", presentUsers: [], armedTrackId: null, fxUndoCount: {}, fxCompare: {}, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null });
+      set({ sections: [], realtimeStatus: "off", presentUsers: [], armedTrackId: null, fxUndoCount: {}, fxCompare: {}, notes: [], noteAlert: null, notesTrayOpen: false, noteCards: {}, openFlagId: null });
     },
 
     pause: () => engine.pause(),
-    seek: (sec) => engine.seek(sec),
+    sections: [],
+    canEditSections: () => get().canMix(),
+    addSectionAtPlayhead: async (name, color) => {
+      const { project, sections } = get();
+      const uid = currentUserId();
+      if (!project || !uid || !get().canEditSections()) return "Only the Owner and the Mixer can change the sections.";
+      const clean = cleanSectionName(name);
+      if (!clean) return "Give the section a name.";
+      const atBeat = barStartBeat(get().positionSec / beatSec(project.bpm), project.beatsPerBar);
+      if (!placeIsFree(sections, atBeat)) return "There is already a section starting at this bar. Move the playhead to another bar.";
+      try {
+        await api.addSection({ projectId: project.id, name: clean, color: color ?? sectionColorFor(clean, sections.map((s) => s.color)), atBeat }, uid);
+        await refreshSections(project.id);
+        return null;
+      } catch (err) {
+        console.error("Couldn't add the section:", err);
+        return `Couldn't add the section${errorDetail(err)}`;
+      }
+    },
+    editSection: async (id, patch) => {
+      const { project, sections } = get();
+      if (!project || !get().canEditSections()) return "Only the Owner and the Mixer can change the sections.";
+      const change: { name?: string; color?: string; atBeat?: number } = {};
+      if (patch.name !== undefined) {
+        const clean = cleanSectionName(patch.name);
+        if (!clean) return "Give the section a name.";
+        change.name = clean;
+      }
+      if (patch.color !== undefined) change.color = patch.color;
+      if (patch.moveToPlayhead) {
+        const atBeat = barStartBeat(get().positionSec / beatSec(project.bpm), project.beatsPerBar);
+        if (!placeIsFree(sections, atBeat, id)) return "There is already a section starting at this bar. Move the playhead to another bar.";
+        change.atBeat = atBeat;
+      }
+      try {
+        await api.updateSection(id, change);
+        await refreshSections(project.id);
+        return null;
+      } catch (err) {
+        console.error("Couldn't change the section:", err);
+        return `Couldn't change the section${errorDetail(err)}`;
+      }
+    },
+    removeSection: async (id) => {
+      const { project } = get();
+      if (!project || !get().canEditSections()) return "Only the Owner and the Mixer can change the sections.";
+      try {
+        await api.deleteSection(id);
+        await refreshSections(project.id);
+        return null;
+      } catch (err) {
+        console.error("Couldn't delete the section:", err);
+        return `Couldn't delete the section${errorDetail(err)}`;
+      }
+    },
+    clearHiddenTakes: async (trackId, keep = 0) => {
+      const { project } = get();
+      const track = project?.tracks.find((t) => t.id === trackId);
+      if (!project || !track || !get().canEditClips(track)) return 0;
+      const ids = new Set(clipsToTrim(track.clips, keep));
+      if (ids.size === 0) return 0;
+      const remaining = track.clips.filter((c) => !ids.has(c.id));
+      const usedAfter = new Set(remaining.map((c) => c.takeId));
+      const goneTakes = [...new Set(track.clips.filter((c) => ids.has(c.id)).map((c) => c.takeId))].filter((id) => !usedAfter.has(id));
+      if (!(await get().commitClips(trackId, remaining, { skipHistory: true }))) return 0;
+      // Undo and redo must never bring back a clip whose recording is about to be deleted.
+      for (const entry of [...undoStack, ...redoStack]) {
+        if (entry.trackId !== trackId) continue;
+        entry.before = entry.before.filter((c) => !ids.has(c.id));
+        entry.after = entry.after.filter((c) => !ids.has(c.id));
+      }
+      for (const takeId of goneTakes) {
+        const take = project.takes[takeId];
+        if (!take) continue;
+        try {
+          await api.removeTakeFiles(project.id, take.trackId, [take.storagePath.split("/").pop() ?? ""]);
+          await api.deleteTakeRows(take.trackId, [take.id]);
+        } catch (err) {
+          console.warn("Could not remove a hidden take's recording (it will be cleaned up when the project opens):", err);
+        }
+      }
+      return goneTakes.length;
+    },
+    stop: () => {
+      engine.pause();
+      if (get().returnOnStop) engine.seek(returnToSec);
+    },
+    returnOnStop: readStoredReturnOnStop(),
+    setReturnOnStop: (on) => {
+      set({ returnOnStop: on });
+      try {
+        if (on) localStorage.removeItem(RETURN_KEY);
+        else localStorage.setItem(RETURN_KEY, "off");
+      } catch {
+        // storage unavailable — the setting just won't persist
+      }
+    },
+    seek: (sec) => {
+      // Jumping while it plays is a new start: Stop then comes back to where you jumped.
+      if (get().isPlaying) returnToSec = sec;
+      engine.seek(sec);
+    },
 
     importingTrackIds: [],
     joiningTrackId: null,
@@ -3178,6 +3322,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       const track = project.tracks.find((t) => t.id === trackId);
       if (!track || !get().canEditClips(track)) return;
 
+      // Where the take begins (before any count-in): the playhead comes back here when the recording stops.
+      returnToSec = get().positionSec;
       set({ recordingTrackId: trackId, recordingPhase: "requesting-mic", recordingError: null });
 
       try {
@@ -3250,6 +3396,8 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         console.error("Failed to stop recording cleanly:", err);
         result = { blob: new Blob(), timelineOffsetSec: 0, latencySec: 0, durationSec: 0 };
       }
+      // Back to where the take began, so the next take lands in the same place and Play hears this one from its start.
+      if (get().returnOnStop) engine.seek(returnToSec);
       const { blob } = result;
 
       const uid = currentUserId();
@@ -3315,6 +3463,11 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         }
         applyTrackClips(recordingTrackId, next);
         updateHistoryCounts();
+        // A channel keeps only the last few hidden takes; the oldest go, and the player is told.
+        const trimmed = await get().clearHiddenTakes(recordingTrackId, MAX_HIDDEN_TAKES);
+        if (trimmed > 0) {
+          set({ recordingNotice: `This channel keeps the last ${MAX_HIDDEN_TAKES} older takes under the newest. ${trimmed === 1 ? "The oldest one was" : `The ${trimmed} oldest were`} removed to save space.` });
+        }
       } catch (err) {
         console.error("Failed to save the take:", err);
         set({

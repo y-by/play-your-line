@@ -23,6 +23,7 @@ A test fails if this file is out of date.
 | Record and edit clips | their own channel | their own channel | their own channel | – |
 | Move a clip to another channel of the same player | ✅ | – | their own channels | – |
 | Download all channels (a zip with the full mix and every channel as its own WAV file) | ✅ | ✅ | ✅ | – |
+| Song sections: add, rename, move or delete the named marks (Intro, Verse, Chorus…) | ✅ | ✅ | – | – |
 | Invite a Mixer or Listeners, add someone by email, choose the Mixer | ✅ | – | – | – |
 | Write notes, tag people with @ | ✅ | ✅ | ✅ | – |
 | Edit a note, mark it done or reopen it | ✅ | their own notes | their own notes | – |
@@ -49,6 +50,7 @@ The screen hides what you cannot do, but the database is what really stops it.
 | Record and edit clips | policies on clips, takes and storage: only the channel's own player (0009) | Nobody touches a player's recordings but that player. The Owner cannot record on or edit someone else's channel. |
 | Move a clip to another channel of the same player | function move_clip and the Owner's upload rule on take files (0048) | Both channels must belong to the same player: nobody moves a clip to another player's channel. This is the only thing the Owner may do to a player's recordings. |
 | Download all channels (a zip with the full mix and every channel as its own WAV file) | screen only (everyone in the project can already read the recordings, 0001, 0009) | A Player chooses between the Owner's mix and their own monitor mix. The button is hidden from Listeners; the database does not stop a Listener from fetching the files. |
+| Song sections: add, rename, move or delete the named marks (Intro, Verse, Chorus…) | policies on song_sections and function can_edit_sections (0058) | Everyone in the project sees the sections and can jump to one or repeat it. |
 | Invite a Mixer or Listeners, add someone by email, choose the Mixer | functions set_mixer, add_project_member; policies on project_invites (0014, 0031) |  |
 | Write notes, tag people with @ | function can_write_notes and note policies (0032) | A Player needs a channel to write notes. Listeners only read the notes shared with them. |
 | Edit a note, mark it done or reopen it | trigger guard_project_notes (0033, 0041) |  |

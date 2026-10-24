@@ -71,3 +71,7 @@ blocked screen. `user_status` has no write rules at all; only the functions abov
 
 The Owner still cannot record on, trim, split, fade or delete a player's clips; the only thing the Owner may do to a player's recordings is move a clip
 between that player's own channels.
+
+## Song sections (0058)
+
+`song_sections` is read by everyone in the project (and the admin) and written only by the Owner and the Mixer: policies on the table, with `can_edit_sections(project_id)` (security definer, signed-in only, checks the caller's own id). A blocked account is stopped by the restrictive rule from 0046. `beats_per_bar` is reserved and unused.
