@@ -7,6 +7,7 @@ import { computeTakePlacement, measureClickLatencies, summarizeLatencies } from 
 import { audibleSegments, clipsEnd, type ClipData } from "./clips";
 import { scheduleSegment } from "./segmentPlayback";
 import { loopApplies, positionWithLoop, nextLoopPass, MIN_LOOP_SEC, type LoopRegion, type LoopPass } from "./loop";
+import { lapBeginCtx, lapIndexAtCtx, lapStartPos, splitLoopLaps, type LoopRecording } from "./loopLaps";
 import { createReverbImpulse, clampFx, DEFAULT_CHANNEL_FX } from "./channelFx";
 import { createFxChain, type FxChain } from "./fxChain";
 import type { ChannelFx, MasterMix } from "../types/project";
@@ -21,7 +22,16 @@ type LevelListener = (rms: number, peak: number) => void;
 /** Samples per min/max pair of the live waveform (about 10 ms). */
 const LIVE_BIN = 512;
 
+/** One lap of a recording made while a loop played: its own take, placed where the lap was heard. */
+export interface RecordingLap {
+  blob: Blob;
+  timelineOffsetSec: number;
+  durationSec: number;
+}
+
 export interface RecordingResult {
+  /** When the recording ran round a loop, every lap in order (the last one is also the main take below). */
+  laps?: RecordingLap[];
   blob: Blob;
   /** Where this take belongs on the song timeline, latency-compensated. */
   timelineOffsetSec: number;
@@ -139,6 +149,8 @@ export class AudioEngine {
   // Lossless capture: raw Float32 samples straight off the input, no codec.
   private recorderWorkletReady: Promise<void> | null = null;
   private recorderNode: AudioWorkletNode | null = null;
+  /** Set when the recording began inside a loop; the capture is cut into laps from it. */
+  private recordingLoop: LoopRecording | null = null;
   private recorderSilentGain: GainNode | null = null;
   private recorderMonoGain: GainNode | null = null;
   private recorderSource: MediaStreamAudioSourceNode | null = null;
@@ -748,7 +760,9 @@ export class AudioEngine {
     // A loop (when one is set and this play starts before its end) is scheduled
     // one pass at a time on the same audio clock; otherwise everything is
     // scheduled once, as before.
-    this.activeLoop = !this.recorderNode && loopApplies(this.loopRegion, start) ? this.loopRegion : null;
+    // The song goes round the loop while recording too: the capture is cut into laps when it stops (see lib/loopLaps.ts).
+    this.activeLoop = loopApplies(this.loopRegion, start) ? this.loopRegion : null;
+    this.recordingLoop = this.recorderNode && this.activeLoop ? { loop: { ...this.activeLoop }, startPos: start, anchorCtx: t0 } : null;
     if (this.activeLoop) {
       this.loopNextPass = { from: start, to: this.activeLoop.endSec, ctxStart: t0 };
       this.pumpLoop();
@@ -969,6 +983,7 @@ export class AudioEngine {
     this.recorderSampleRate = this.ctx.sampleRate;
     this.recorderStartFrame = null;
     this.recordingAnchor = null;
+    this.recordingLoop = null;
     workletNode.port.onmessage = (event: MessageEvent<Float32Array | { type: string; frame?: number }>) => {
       const data = event.data;
       if (data instanceof Float32Array) {
@@ -1081,8 +1096,19 @@ export class AudioEngine {
       earliestPositionSec: anchor.position,
     });
     // Anything captured before the song started (the count-in) is dropped from the final take too.
-    const skipBins = Math.ceil(placement.dropSamples / LIVE_BIN);
-    const startSec = placement.offsetSec + (skipBins * LIVE_BIN - placement.dropSamples) / rate;
+    let skipBins = Math.ceil(placement.dropSamples / LIVE_BIN);
+    let startSec = placement.offsetSec + (skipBins * LIVE_BIN - placement.dropSamples) / rate;
+    // Inside a loop the picture shows the lap that is being played now, from where that lap began.
+    const loopRec = this.recordingLoop;
+    if (loopRec) {
+      const latency = this.effectiveLatencySec();
+      const captureStartCtx = this.recorderStartFrame / rate;
+      const k = lapIndexAtCtx(loopRec, this.ctx.currentTime - latency);
+      const begin = lapBeginCtx(loopRec, k);
+      const fromSample = Math.max(0, Math.ceil((begin + latency - captureStartCtx) * rate));
+      skipBins = Math.ceil(fromSample / LIVE_BIN);
+      startSec = lapStartPos(loopRec, k) + ((skipBins * LIVE_BIN) / rate + captureStartCtx - latency - begin);
+    }
     const firstFloat = Math.min(this.livePeakCount, skipBins * 2);
     const dataSec = ((this.livePeakCount - firstFloat) / 2) * (LIVE_BIN / rate);
     const sinceChunk = Math.min(0.03, (performance.now() - this.liveLastChunkAt) / 1000);
@@ -1093,6 +1119,12 @@ export class AudioEngine {
       dataSec,
       tipSec: dataSec + sinceChunk,
     };
+  }
+
+  /** The lap being recorded right now (1 is the first), or null when the recording is not going round a loop. */
+  getRecordingLap(): number | null {
+    if (!this.recorderNode || !this.recordingLoop) return null;
+    return lapIndexAtCtx(this.recordingLoop, this.ctx.currentTime) + 1;
   }
 
   private releaseCaptureGraph() {
@@ -1190,7 +1222,24 @@ export class AudioEngine {
 
     // Stopped during the count-in (or immediately after): nothing worth keeping.
     if (samples.length < capture.sampleRate * 0.05) {
+      this.recordingLoop = null;
       return { blob: new Blob(), timelineOffsetSec: 0, latencySec, durationSec: 0 };
+    }
+
+    // Recorded while a loop went round: each lap is a take of its own, placed where that lap was heard.
+    const loopRec = this.recordingLoop;
+    this.recordingLoop = null;
+    if (loopRec && capture.startFrame !== null) {
+      const laps = splitLoopLaps({ rec: loopRec, captureStartCtx: capture.startFrame / capture.sampleRate, latencySec, sampleRate: capture.sampleRate, totalSamples: samples.length });
+      const made = laps.map((lap) => {
+        const length = lap.toSample - lap.fromSample;
+        const lapBuffer = this.ctx.createBuffer(right ? 2 : 1, length, capture.sampleRate);
+        lapBuffer.copyToChannel(samples.slice(lap.fromSample, lap.toSample) as Float32Array<ArrayBuffer>, 0);
+        if (right) lapBuffer.copyToChannel(right.slice(lap.fromSample, lap.toSample) as Float32Array<ArrayBuffer>, 1);
+        return { blob: encodeTake(lapBuffer).blob, timelineOffsetSec: lap.offsetSec, durationSec: lap.durationSec };
+      });
+      const lastLap = made[made.length - 1];
+      if (lastLap) return { ...lastLap, latencySec, laps: made };
     }
 
     const buffer = this.ctx.createBuffer(right ? 2 : 1, Math.max(1, samples.length), capture.sampleRate);

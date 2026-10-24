@@ -14,6 +14,7 @@ import { useProjectStore } from "../../store/useProjectStore";
 import { useAuthStore } from "../../store/useAuthStore";
 import { XmarkCircleIcon, MicIcon, NoteIcon } from "../icons/Icons";
 import { estimateTakeMb, hiddenTakes } from "../../lib/retakes";
+import { RecordingLap } from "./RecordingLap";
 
 /** The left-hand column of a lane: who plays it, record, mute/solo, volume. */
 export function ChannelInfo({ track, number, onGripDown }: { track: Track; number: number; onGripDown?: (e: React.PointerEvent) => void }) {
@@ -144,6 +145,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
             {status ?? playerName}
           </span>
           <span className="info-actions">
+            {isRecording && <RecordingLap />}
             {openChannelNotes > 0 && (
               <button className="note-badge" onClick={() => showChannelNotes(track.id)} title={`${openChannelNotes} open note${openChannelNotes === 1 ? "" : "s"} for this channel`} aria-label="Open this channel's notes">
                 <NoteIcon size={12} />

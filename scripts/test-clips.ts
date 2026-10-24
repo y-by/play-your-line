@@ -25,7 +25,8 @@ import { levelAdvice, judgeTestTake, rateAdvice, peakToDb, shouldOfferSetup, SET
 import { clampPosition, snapPosition, moveByKey, parseFloatState, DOCKED } from "../src/lib/floatPosition.ts";
 import { hiddenClipIds } from "../src/lib/clips.ts";
 import { hiddenTakes, clipsToTrim, estimateTakeMb, MAX_HIDDEN_TAKES } from "../src/lib/retakes.ts";
-import { cleanSectionName, sectionColorFor, barStartBeat, barNumberAt, sectionRanges, sectionAtBeat, placeIsFree, SECTION_PRESETS, SECTION_COLORS, type Section } from "../src/lib/sections.ts";
+import { cleanSectionName, sectionColorFor, barStartBeat, barNumberAt, sectionRanges, sectionAtBeat, placeIsFree, dragSectionStart, SECTION_PRESETS, SECTION_COLORS, type Section } from "../src/lib/sections.ts";
+import { splitLoopLaps, lapBeginCtx, lapIndexAtCtx, lapStartPos, MIN_LAP_SEC } from "../src/lib/loopLaps.ts";
 import { crc32, makeZip, safeFileName, uniqueNames } from "../src/lib/zip.ts";
 import { formatBytes, timeAgo, isOnline, ONLINE_WINDOW_MS, healthChecks, STORAGE_LIMIT_BYTES } from "../src/lib/adminFormat.ts";
 import { readFileSync, readdirSync } from "node:fs";
@@ -826,6 +827,37 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("sections: each section lasts until the next, the last until the end of the song", ranges.map((r) => `${r.section.name}:${r.startBeat}-${r.endBeat}`).join() === "Intro:0-16,Verse:16-32,Chorus:32-64");
   check("sections: which section a beat is in (none before the first)", sectionAtBeat(list, 20)?.name === "Verse" && sectionAtBeat(list, 16)?.name === "Verse" && sectionAtBeat(list, 100)?.name === "Chorus" && sectionAtBeat([sec("x", "Verse", 8)], 3) === null);
   check("sections: two sections cannot start at the same place, a section may stay where it is", !placeIsFree(list, 16) && placeIsFree(list, 20) && placeIsFree(list, 16, "b"));
+}
+
+// ---- Dragging a section boundary (lib/sections.ts)
+{
+  const mk = (id: string, atBeat: number): Section => ({ id, projectId: "p", name: id, color: "#fff", atBeat, beatsPerBar: null });
+  const three = [mk("a", 0), mk("b", 16), mk("c", 32)];
+  check("sections drag: the start snaps to the nearest bar", dragSectionStart(three, "b", 18.7, 4) === 20 && dragSectionStart(three, "b", 17.4, 4) === 16);
+  check("sections drag: never closer than one bar to its neighbours", dragSectionStart(three, "b", 2, 4) === 4 && dragSectionStart(three, "b", 90, 4) === 28);
+  check("sections drag: the first one may go back to the start of the song, not before", dragSectionStart(three, "a", -20, 4) === 0 && dragSectionStart(three, "a", 100, 4) === 12);
+  check("sections drag: the last one can go as far right as it likes", dragSectionStart(three, "c", 200, 4) === 200 && dragSectionStart(three, "c", 3, 4) === 20);
+}
+
+// ---- Loop recording (lib/loopLaps.ts)
+{
+  // Song position 8 s, loop 8 s to 16 s (8 s long); the song starts to sound at audio-clock time 100.
+  const rec = { loop: { startSec: 8, endSec: 16 }, startPos: 8, anchorCtx: 100 };
+  const rate = 1000;
+  check("loop recording: laps begin one loop length apart on the audio clock", lapBeginCtx(rec, 0) === 100 && lapBeginCtx(rec, 1) === 108 && lapBeginCtx(rec, 3) === 124);
+  check("loop recording: which lap is sounding at a time", lapIndexAtCtx(rec, 99) === 0 && lapIndexAtCtx(rec, 107.9) === 0 && lapIndexAtCtx(rec, 108) === 1 && lapIndexAtCtx(rec, 125) === 3);
+  // The microphone began at 99 (a second of count-in), no latency, and ran until 124.5 (25.5 s): lap 0 is 100-108, lap 1 108-116, lap 2 116-124, then half a second of lap 3.
+  const laps = splitLoopLaps({ rec, captureStartCtx: 99, latencySec: 0, sampleRate: rate, totalSamples: 25.5 * rate });
+  check("loop recording: a capture running round the loop is cut into one take per lap", laps.length === 3 && laps.map((l) => l.index).join() === "0,1,2");
+  check("loop recording: every lap lands where it was heard, the count-in is dropped", laps.every((l) => l.offsetSec === 8) && laps[0].fromSample === 1000 && laps[1].fromSample === 9000 && laps[2].toSample === 25000);
+  check("loop recording: a lap of the whole loop lasts the loop length", laps[1].durationSec === 8 && laps[0].durationSec === 8);
+  const late = splitLoopLaps({ rec, captureStartCtx: 99, latencySec: 0.05, sampleRate: rate, totalSamples: 25.5 * rate });
+  check("loop recording: the delay between playing and recording is taken out of each lap", late[1].fromSample === 9050 && late[1].offsetSec === 8);
+  const stoppedEarly = splitLoopLaps({ rec, captureStartCtx: 99, latencySec: 0, sampleRate: rate, totalSamples: 9.5 * rate });
+  check("loop recording: stopping just after a lap began drops that crumb, a single short lap is kept", stoppedEarly.length === 1 && splitLoopLaps({ rec, captureStartCtx: 99, latencySec: 0, sampleRate: rate, totalSamples: 3 * rate }).length === 1);
+  const mid = { loop: { startSec: 8, endSec: 16 }, startPos: 4, anchorCtx: 100 };
+  const fromBefore = splitLoopLaps({ rec: mid, captureStartCtx: 100, latencySec: 0, sampleRate: rate, totalSamples: 21 * rate });
+  check("loop recording: starting before the loop, the first lap runs from there to the loop end, the next ones are the whole loop", fromBefore.length === 3 && fromBefore[0].offsetSec === 4 && fromBefore[0].durationSec === 12 && fromBefore[1].offsetSec === 8 && lapStartPos(mid, 1) === 8 && MIN_LAP_SEC === 1);
 }
 
 // ---- WAV time stamp (lib/bwf.ts)

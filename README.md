@@ -132,6 +132,8 @@ migration `0046`; the admin is the account named at its end. **Feedback** (migra
 
 **Remembered input and output.** The input and output you choose are remembered on this computer (found again by name if the browser changes an id) and put back when a project opens or a device is plugged in. With nothing chosen, the system default is used as the real device it names, not the browser's "default" entry, which can stay stuck on the wrong device.
 
+**Recording in a loop.** Turn the loop on and press Record: the song goes round the loop, and every lap becomes its own take in the same place, the newest on top (a channel keeps the newest six). The count-in only comes before the first lap.
+
 **Stop goes back.** Stop and the Space bar return the playhead to where you pressed Play or Record (switch it off in Settings > Click > Playhead); the play button, pressed again, pauses where it is. A channel keeps its last five older takes under the newest; a small chip on the strip clears them. **Song sections:** the Owner and the Mixer mark the parts of a song (Intro, Verse, Chorus, Part C...) with the bookmark button; everyone sees them as a coloured strip under the bar numbers, can jump to one, or repeat it.
 
 **Header and controls.** The project header stays at the top while you scroll. Drag the small dotted handle at the left of the transport to float the main control anywhere on the screen (it clicks to the edges and the middle and remembers its place on this device); press the dock button, double-click the handle, or press Enter on it to put it back. Arrow keys move it when the handle is focused.

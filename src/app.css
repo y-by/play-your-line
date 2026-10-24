@@ -8474,9 +8474,24 @@ select.sig-select option {
 
 .section-strip {
   position: relative;
-  height: 20px;
-  overflow: hidden;
+  height: 24px;
   background: rgba(0, 0, 0, 0.12);
+}
+
+.section-strip.editable {
+  cursor: copy;
+}
+
+.section-hint {
+  position: sticky;
+  left: 0;
+  display: inline-block;
+  padding: 0 10px;
+  line-height: 24px;
+  font-size: 11px;
+  color: var(--color-label-tertiary);
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .section-band {
@@ -8487,14 +8502,67 @@ select.sig-select option {
   align-items: center;
   gap: 2px;
   min-width: 0;
-  padding: 0 3px 0 0;
+  padding: 0 3px 0 6px;
   background: color-mix(in srgb, var(--section-color) 30%, transparent);
   border-left: 3px solid var(--section-color);
+  cursor: default;
   overflow: hidden;
+}
+
+.section-band.dragging {
+  background: color-mix(in srgb, var(--section-color) 48%, transparent);
+  z-index: 3;
+}
+
+/* The line between two sections is a handle: drag it left or right. It is wider than it looks so it is easy to hit. */
+.section-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 14px;
+  margin-left: -7px;
+  z-index: 2;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.section-handle::after {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 4px;
+  bottom: 4px;
+  width: 4px;
+  border-radius: 2px;
+  background: var(--section-color);
+  opacity: 0.55;
+  transition: opacity 0.12s, transform 0.12s;
+}
+
+.section-handle:hover::after,
+.section-handle.dragging::after {
+  opacity: 1;
+  transform: scaleX(1.5);
+}
+
+.section-tip {
+  position: absolute;
+  top: 100%;
+  margin-top: 4px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: var(--pl-bg-bottom);
+  color: var(--pl-text);
+  border: 1px solid var(--pl-border);
+  font-size: 11px;
+  white-space: nowrap;
+  pointer-events: none;
+  z-index: 5;
 }
 
 .section-name {
   min-width: 0;
+  max-width: 100%;
   padding: 0 6px 0 5px;
   border: 0;
   background: none;
@@ -8583,4 +8651,18 @@ select.sig-select option {
 .sec-delete {
   margin-right: auto;
   color: #ff8a80;
+}
+
+/* ---- The lap counter on the channel being recorded round a loop ---- */
+
+.lap-pill {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 99px;
+  background: var(--color-red);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.02em;
 }

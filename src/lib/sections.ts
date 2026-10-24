@@ -87,3 +87,17 @@ export function sectionAtBeat(sections: Section[], beat: number): Section | null
 export function placeIsFree(sections: Section[], atBeat: number, ignoreId?: string): boolean {
   return !sections.some((s) => s.id !== ignoreId && Math.abs(s.atBeat - atBeat) < 0.001);
 }
+
+/**
+ * Where a section's start may go when it is dragged: to the nearest bar, never closer than one bar to the section before it or the
+ * one after it (so two marks never meet or swap), and never before the start of the song.
+ */
+export function dragSectionStart(sections: Section[], id: string, beat: number, beatsPerBar: number): number {
+  const bars = Math.max(1, Math.round(beatsPerBar));
+  const sorted = [...sections].sort((a, b) => a.atBeat - b.atBeat);
+  const i = sorted.findIndex((s) => s.id === id);
+  const min = i > 0 ? sorted[i - 1].atBeat + bars : 0;
+  const max = i >= 0 && i + 1 < sorted.length ? sorted[i + 1].atBeat - bars : Number.POSITIVE_INFINITY;
+  const nearest = Math.round(Math.max(0, beat) / bars) * bars;
+  return Math.max(min, Math.min(max, nearest));
+}

@@ -42,7 +42,8 @@ export function SectionDialog() {
   }, [dialog, close]);
 
   if (!dialog) return null;
-  const bar = barNumberAt(positionSec / beatSec(bpm), beatsPerBar);
+  const addBeat = dialog?.mode === "add" && dialog.atBeat !== null ? dialog.atBeat : null;
+  const bar = barNumberAt(addBeat ?? positionSec / beatSec(bpm), beatsPerBar);
   const chosenColor = color ?? sectionColorFor(name, sections.filter((s) => s.id !== existing?.id).map((s) => s.color));
 
   const run = async (work: () => Promise<string | null>) => {
@@ -55,7 +56,7 @@ export function SectionDialog() {
   };
 
   const save = () =>
-    run(() => (existing ? editSection(existing.id, { name, color: chosenColor }) : addSectionAtPlayhead(name, chosenColor)));
+    run(() => (existing ? editSection(existing.id, { name, color: chosenColor }) : addSectionAtPlayhead(name, chosenColor, addBeat ?? undefined)));
 
   return createPortal(
     <div className="zip-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) close(); }}>
@@ -64,7 +65,9 @@ export function SectionDialog() {
         <p className="zip-lead">
           {existing
             ? "Rename it, give it another colour, or move it to the bar where the playhead is. It lasts until the next section."
-            : "The section starts at the bar the playhead is in and lasts until the next section."}
+            : addBeat !== null
+              ? "The section starts at the bar you double-clicked and lasts until the next section."
+              : "The section starts at the bar the playhead is in and lasts until the next section."}
         </p>
         <div className="sec-presets" role="group" aria-label="Pick a name">
           {SECTION_PRESETS.map((p) => (

@@ -83,7 +83,7 @@ function PanelButtons({ panel, onPanel, className }: Props & { className: string
         </button>
       )}
       {canEditSections && (
-        <button className="lb" onClick={openAddSection} title="Add a section here (Intro, Verse, Chorus, Part C…): a named mark on the timeline" aria-label="Add a section">
+        <button className="lb" onClick={() => openAddSection()} title="Add a section here (Intro, Verse, Chorus, Part C…): a named mark on the timeline" aria-label="Add a section">
           <SectionMarkIcon size={16} />
         </button>
       )}

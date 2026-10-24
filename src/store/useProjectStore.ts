@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ProjectNote, Project, Track, Clip, ChannelFx, MasterMix, Group } from "../types/project";
+import type { ProjectNote, Project, Track, Clip, Take, ChannelFx, MasterMix, Group } from "../types/project";
 import { AudioEngine, type RecordingResult } from "../lib/audioEngine";
 import { useAuthStore } from "./useAuthStore";
 import { useAccountStore } from "./useAccountStore";
@@ -409,10 +409,10 @@ interface ProjectState {
   /** The named marks on the timeline (Intro, Verse, Chorus...). Everyone in the project sees them; the Owner and the Mixer change them. */
   sections: Section[];
   canEditSections: () => boolean;
-  /** Adds a mark at the first beat of the bar the playhead is in. Returns an error message, or null when it worked. */
-  addSectionAtPlayhead: (name: string, color?: string) => Promise<string | null>;
-  /** Changes a mark's name or colour, or moves it to the first beat of the bar the playhead is in. */
-  editSection: (id: string, patch: { name?: string; color?: string; moveToPlayhead?: boolean }) => Promise<string | null>;
+  /** Adds a mark at the first beat of the bar the playhead is in (or at `atBeat` when given). Returns an error message, or null when it worked. */
+  addSectionAtPlayhead: (name: string, color?: string, atBeat?: number) => Promise<string | null>;
+  /** Changes a mark's name or colour, moves it to the first beat of the bar the playhead is in, or to `atBeat`. */
+  editSection: (id: string, patch: { name?: string; color?: string; moveToPlayhead?: boolean; atBeat?: number }) => Promise<string | null>;
   removeSection: (id: string) => Promise<string | null>;
   /** Removes the older takes that are fully hidden under newer ones in this channel (their files too), keeping the newest `keep` of them. Returns how many takes went. */
   clearHiddenTakes: (trackId: string, keep?: number) => Promise<number>;
@@ -3002,13 +3002,13 @@ export const useProjectStore = create<ProjectState>((set, get) => {
     pause: () => engine.pause(),
     sections: [],
     canEditSections: () => get().canMix(),
-    addSectionAtPlayhead: async (name, color) => {
+    addSectionAtPlayhead: async (name, color, chosenBeat) => {
       const { project, sections } = get();
       const uid = currentUserId();
       if (!project || !uid || !get().canEditSections()) return "Only the Owner and the Mixer can change the sections.";
       const clean = cleanSectionName(name);
       if (!clean) return "Give the section a name.";
-      const atBeat = barStartBeat(get().positionSec / beatSec(project.bpm), project.beatsPerBar);
+      const atBeat = chosenBeat ?? barStartBeat(get().positionSec / beatSec(project.bpm), project.beatsPerBar);
       if (!placeIsFree(sections, atBeat)) return "There is already a section starting at this bar. Move the playhead to another bar.";
       try {
         await api.addSection({ projectId: project.id, name: clean, color: color ?? sectionColorFor(clean, sections.map((s) => s.color)), atBeat }, uid);
@@ -3029,6 +3029,10 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         change.name = clean;
       }
       if (patch.color !== undefined) change.color = patch.color;
+      if (patch.atBeat !== undefined) {
+        if (!placeIsFree(sections, patch.atBeat, id)) return "There is already a section starting at this bar.";
+        change.atBeat = patch.atBeat;
+      }
       if (patch.moveToPlayhead) {
         const atBeat = barStartBeat(get().positionSec / beatSec(project.bpm), project.beatsPerBar);
         if (!placeIsFree(sections, atBeat, id)) return "There is already a section starting at this bar. Move the playhead to another bar.";
@@ -3418,42 +3422,56 @@ export const useProjectStore = create<ProjectState>((set, get) => {
         : null;
       set({ recordingPhase: "uploading", recordingGhost: ghost });
       try {
-        const take = await api.createTake({
-          projectId: project.id,
-          trackId: recordingTrackId,
-          blob,
-          durationSec: result.durationSec,
-          userId: uid,
-        });
-        await engine.loadTake(take.id, blob);
+        // Recorded round a loop: one take per lap, oldest first. A channel holds the newest take and at most MAX_HIDDEN_TAKES older
+        // ones, so laps that would only be thrown away again are never uploaded.
+        const allLaps = result.laps ?? [{ blob, timelineOffsetSec: result.timelineOffsetSec, durationSec: result.durationSec }];
+        const keepLaps = allLaps.slice(-(MAX_HIDDEN_TAKES + 1));
+        const skippedLaps = allLaps.length - keepLaps.length;
+        const newTakes: Take[] = [];
+        for (const lap of keepLaps) {
+          const take = await api.createTake({
+            projectId: project.id,
+            trackId: recordingTrackId,
+            blob: lap.blob,
+            durationSec: lap.durationSec,
+            userId: uid,
+          });
+          await engine.loadTake(take.id, lap.blob);
+          newTakes.push(take);
+        }
 
         // Every recording becomes a clip, placed where it was actually played
-        // (start position + latency compensation) and stacked on top.
+        // (start position + latency compensation) and stacked on top; each later lap lies on top of the one before.
         const existing = get().project?.tracks.find((t) => t.id === recordingTrackId)?.clips ?? [];
-        const clip: Clip = {
+        const firstZ = nextZ(existing);
+        const newClips: Clip[] = newTakes.map((take, i) => ({
           id: crypto.randomUUID(),
           takeId: take.id,
-          startSec: result.timelineOffsetSec,
+          startSec: keepLaps[i].timelineOffsetSec,
           sourceStartSec: 0,
-          durationSec: result.durationSec,
-          z: nextZ(existing),
+          durationSec: keepLaps[i].durationSec,
+          z: firstZ + i,
           fadeInSec: 0,
           fadeOutSec: 0,
-        };
-        await api.upsertClips(recordingTrackId, [clip]);
+        }));
+        const clip = newClips[newClips.length - 1];
+        await api.upsertClips(recordingTrackId, newClips);
 
         const current = get().project;
         if (!current) return;
-        const next = [...existing, clip];
+        const next = [...existing, ...newClips];
         undoStack.push({ trackId: recordingTrackId, before: existing, after: next });
         redoStack = [];
         set({
-          project: { ...current, takes: { ...current.takes, [take.id]: take } },
+          project: { ...current, takes: { ...current.takes, ...Object.fromEntries(newTakes.map((t) => [t.id, t])) } },
           recordingTrackId: null,
           recordingPhase: "idle",
           takesVersion: get().takesVersion + 1,
           selectedClip: { trackId: recordingTrackId, clipId: clip.id },
         });
+        if (skippedLaps > 0) {
+          set({ recordingNotice: `Recorded ${allLaps.length} laps. A channel keeps the newest and ${MAX_HIDDEN_TAKES} older ones, so the first ${skippedLaps} ${skippedLaps === 1 ? "was" : "were"} not kept.` });
+        }
         if (ghost) {
           const landing: RecordingGhost = { ...ghost, target: { startSec: clip.startSec, durationSec: clip.durationSec } };
           set({ recordingGhost: landing });
