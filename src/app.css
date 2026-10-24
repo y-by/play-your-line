@@ -8666,3 +8666,51 @@ select.sig-select option {
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.02em;
 }
+
+/* ---- The takes list of a channel (retakes and loop laps) ---- */
+
+.ot-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: min(50vh, 360px);
+  overflow-y: auto;
+}
+
+.ot-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--pl-border);
+  background: var(--pl-field);
+}
+
+.ot-row.top {
+  border-color: var(--pl-accent);
+}
+
+.ot-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+  font-size: 13px;
+}
+
+.ot-info span {
+  color: var(--pl-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ot-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}

@@ -1121,6 +1121,40 @@ export class AudioEngine {
     };
   }
 
+  private previewSource: AudioBufferSourceNode | null = null;
+
+  /** Plays one take on its own (not through the mix), from `fromSec` for `durationSec`, e.g. to compare older takes. Returns false if the take is not loaded. */
+  async previewTake(takeId: string, fromSec = 0, durationSec?: number, onEnded?: () => void): Promise<boolean> {
+    const buffer = this.takeBuffers.get(takeId);
+    if (!buffer) return false;
+    await this.resume();
+    this.stopPreview();
+    const source = this.ctx.createBufferSource();
+    source.buffer = buffer;
+    const gain = this.ctx.createGain();
+    gain.gain.value = 0.9;
+    source.connect(gain);
+    gain.connect(this.ctx.destination);
+    source.onended = () => {
+      gain.disconnect();
+      if (this.previewSource === source) this.previewSource = null;
+      onEnded?.();
+    };
+    source.start(0, Math.max(0, fromSec), durationSec);
+    this.previewSource = source;
+    return true;
+  }
+
+  stopPreview() {
+    const source = this.previewSource;
+    this.previewSource = null;
+    try {
+      source?.stop();
+    } catch {
+      // already finished
+    }
+  }
+
   /** The lap being recorded right now (1 is the first), or null when the recording is not going round a loop. */
   getRecordingLap(): number | null {
     if (!this.recorderNode || !this.recordingLoop) return null;

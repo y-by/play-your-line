@@ -33,7 +33,7 @@ import { clampMasterVolume, DEFAULT_MASTER, masterFromRow, masterFxOnly } from "
 import { rolesOf, roleBadge } from "../lib/roles";
 import { can } from "../lib/rules";
 import { monitorKey, readMonitor } from "../lib/personalMix";
-import { MAX_HIDDEN_TAKES, clipsToTrim } from "../lib/retakes";
+import { MAX_HIDDEN_TAKES, clipsToTrim, hiddenTakes } from "../lib/retakes";
 import { barStartBeat, cleanSectionName, placeIsFree, sectionColorFor, type Section } from "../lib/sections";
 
 /** The useful part of a Supabase / network error, for showing to the person. */
@@ -414,6 +414,10 @@ interface ProjectState {
   /** Changes a mark's name or colour, moves it to the first beat of the bar the playhead is in, or to `atBeat`. */
   editSection: (id: string, patch: { name?: string; color?: string; moveToPlayhead?: boolean; atBeat?: number }) => Promise<string | null>;
   removeSection: (id: string) => Promise<string | null>;
+  /** Removes one hidden take of a channel (its clips and its recording). */
+  deleteHiddenTake: (trackId: string, takeId: string) => Promise<void>;
+  /** Brings a hidden take to the top of the channel: it is the one heard, and the one that was on top is hidden instead. */
+  bringTakeToFront: (trackId: string, takeId: string) => Promise<void>;
   /** Removes the older takes that are fully hidden under newer ones in this channel (their files too), keeping the newest `keep` of them. Returns how many takes went. */
   clearHiddenTakes: (trackId: string, keep?: number) => Promise<number>;
   /** Stops, and (when "go back to where it started" is on) puts the playhead back where this play or recording began. */
@@ -1369,6 +1373,34 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       // Before the sections migration has been run there is no table yet; the rest of the app is unaffected.
       console.warn("Couldn't load the sections:", err);
     }
+  };
+
+  // Removes clips from a channel (those fully hidden under newer ones, or one take's), and the recordings no clip uses any more.
+  // Undo and redo are cleaned so they can never bring back a clip whose recording is about to be deleted. Returns how many takes went.
+  const dropClips = async (trackId: string, ids: Set<string>): Promise<number> => {
+    const { project } = get();
+    const track = project?.tracks.find((t) => t.id === trackId);
+    if (!project || !track || !get().canEditClips(track) || ids.size === 0) return 0;
+    const remaining = track.clips.filter((c) => !ids.has(c.id));
+    const usedAfter = new Set(remaining.map((c) => c.takeId));
+    const goneTakes = [...new Set(track.clips.filter((c) => ids.has(c.id)).map((c) => c.takeId))].filter((id) => !usedAfter.has(id));
+    if (!(await get().commitClips(trackId, remaining, { skipHistory: true }))) return 0;
+    for (const entry of [...undoStack, ...redoStack]) {
+      if (entry.trackId !== trackId) continue;
+      entry.before = entry.before.filter((c) => !ids.has(c.id));
+      entry.after = entry.after.filter((c) => !ids.has(c.id));
+    }
+    for (const takeId of goneTakes) {
+      const take = project.takes[takeId];
+      if (!take) continue;
+      try {
+        await api.removeTakeFiles(project.id, take.trackId, [take.storagePath.split("/").pop() ?? ""]);
+        await api.deleteTakeRows(take.trackId, [take.id]);
+      } catch (err) {
+        console.warn("Could not remove a take's recording (it will be cleaned up when the project opens):", err);
+      }
+    }
+    return goneTakes.length;
   };
 
   const handleNoteChange = (type: "INSERT" | "UPDATE" | "DELETE", row: Record<string, unknown>) => {
@@ -3060,32 +3092,24 @@ export const useProjectStore = create<ProjectState>((set, get) => {
       }
     },
     clearHiddenTakes: async (trackId, keep = 0) => {
-      const { project } = get();
-      const track = project?.tracks.find((t) => t.id === trackId);
-      if (!project || !track || !get().canEditClips(track)) return 0;
-      const ids = new Set(clipsToTrim(track.clips, keep));
-      if (ids.size === 0) return 0;
-      const remaining = track.clips.filter((c) => !ids.has(c.id));
-      const usedAfter = new Set(remaining.map((c) => c.takeId));
-      const goneTakes = [...new Set(track.clips.filter((c) => ids.has(c.id)).map((c) => c.takeId))].filter((id) => !usedAfter.has(id));
-      if (!(await get().commitClips(trackId, remaining, { skipHistory: true }))) return 0;
-      // Undo and redo must never bring back a clip whose recording is about to be deleted.
-      for (const entry of [...undoStack, ...redoStack]) {
-        if (entry.trackId !== trackId) continue;
-        entry.before = entry.before.filter((c) => !ids.has(c.id));
-        entry.after = entry.after.filter((c) => !ids.has(c.id));
-      }
-      for (const takeId of goneTakes) {
-        const take = project.takes[takeId];
-        if (!take) continue;
-        try {
-          await api.removeTakeFiles(project.id, take.trackId, [take.storagePath.split("/").pop() ?? ""]);
-          await api.deleteTakeRows(take.trackId, [take.id]);
-        } catch (err) {
-          console.warn("Could not remove a hidden take's recording (it will be cleaned up when the project opens):", err);
-        }
-      }
-      return goneTakes.length;
+      const track = get().project?.tracks.find((t) => t.id === trackId);
+      if (!track) return 0;
+      return dropClips(trackId, new Set(clipsToTrim(track.clips, keep)));
+    },
+    deleteHiddenTake: async (trackId, takeId) => {
+      const track = get().project?.tracks.find((t) => t.id === trackId);
+      if (!track) return;
+      const hidden = hiddenTakes(track.clips).find((h) => h.takeId === takeId);
+      if (hidden) await dropClips(trackId, new Set(hidden.clipIds));
+    },
+    bringTakeToFront: async (trackId, takeId) => {
+      const track = get().project?.tracks.find((t) => t.id === trackId);
+      if (!track || !get().canEditClips(track)) return;
+      let z = nextZ(track.clips);
+      // Every clip of that take goes on top (in their old order), so it is heard and the one that was on top is hidden.
+      const mine = track.clips.filter((c) => c.takeId === takeId).sort((a, b) => a.z - b.z);
+      const raised = new Map(mine.map((c) => [c.id, z++]));
+      await get().commitClips(trackId, track.clips.map((c) => (raised.has(c.id) ? { ...c, z: raised.get(c.id)! } : c)));
     },
     stop: () => {
       engine.pause();

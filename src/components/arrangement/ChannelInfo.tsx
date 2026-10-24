@@ -15,6 +15,7 @@ import { useAuthStore } from "../../store/useAuthStore";
 import { XmarkCircleIcon, MicIcon, NoteIcon } from "../icons/Icons";
 import { estimateTakeMb, hiddenTakes } from "../../lib/retakes";
 import { RecordingLap } from "./RecordingLap";
+import { OlderTakes } from "./OlderTakes";
 
 /** The left-hand column of a lane: who plays it, record, mute/solo, volume. */
 export function ChannelInfo({ track, number, onGripDown }: { track: Track; number: number; onGripDown?: (e: React.PointerEvent) => void }) {
@@ -30,7 +31,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
   const chordsShown = useProjectStore((s) => !!s.chordsShown[track.id]);
   const detecting = useProjectStore((s) => s.detectingChords === track.id);
   const canMix = useProjectStore((s) => s.canMix());
-  const clearHiddenTakes = useProjectStore((s) => s.clearHiddenTakes);
+  const [takesOpen, setTakesOpen] = useState(false);
   // Older takes lying fully under newer ones: how many, and about how much space they use (only the person who plays the channel sees this).
   const hiddenCount = useProjectStore((s) => (s.canEditClips(track) ? hiddenTakes(track.clips).length : 0));
   const hiddenMb = useProjectStore((s) =>
@@ -155,11 +156,9 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
             {hiddenCount > 0 && !recordingTrackId && (
               <button
                 className="note-badge hidden-takes"
-                onClick={() => {
-                  if (confirm(`Clear the ${hiddenCount} older take${hiddenCount === 1 ? "" : "s"} hidden under the newest in "${track.instrument}"?\n\nThey use about ${hiddenMb} MB. They are not heard now, and once cleared they cannot be brought back.`)) void clearHiddenTakes(track.id);
-                }}
-                title={`${hiddenCount} older take${hiddenCount === 1 ? "" : "s"} under the newest, about ${hiddenMb} MB. Click to clear them.`}
-                aria-label={`Clear ${hiddenCount} hidden take${hiddenCount === 1 ? "" : "s"}`}
+                onClick={() => setTakesOpen(true)}
+                title={`${hiddenCount} older take${hiddenCount === 1 ? "" : "s"} under the newest, about ${hiddenMb} MB. Click to hear them, use one, or delete them.`}
+                aria-label={`${hiddenCount} older take${hiddenCount === 1 ? "" : "s"}: open the list`}
               >
                 <span aria-hidden="true">⧉</span>
                 {hiddenCount}
@@ -278,6 +277,7 @@ export function ChannelInfo({ track, number, onGripDown }: { track: Track; numbe
         {fxAnchor && createPortal(<ChannelFx track={track} initialAnchor={fxAnchor} mainOpen={fxMainOpen} onMainOpen={setFxMainOpen} onClose={() => setFxAnchor(null)} anchorName={canAnchor() ? `--fx-${track.id}` : null} />, document.body)}
       </div>
       )}
+      {takesOpen && <OlderTakes track={track} onClose={() => setTakesOpen(false)} />}
     </div>
   );
 }
