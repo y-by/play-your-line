@@ -7,6 +7,8 @@ import { NotesTray } from "../components/notes/NotesTray";
 import { NoteAlert } from "../components/notes/NoteAlert";
 import { NoteCards } from "../components/notes/NoteCards";
 import { SettingsPanel } from "../components/SettingsPanel";
+import { SetupGuide } from "../components/SetupGuide";
+import { SetupPrompt } from "../components/SetupPrompt";
 import { ErrorToast } from "../components/ErrorToast";
 import { useAccountStore } from "../store/useAccountStore";
 import { EyeIcon } from "../components/icons/Icons";
@@ -63,6 +65,7 @@ export function SongPage() {
         </div>
       )}
       <Transport panel={panel} onPanel={setPanel} />
+      <SetupPrompt />
 
 
       {project.tracks.length === 0 ? (
@@ -74,6 +77,7 @@ export function SongPage() {
       )}
 
       <SettingsPanel />
+      <SetupGuide />
       <NotesTray />
       <NoteCards />
       <NoteAlert />

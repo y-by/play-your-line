@@ -5,6 +5,7 @@ import { errorMessage } from "../lib/errorMessage";
 import { fetchCoverUrls } from "../lib/projectApi";
 import { useAuthStore } from "../store/useAuthStore";
 import { useFeedbackStore } from "../store/useFeedbackStore";
+import { useSetupStore } from "../store/useSetupStore";
 import { CloseIcon } from "./icons/Icons";
 import { InputSourceSelector } from "./InputSourceSelector";
 import { CableGuide } from "./CableGuide";
@@ -51,6 +52,7 @@ export function SettingsPanel() {
   const projectTitle = useProjectStore((s) => s.project?.title ?? null);
   const isOwner = useProjectStore((s) => s.isInitiator());
   const openFeedback = useFeedbackStore((s) => s.openDialog);
+  const openSetupGuide = useSetupStore((s) => s.openGuide);
   const tabList = (
     [
       ["general", "General"],
@@ -238,6 +240,7 @@ export function SettingsPanel() {
           <>
         <section className="settings-section">
           <h3>Input</h3>
+          <button className="export-btn" onClick={() => { closeSettings(); openSetupGuide(); }}>Set up your sound: a two-minute guide…</button>
           <InputSourceSelector />
           <CableGuide />
         </section>

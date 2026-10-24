@@ -5,7 +5,7 @@ import { useAccountStore } from "../store/useAccountStore";
 import { useFeedbackStore } from "../store/useFeedbackStore";
 import { createProject } from "../lib/projectApi";
 import { errorMessage } from "../lib/errorMessage";
-import { GlobeIcon, HelpIcon, HomeIcon, PlusCircleIcon, ShieldIcon, UserIcon, WaveformIcon } from "./icons/Icons";
+import { FeedbackIcon, GlobeIcon, HelpIcon, HomeIcon, PlusCircleIcon, ShieldIcon, UserIcon, WaveformIcon } from "./icons/Icons";
 
 /**
  * The frame around the project lists: a side menu on desktop, a tab bar at the bottom on phones.
@@ -57,6 +57,12 @@ export function AppShell({ title, children }: { title: string; children: React.R
             <GlobeIcon size={18} />
             Published
           </NavLink>
+        </nav>
+        <button className="export-btn shell-new" onClick={handleCreate} disabled={creating}>
+          <PlusCircleIcon size={14} />
+          {creating ? "Creating…" : "New Project"}
+        </button>
+        <nav className="shell-nav shell-foot" aria-label="Help and account">
           <NavLink to="/help" className={({ isActive }) => (isActive ? "shell-link active" : "shell-link")}>
             <HelpIcon size={18} />
             Help
@@ -67,16 +73,13 @@ export function AppShell({ title, children }: { title: string; children: React.R
               Admin
             </NavLink>
           )}
-        </nav>
-        <button className="export-btn shell-new" onClick={handleCreate} disabled={creating}>
-          <PlusCircleIcon size={14} />
-          {creating ? "Creating…" : "New Project"}
-        </button>
-        <div className="shell-user">
-          <span className="shell-user-name">{name}</span>
-          <button className="icon-btn-text" onClick={openFeedback}>
+          <button className="shell-link" onClick={openFeedback}>
+            <FeedbackIcon size={18} />
             Send feedback
           </button>
+        </nav>
+        <div className="shell-user">
+          <span className="shell-user-name">{name}</span>
           <button className="icon-btn-text" onClick={signOut}>
             Sign out
           </button>

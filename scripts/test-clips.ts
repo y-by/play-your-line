@@ -21,6 +21,7 @@ import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
 import { feedbackProblem, browserOf, systemOf, deviceSummary, pageInfo, FEEDBACK_MAX } from "../src/lib/feedbackInfo.ts";
+import { levelAdvice, judgeTestTake, rateAdvice, peakToDb, shouldOfferSetup, SETUP_STEPS } from "../src/lib/setupGuide.ts";
 import { crc32, makeZip, safeFileName, uniqueNames } from "../src/lib/zip.ts";
 import { formatBytes, timeAgo, isOnline, ONLINE_WINDOW_MS, healthChecks, STORAGE_LIMIT_BYTES } from "../src/lib/adminFormat.ts";
 import { readFileSync, readdirSync } from "node:fs";
@@ -763,6 +764,23 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("feedback: the device line says browser, system, screen and window", deviceSummary({ ua: chromeMac, screenW: 1512, screenH: 982, windowW: 1200, windowH: 800, pixelRatio: 2, language: "en-US" }) === "Chrome 130 on macOS · screen 1512×982 @2x · window 1200×800 · en-US");
   check("feedback: a message needs a few words and a limit", feedbackProblem("  ok ") !== null && feedbackProblem("The fader jumps when I drag it") === null && feedbackProblem("x".repeat(FEEDBACK_MAX + 5)) !== null);
   check("feedback: a project page reports the project id, never the address", pageInfo("/song/0187A8CC-C33F-498C-BC41-882AA2B03F49").projectId === "0187a8cc-c33f-498c-bc41-882aa2b03f49" && pageInfo("/song/0187A8CC-C33F-498C-BC41-882AA2B03F49").page === "/song" && pageInfo("/songs").projectId === null);
+}
+
+// ---- Set up your sound (lib/setupGuide.ts)
+{
+  check("setup: peak to dB (1 is 0 dB, half is about -6 dB, silence is nothing)", peakToDb(1) === 0 && Math.abs((peakToDb(0.5) ?? 0) + 6.02) < 0.01 && peakToDb(0) === null);
+  const kind = (db: number | null) => levelAdvice(db).kind;
+  check("setup: the level is judged from nothing up to clipping", kind(null) === "none" && kind(-70) === "none" && kind(-40) === "quiet" && kind(-25) === "low" && kind(-10) === "good" && kind(-1.5) === "hot" && kind(0) === "clip");
+  check("setup: -18 and -3 dB are both good, the edges of a good level", kind(-18) === "good" && kind(-3) === "good" && kind(-18.1) === "low" && kind(-2.9) === "hot");
+  check("setup: a silent test take is not ok", !judgeTestTake({ peakDb: null, rmsDb: null }).ok && !judgeTestTake({ peakDb: -70, rmsDb: -80 }).ok);
+  check("setup: a clipped or far too quiet test take is not ok, a healthy one is", !judgeTestTake({ peakDb: 0, rmsDb: -10 }).ok && !judgeTestTake({ peakDb: -40, rmsDb: -50 }).ok && judgeTestTake({ peakDb: -8, rmsDb: -22 }).ok);
+  check("setup: matching sample rates need no advice", rateAdvice("mac", null) === null);
+  const mac = rateAdvice("mac", { inputHz: 48000, contextHz: 44100 });
+  const win = rateAdvice("win", { inputHz: 48000, contextHz: 44100 });
+  check("setup: the rate advice names both numbers and the system's own tool", !!mac && mac.title.includes("48000") && mac.title.includes("44100") && mac.steps[0].includes("Audio MIDI Setup") && !!win && win.steps[0].includes("Sound settings") && win.steps[1].includes("44100"));
+  const DAY = 24 * 60 * 60 * 1000;
+  check("setup: offered when new, again after three days when put off, never when done or refused", shouldOfferSetup({ state: "new", at: 0 }) && !shouldOfferSetup({ state: "later", at: 1000 }, 1000 + 2 * DAY) && shouldOfferSetup({ state: "later", at: 1000 }, 1000 + 4 * DAY) && !shouldOfferSetup({ state: "done", at: 0 }) && !shouldOfferSetup({ state: "never", at: 0 }));
+  check("setup: six steps in order, each with something to do and what to expect", SETUP_STEPS.map((s) => s.id).join() === "welcome,mic,level,output,test,done" && SETUP_STEPS.every((s) => s.do.length > 0 && s.expect.length > 0 && Array.isArray(s.media)));
 }
 
 // ---- WAV time stamp (lib/bwf.ts)
