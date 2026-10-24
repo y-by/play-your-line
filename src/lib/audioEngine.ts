@@ -1260,16 +1260,19 @@ export class AudioEngine {
       return { blob: new Blob(), timelineOffsetSec: 0, latencySec, durationSec: 0 };
     }
 
-    // Recorded while a loop went round: each lap is a take of its own, placed where that lap was heard.
+    // Recorded while a loop went round: each lap is a take of its own, placed where that lap was heard. The laps are cut from the WHOLE
+    // capture (not the part left after the count-in was dropped above), because the lap boundaries are measured from its first sample.
     const loopRec = this.recordingLoop;
     this.recordingLoop = null;
     if (loopRec && capture.startFrame !== null) {
-      const laps = splitLoopLaps({ rec: loopRec, captureStartCtx: capture.startFrame / capture.sampleRate, latencySec, sampleRate: capture.sampleRate, totalSamples: samples.length });
+      const whole = capture.samples;
+      const wholeRight = capture.right;
+      const laps = splitLoopLaps({ rec: loopRec, captureStartCtx: capture.startFrame / capture.sampleRate, latencySec, sampleRate: capture.sampleRate, totalSamples: whole.length });
       const made = laps.map((lap) => {
         const length = lap.toSample - lap.fromSample;
-        const lapBuffer = this.ctx.createBuffer(right ? 2 : 1, length, capture.sampleRate);
-        lapBuffer.copyToChannel(samples.slice(lap.fromSample, lap.toSample) as Float32Array<ArrayBuffer>, 0);
-        if (right) lapBuffer.copyToChannel(right.slice(lap.fromSample, lap.toSample) as Float32Array<ArrayBuffer>, 1);
+        const lapBuffer = this.ctx.createBuffer(wholeRight ? 2 : 1, length, capture.sampleRate);
+        lapBuffer.copyToChannel(whole.slice(lap.fromSample, lap.toSample) as Float32Array<ArrayBuffer>, 0);
+        if (wholeRight) lapBuffer.copyToChannel(wholeRight.slice(lap.fromSample, lap.toSample) as Float32Array<ArrayBuffer>, 1);
         return { blob: encodeTake(lapBuffer).blob, timelineOffsetSec: lap.offsetSec, durationSec: lap.durationSec };
       });
       const lastLap = made[made.length - 1];
