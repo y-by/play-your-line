@@ -38,6 +38,7 @@ tempo and click, mute / solo / volume, and trimming that never destroys a record
 | Lock or unlock a player's channel effects | ✅ | ✅ | – | – |
 | Record and edit clips | their own channel | their own channel | their own channel | – |
 | Move a clip to another channel of the same player | ✅ | – | their own channels | – |
+| Download all channels (a zip with the full mix and every channel as its own WAV file) | ✅ | ✅ | ✅ | – |
 | Invite a Mixer or Listeners, add someone by email, choose the Mixer | ✅ | – | – | – |
 | Write notes, tag people with @ | ✅ | ✅ | ✅ | – |
 | Edit a note, mark it done or reopen it | ✅ | their own notes | their own notes | – |
@@ -116,7 +117,7 @@ final mix. Solo is never saved.
 **Owner dashboard (system owner only).** `Admin` in the side menu (phone: You → Admin) lists every person (online,
 last project, storage) and every project. The system owner can open any project as a read-only observer, block a
 person (with a reason) or sign them out everywhere, and unpublish, hide, delete or reassign any project. Set up by
-migration `0046`; the admin is the account named at its end. A **Health** row (migration `0049`) shows the real storage and database use against the Free plan limits, leftover files, unused takes and missing files; `docs/health-check.sql` is the same check to paste into Supabase.
+migration `0046`; the admin is the account named at its end. **Feedback** (migration `0057`): anyone signed in can press "Send feedback" (side menu, You sheet, or the project's Settings) with a message and an optional screenshot; the owner reads them on Admin > Feedback and marks them seen or done. **Download all channels** (the card's download button, Owner, Mixer and Player): a zip with the full mix and every channel as a WAV file, all the same length; a Player chooses the Owner's mix or their own monitor mix. A **Health** row (migration `0049`) shows the real storage and database use against the Free plan limits, leftover files, unused takes and missing files; `docs/health-check.sql` is the same check to paste into Supabase.
 
 **Leaving a project, and handing it over.** Anyone can leave a project (Settings > General > Leave this project, or the small cross on a project card for people who are not the Owner), migration `0050`. A channel with no recordings becomes free; a channel with recordings stays in the project, passed to the Owner, so nobody's music is deleted. The Owner cannot just leave: they pick who takes over (someone already in the project) and hand it over first; a lone Owner deletes the project instead.
 

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { NavLink, useNavigate } from "react-router-dom";
 import { useAuthStore } from "../store/useAuthStore";
 import { useAccountStore } from "../store/useAccountStore";
+import { useFeedbackStore } from "../store/useFeedbackStore";
 import { createProject } from "../lib/projectApi";
 import { errorMessage } from "../lib/errorMessage";
 import { GlobeIcon, HelpIcon, HomeIcon, PlusCircleIcon, ShieldIcon, UserIcon, WaveformIcon } from "./icons/Icons";
@@ -15,6 +16,7 @@ export function AppShell({ title, children }: { title: string; children: React.R
   const profile = useAuthStore((s) => s.profile);
   const signOut = useAuthStore((s) => s.signOut);
   const isAdmin = useAccountStore((s) => s.isAdmin);
+  const openFeedback = useFeedbackStore((s) => s.openDialog);
   const navigate = useNavigate();
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
@@ -72,6 +74,9 @@ export function AppShell({ title, children }: { title: string; children: React.R
         </button>
         <div className="shell-user">
           <span className="shell-user-name">{name}</span>
+          <button className="icon-btn-text" onClick={openFeedback}>
+            Send feedback
+          </button>
           <button className="icon-btn-text" onClick={signOut}>
             Sign out
           </button>
@@ -101,6 +106,9 @@ export function AppShell({ title, children }: { title: string; children: React.R
                 Admin
               </NavLink>
             )}
+            <button className="link-btn" onClick={() => { setYouOpen(false); openFeedback(); }}>
+              Send feedback
+            </button>
             <button className="link-btn" onClick={signOut}>
               Sign out
             </button>

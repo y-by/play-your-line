@@ -143,6 +143,65 @@ export async function fetchAdminHealth(): Promise<AdminHealth> {
   };
 }
 
+// ---- Feedback (migration 0057) ----------------------------------------------------------------------------------------
+
+export type FeedbackStatus = "new" | "seen" | "done";
+
+export interface FeedbackReport {
+  id: string;
+  createdAt: string;
+  userId: string;
+  userName: string | null;
+  email: string | null;
+  message: string;
+  screenshotPath: string | null;
+  projectId: string | null;
+  projectTitle: string | null;
+  page: string | null;
+  appBuild: string | null;
+  device: string | null;
+  status: FeedbackStatus;
+}
+
+export async function fetchAdminFeedback(limit = 200): Promise<FeedbackReport[]> {
+  const { data, error } = await client().rpc("admin_feedback", { p_limit: limit });
+  if (error) throw error;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  return (data ?? []).map((r: any) => ({
+    id: r.id,
+    createdAt: r.created_at,
+    userId: r.user_id,
+    userName: r.user_name,
+    email: r.email,
+    message: r.message,
+    screenshotPath: r.screenshot_path,
+    projectId: r.project_id,
+    projectTitle: r.project_title,
+    page: r.page,
+    appBuild: r.app_build,
+    device: r.device,
+    status: (["new", "seen", "done"].includes(r.status) ? r.status : "new") as FeedbackStatus,
+  }));
+}
+
+export async function setFeedbackStatus(id: string, status: FeedbackStatus): Promise<void> {
+  const { error } = await client().rpc("admin_set_feedback_status", { p_id: id, p_status: status });
+  if (error) throw error;
+}
+
+/** Deletes a report and its picture. */
+export async function deleteFeedback(id: string): Promise<void> {
+  const { data, error } = await client().rpc("admin_delete_feedback", { p_id: id });
+  if (error) throw error;
+  if (typeof data === "string" && data) await client().storage.from("feedback").remove([data]).catch(() => undefined);
+}
+
+/** A temporary link to a report's picture (an hour). */
+export async function feedbackPictureUrl(path: string): Promise<string | null> {
+  const { data } = await client().storage.from("feedback").createSignedUrl(path, 3600);
+  return data?.signedUrl ?? null;
+}
+
 export async function fetchAdminUsers(): Promise<AdminUser[]> {
   const { data, error } = await client().rpc("admin_users");
   if (error) throw error;

@@ -1,13 +1,33 @@
 import { useState } from "react";
+import { createPortal } from "react-dom";
 import type { Project } from "../types/project";
 import { leaveProject } from "../lib/projectApi";
-import { buildListeningCopy, exportMix, setPublished } from "../lib/projectActions";
+import { buildListeningCopy, exportChannelsZip, exportMix, setPublished, type MixChoice } from "../lib/projectActions";
+import { hasPersonalMix } from "../lib/personalMix";
 import { errorMessage } from "../lib/errorMessage";
-import { CloseIcon, ExportIcon, GlobeIcon, RefreshIcon, SpinnerIcon } from "./icons/Icons";
+import { CloseIcon, ExportIcon, GlobeIcon, RefreshIcon, SpinnerIcon, StemsIcon } from "./icons/Icons";
 
-/** The two things you can do to a project from the list: publish it (or take it back) and export its mix. */
-export function ProjectCardActions({ project, isOwner, onStatus, onLeft }: { project: Project; isOwner: boolean; onStatus: (id: string, status: "draft" | "published") => void; onLeft?: (id: string) => void }) {
-  const [busy, setBusy] = useState<"publish" | "export" | "copy" | "leave" | null>(null);
+/** What you can do to a project from the list: publish it (or take it back), export its mix, download all its channels, leave it. */
+export function ProjectCardActions({
+  project,
+  isOwner,
+  roleLabel,
+  onStatus,
+  onLeft,
+}: {
+  project: Project;
+  isOwner: boolean;
+  roleLabel?: string | null;
+  onStatus: (id: string, status: "draft" | "published") => void;
+  onLeft?: (id: string) => void;
+}) {
+  const [busy, setBusy] = useState<"publish" | "export" | "channels" | "copy" | "leave" | null>(null);
+  const [choosing, setChoosing] = useState(false);
+  const [progress, setProgress] = useState("");
+  // Listeners only listen; everyone who records or mixes may take the channels home.
+  const canDownloadChannels = roleLabel === "Owner" || roleLabel === "Mixer" || roleLabel === "Player";
+  // The Owner's and the Mixer's levels ARE the saved mix; a Player also has a monitor mix of their own on this device.
+  const hasOwnChoice = roleLabel === "Player";
   const [refreshed, setRefreshed] = useState(false);
   const published = project.status === "published";
   // The master changed after the listening copy was made: the Owner is reminded to update it.
@@ -88,8 +108,35 @@ export function ProjectCardActions({ project, isOwner, onStatus, onLeft }: { pro
     }
   };
 
+  const downloadChannels = async (mix: MixChoice) => {
+    setChoosing(false);
+    if (busy) return;
+    setBusy("channels");
+    setProgress("Starting…");
+    try {
+      const done = await exportChannelsZip(project.id, mix, setProgress);
+      if (!done) alert("There is nothing to download yet: no one has recorded anything.");
+    } catch (err) {
+      console.error("Failed to download the channels:", err);
+      alert(errorMessage(err, "Couldn't make the download. Try again."));
+    } finally {
+      setBusy(null);
+      setProgress("");
+    }
+  };
+
+  const startChannels = (e: React.MouseEvent) => {
+    stop(e);
+    if (busy) return;
+    if (hasOwnChoice) setChoosing(true);
+    else void downloadChannels("owner");
+  };
+
+  const personal = hasOwnChoice && hasPersonalMix(project.id);
+
   return (
-    <div className="card-actions" onPointerDown={(e) => e.stopPropagation()}>
+    <div className={choosing ? "card-actions open" : "card-actions"} onPointerDown={(e) => e.stopPropagation()}>
+      {busy === "channels" && progress && <span className="card-act-progress">{progress}</span>}
       {isOwner && (
         <button className={published ? "card-act on" : "card-act"} onClick={togglePublish} disabled={!!busy} title={published ? "Published — click to take it back to a draft" : "Publish this project"} aria-label={published ? "Unpublish" : "Publish"}>
           {busy === "publish" ? <SpinnerIcon size={14} /> : <GlobeIcon size={14} />}
@@ -103,6 +150,31 @@ export function ProjectCardActions({ project, isOwner, onStatus, onLeft }: { pro
       <button className="card-act" onClick={doExport} disabled={!!busy} title="Export the mix as a WAV file" aria-label="Export mix">
         {busy === "export" ? <SpinnerIcon size={14} /> : <ExportIcon size={14} />}
       </button>
+      {canDownloadChannels && (
+        <button className="card-act" onClick={startChannels} disabled={!!busy} title="Download all channels (a zip of WAV files)" aria-label="Download all channels">
+          {busy === "channels" ? <SpinnerIcon size={14} /> : <StemsIcon size={14} />}
+        </button>
+      )}
+      {choosing &&
+        createPortal(
+          <div className="zip-backdrop" onClick={(e) => { stop(e); setChoosing(false); }} onPointerDown={(e) => e.stopPropagation()}>
+            <div className="zip-panel" role="dialog" aria-label="Download all channels" onClick={stop}>
+              <h3>Download all channels</h3>
+              <p className="zip-lead">One zip with a full mix and every channel as its own WAV file, all the same length so they line up in any DAW. Which levels should it use?</p>
+              <button className="zip-choice" onClick={() => void downloadChannels("owner")}>
+                <b>The Owner's mix</b>
+                <span>The levels the Owner saved for the project.</span>
+              </button>
+              <button className="zip-choice" onClick={() => void downloadChannels("mine")} disabled={!personal}>
+                <b>My mix</b>
+                <span>{personal ? "The levels you set in your own monitor mix on this device." : "You have not changed any levels in this project on this device, so this would be the same as the Owner's mix."}</span>
+              </button>
+              <p className="zip-size">It is big: roughly 25 MB for each minute of each channel. It is made on your computer, so it can take a minute.</p>
+              <button className="zip-cancel" onClick={() => setChoosing(false)}>Cancel</button>
+            </div>
+          </div>,
+          document.body
+        )}
       {!isOwner && onLeft && (
         <button className="card-act" onClick={leave} disabled={!!busy} title="Leave this project" aria-label="Leave this project">
           {busy === "leave" ? <SpinnerIcon size={14} /> : <CloseIcon size={14} />}

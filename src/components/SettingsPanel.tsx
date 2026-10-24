@@ -4,6 +4,7 @@ import { useProjectStore } from "../store/useProjectStore";
 import { errorMessage } from "../lib/errorMessage";
 import { fetchCoverUrls } from "../lib/projectApi";
 import { useAuthStore } from "../store/useAuthStore";
+import { useFeedbackStore } from "../store/useFeedbackStore";
 import { CloseIcon } from "./icons/Icons";
 import { InputSourceSelector } from "./InputSourceSelector";
 import { CableGuide } from "./CableGuide";
@@ -49,6 +50,7 @@ export function SettingsPanel() {
   const navigate = useNavigate();
   const projectTitle = useProjectStore((s) => s.project?.title ?? null);
   const isOwner = useProjectStore((s) => s.isInitiator());
+  const openFeedback = useFeedbackStore((s) => s.openDialog);
   const tabList = (
     [
       ["general", "General"],
@@ -219,6 +221,12 @@ export function SettingsPanel() {
             </a>{" "}
             about recording, effects, notes and sharing. It opens in a new tab, so your project stays as it is.
           </p>
+        </section>
+
+        <section className="settings-section">
+          <h3>Feedback</h3>
+          <p className="settings-note">Something broken, confusing, or missing? Tell the person who runs Play Your Line, with a screenshot if it helps.</p>
+          <button className="export-btn" onClick={() => { closeSettings(); openFeedback(); }}>Send feedback…</button>
         </section>
 
         <LeaveProject onLeft={() => { closeSettings(); navigate("/"); }} />

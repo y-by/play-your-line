@@ -11,6 +11,7 @@ import { Tooltips } from "./components/Tooltips";
 import { SignInGate } from "./components/SignInGate";
 import { AccountWatch } from "./components/AccountWatch";
 import { NoticePopup } from "./components/NoticePopup";
+import { FeedbackDialog } from "./components/FeedbackDialog";
 import { AdminPage } from "./pages/AdminPage";
 import "./app.css";
 
@@ -26,6 +27,7 @@ export default function App() {
       <Tooltips />
       <AccountWatch />
       <NoticePopup />
+      <FeedbackDialog />
       <Routes>
         <Route path="/" element={<HomePage />} />
         <Route

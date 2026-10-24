@@ -5485,6 +5485,103 @@ select.note-opt {
   }
 }
 
+.card-actions.open {
+  opacity: 1;
+}
+
+.card-act-progress {
+  align-self: center;
+  max-width: 130px;
+  padding: 0 8px;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  background: var(--lcd-bg);
+  color: var(--lcd-text);
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The "Download all channels" choice: a small dialog over everything (the dark instrument look of the other pop-up panels). */
+.zip-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  background: rgba(0, 0, 0, 0.45);
+}
+
+.zip-panel {
+  width: min(380px, 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px;
+  border-radius: 14px;
+  border: 1px solid var(--pl-border);
+  background: linear-gradient(var(--pl-bg-top), var(--pl-bg-bottom));
+  color: var(--pl-text);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.5);
+  text-align: left;
+}
+
+.zip-panel h3 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.zip-lead,
+.zip-size {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--pl-muted);
+}
+
+.zip-choice {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 11px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--pl-border);
+  background: var(--pl-field);
+  color: var(--pl-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.zip-choice span {
+  font-size: 12.5px;
+  color: var(--pl-muted);
+}
+
+.zip-choice:hover:not(:disabled) {
+  border-color: var(--pl-accent);
+}
+
+.zip-choice:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+.zip-cancel {
+  align-self: flex-end;
+  border: 0;
+  background: none;
+  color: var(--pl-muted);
+  font: inherit;
+  cursor: pointer;
+  padding: 4px 2px;
+}
+
 .card-act {
   display: inline-flex;
   align-items: center;
@@ -7884,4 +7981,169 @@ select.sig-select option {
   border-color: var(--color-accent);
   color: var(--color-accent);
   background: color-mix(in srgb, var(--color-accent) 16%, var(--color-bg-elevated));
+}
+
+/* ---- Send feedback (dialog) and the Admin Feedback tab ---- */
+
+.fb-panel {
+  width: min(460px, 100%);
+}
+
+.fb-text {
+  width: 100%;
+  min-height: 130px;
+  resize: vertical;
+  padding: 10px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--pl-border);
+  background: var(--pl-field);
+  color: var(--pl-text);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.45;
+}
+
+.fb-text:focus-visible {
+  outline: 2px solid var(--pl-accent);
+  outline-offset: 1px;
+}
+
+.fb-shot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.fb-attach,
+.fb-thumb button {
+  padding: 7px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--pl-border);
+  background: var(--pl-field);
+  color: var(--pl-text);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.fb-attach:hover,
+.fb-thumb button:hover {
+  border-color: var(--pl-accent);
+}
+
+.fb-thumb {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.fb-thumb img {
+  max-width: 200px;
+  max-height: 130px;
+  border-radius: 8px;
+  border: 1px solid var(--pl-border);
+}
+
+.fb-row {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
+.fb-send {
+  padding: 9px 20px;
+  border-radius: 10px;
+  border: 0;
+  background: var(--pl-switch);
+  color: #fff;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.fb-send:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.fb-warn {
+  margin: 0;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(255, 69, 58, 0.16);
+  color: #ff8a80;
+  font-size: 13px;
+}
+
+.adm-fb-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.adm-fb {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--color-bg-elevated);
+  box-shadow: var(--shadow-card);
+}
+
+.adm-fb.done {
+  opacity: 0.65;
+}
+
+.adm-fb-head,
+.adm-fb-meta,
+.adm-fb-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 13px;
+  min-width: 0;
+}
+
+.adm-fb-text {
+  margin: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  line-height: 1.5;
+}
+
+.adm-fb-pic img {
+  display: block;
+  max-width: min(420px, 100%);
+  max-height: 260px;
+  border-radius: 8px;
+  border: 1px solid var(--color-separator);
+}
+
+.adm-fb-status {
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: 99px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  background: var(--color-fill);
+  color: var(--color-label-secondary);
+}
+
+.adm-fb-status.new {
+  background: #ff9f0a;
+  color: #1d1d1f;
+}
+
+.adm-fb-actions {
+  padding-top: 2px;
 }

@@ -32,6 +32,7 @@ import { groupFromRow } from "../lib/groups";
 import { clampMasterVolume, DEFAULT_MASTER, masterFromRow, masterFxOnly } from "../lib/master";
 import { rolesOf, roleBadge } from "../lib/roles";
 import { can } from "../lib/rules";
+import { monitorKey, readMonitor } from "../lib/personalMix";
 
 /** The useful part of a Supabase / network error, for showing to the person. */
 function errorDetail(err: unknown): string {
@@ -463,7 +464,6 @@ const COUNT_IN_BEATS = 4;
 const SNAP_ENABLED_KEY = "pyl.snapEnabled";
 const SNAP_RESOLUTION_KEY = "pyl.snapResolution";
 const FOLLOW_KEY = "pyl.followPlayhead";
-const monitorKey = (projectId: string) => `pyl.monitor.${projectId}`;
 const orderKey = (projectId: string) => `pyl.order.${projectId}`;
 const colorsKey = (projectId: string) => `pyl.colors.${projectId}`;
 
@@ -629,15 +629,6 @@ function readStoredSnapResolution(): SnapResolution {
     // fall through to the default
   }
   return "sixteenth";
-}
-
-function readMonitor(projectId: string): Record<string, { volume: number; muted: boolean }> {
-  try {
-    const raw = localStorage.getItem(monitorKey(projectId));
-    return raw ? JSON.parse(raw) : {};
-  } catch {
-    return {};
-  }
 }
 
 function writeMonitor(projectId: string, monitor: Record<string, { volume: number; muted: boolean }>) {

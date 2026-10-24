@@ -20,6 +20,8 @@ import { looksAnchored } from "../src/lib/anchor.ts";
 import { parseTip } from "../src/lib/tooltip.ts";
 import { barOfBeat, beatInBar, pinLabel, agoLabel, notesForTray, pinnedOpenNotes, mentionedIds, splitMentions, openMentionQuery } from "../src/lib/notes.ts";
 import { orderTracks, defaultOrder, moveId } from "../src/lib/trackOrder.ts";
+import { feedbackProblem, browserOf, systemOf, deviceSummary, pageInfo, FEEDBACK_MAX } from "../src/lib/feedbackInfo.ts";
+import { crc32, makeZip, safeFileName, uniqueNames } from "../src/lib/zip.ts";
 import { formatBytes, timeAgo, isOnline, ONLINE_WINDOW_MS, healthChecks, STORAGE_LIMIT_BYTES } from "../src/lib/adminFormat.ts";
 import { readFileSync, readdirSync } from "node:fs";
 import { mergeContiguous, joinRange } from "../src/lib/joinClips.ts";
@@ -731,6 +733,36 @@ check("move cannot go before the start of the song", moveClip(clip("a", 2, 3, 1)
   check("health: database amber at 80%, red at 100%", level({ ...calm, dbBytes: 400 * MB }, "database") === "warn" && level({ ...calm, dbBytes: 500 * MB }, "database") === "bad");
   check("health: leftover files warn, missing files are red", level({ ...calm, leftoverFiles: 3, leftoverBytes: 9 * MB }, "leftover") === "warn" && level({ ...calm, missingFiles: 1 }, "missing") === "bad");
   check("health: unused takes warn only from 100 MB up", level({ ...calm, unusedTakes: 5, unusedBytes: 99 * MB }, "unused") === "ok" && level({ ...calm, unusedTakes: 25, unusedBytes: 103 * MB }, "unused") === "warn");
+}
+
+// ---- Zip writer (lib/zip.ts)
+{
+  check("zip: CRC-32 of 123456789 is the standard check value", crc32(new TextEncoder().encode("123456789")) === 0xcbf43926);
+  check("zip: file names lose slashes and characters Windows refuses", safeFileName('Gu/itar: "lead"?') === "Gu itar lead" && safeFileName("///") === "file" && safeFileName("  ") === "file");
+  check("zip: two channels with the same name stay different", uniqueNames(["a.wav", "A.wav", "b.wav", "a.wav"]).join("|") === "a.wav|A 2.wav|b.wav|a 3.wav");
+  const a = new Blob([new Uint8Array([1, 2, 3, 4, 5])]);
+  const b = new Blob(["hello"], { type: "text/plain" });
+  const zip = new Uint8Array(await (await makeZip([{ name: "01 Gtr.wav", blob: a }, { name: "About.txt", blob: b }], new Date(2026, 9, 24, 12, 30, 10))).arrayBuffer());
+  const dv = new DataView(zip.buffer);
+  const eocd = zip.length - 22;
+  check("zip: ends with the end-of-archive record listing both files", dv.getUint32(eocd, true) === 0x06054b50 && dv.getUint16(eocd + 10, true) === 2);
+  const cdOffset = dv.getUint32(eocd + 16, true);
+  check("zip: the central directory starts where the files end", dv.getUint32(cdOffset, true) === 0x02014b50 && cdOffset === 30 + 10 + 5 + 30 + 9 + 5);
+  check("zip: first file's stored size and checksum are right", dv.getUint32(cdOffset + 20, true) === 5 && dv.getUint32(cdOffset + 16, true) === crc32(new Uint8Array([1, 2, 3, 4, 5])));
+  check("zip: the file's bytes sit right after its header", zip[30 + 10] === 1 && zip[30 + 10 + 4] === 5 && dv.getUint32(0, true) === 0x04034b50);
+}
+
+// ---- Feedback report (lib/feedbackInfo.ts)
+{
+  const chromeMac = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36";
+  const edgeWin = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36 Edg/130.0.2849.56";
+  const safariPhone = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+  const firefox = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:131.0) Gecko/20100101 Firefox/131.0";
+  check("feedback: browsers are told apart (Chrome, Edge, Safari, Firefox)", browserOf(chromeMac) === "Chrome 130" && browserOf(edgeWin) === "Edge 130" && browserOf(safariPhone) === "Safari 17" && browserOf(firefox) === "Firefox 131");
+  check("feedback: systems are told apart", systemOf(chromeMac) === "macOS" && systemOf(edgeWin) === "Windows" && systemOf(safariPhone) === "iPhone" && systemOf("x") === "an unknown system");
+  check("feedback: the device line says browser, system, screen and window", deviceSummary({ ua: chromeMac, screenW: 1512, screenH: 982, windowW: 1200, windowH: 800, pixelRatio: 2, language: "en-US" }) === "Chrome 130 on macOS · screen 1512×982 @2x · window 1200×800 · en-US");
+  check("feedback: a message needs a few words and a limit", feedbackProblem("  ok ") !== null && feedbackProblem("The fader jumps when I drag it") === null && feedbackProblem("x".repeat(FEEDBACK_MAX + 5)) !== null);
+  check("feedback: a project page reports the project id, never the address", pageInfo("/song/0187A8CC-C33F-498C-BC41-882AA2B03F49").projectId === "0187a8cc-c33f-498c-bc41-882aa2b03f49" && pageInfo("/song/0187A8CC-C33F-498C-BC41-882AA2B03F49").page === "/song" && pageInfo("/songs").projectId === null);
 }
 
 // ---- WAV time stamp (lib/bwf.ts)

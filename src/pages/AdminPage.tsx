@@ -11,6 +11,10 @@ import {
   fetchAdminProjects,
   fetchAdminActivity,
   fetchAdminHealth,
+  fetchAdminFeedback,
+  setFeedbackStatus,
+  deleteFeedback,
+  feedbackPictureUrl,
   setUserBlocked,
   forceSignOut,
   setProjectHidden,
@@ -22,6 +26,8 @@ import {
   type AdminUser,
   type AdminProject,
   type AdminHealth,
+  type FeedbackReport,
+  type FeedbackStatus,
   type AdminMember,
   type ActivityEvent,
   type ActivityKind,
@@ -30,11 +36,12 @@ import {
 import { formatBytes, timeAgo, isOnline, healthChecks, STORAGE_LIMIT_BYTES } from "../lib/adminFormat";
 import { ChevronDownIcon, EyeIcon, RefreshIcon, SearchIcon } from "../components/icons/Icons";
 
-type Tab = "people" | "projects" | "activity";
+type Tab = "people" | "projects" | "activity" | "feedback";
 const TABS: { id: Tab; label: string }[] = [
   { id: "people", label: "People" },
   { id: "projects", label: "Projects" },
   { id: "activity", label: "Activity" },
+  { id: "feedback", label: "Feedback" },
 ];
 
 const REFRESH_MS = 30_000;
@@ -465,6 +472,67 @@ function ActivityList({ events }: { events: ActivityEvent[] }) {
   );
 }
 
+/** One feedback report: who, when, where, what they wrote, their screenshot, and what the owner has done with it. */
+function FeedbackList({ reports, act }: { reports: FeedbackReport[]; act: (label: string, fn: () => Promise<unknown>) => Promise<void> }) {
+  const [pictures, setPictures] = useState<Record<string, string>>({});
+  useEffect(() => {
+    let cancelled = false;
+    const missing = reports.filter((r) => r.screenshotPath && !pictures[r.id]);
+    if (missing.length === 0) return;
+    void Promise.all(missing.map(async (r) => [r.id, await feedbackPictureUrl(r.screenshotPath as string)] as const)).then((pairs) => {
+      if (cancelled) return;
+      setPictures((prev) => ({ ...prev, ...Object.fromEntries(pairs.filter(([, url]) => !!url) as [string, string][]) }));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [reports, pictures]);
+  if (reports.length === 0) return <div className="empty-state">No feedback here yet.</div>;
+  const next: Record<FeedbackStatus, { to: FeedbackStatus; label: string }[]> = {
+    new: [{ to: "seen", label: "Mark seen" }, { to: "done", label: "Done" }],
+    seen: [{ to: "done", label: "Done" }, { to: "new", label: "Mark new" }],
+    done: [{ to: "new", label: "Reopen" }],
+  };
+  return (
+    <ul className="adm-fb-list">
+      {reports.map((r) => (
+        <li key={r.id} className={`adm-fb ${r.status}`}>
+          <div className="adm-fb-head">
+            <b>{r.userName ?? "Someone"}</b>
+            {r.email && <span className="adm-dim">{r.email}</span>}
+            <span className="adm-dim">{timeAgo(r.createdAt)}</span>
+            <span className={`adm-fb-status ${r.status}`}>{r.status}</span>
+          </div>
+          <p className="adm-fb-text">{r.message}</p>
+          {r.screenshotPath && (
+            <a className="adm-fb-pic" href={pictures[r.id]} target="_blank" rel="noreferrer">
+              {pictures[r.id] ? <img src={pictures[r.id]} alt="Screenshot sent with this report" loading="lazy" /> : <span className="adm-dim">Loading the screenshot…</span>}
+            </a>
+          )}
+          <div className="adm-fb-meta">
+            {r.projectId && (
+              <Link to={`/song/${r.projectId}`} className="adm-link">
+                {r.projectTitle ?? "a deleted project"}
+              </Link>
+            )}
+            {r.page && !r.projectId && <span className="adm-dim">{r.page}</span>}
+            {r.appBuild && <span className="adm-dim">build {r.appBuild}</span>}
+            {r.device && <span className="adm-dim">{r.device}</span>}
+          </div>
+          <div className="adm-fb-actions">
+            {next[r.status].map((n) => (
+              <button key={n.to} className="adm-btn" onClick={() => void act(n.label, () => setFeedbackStatus(r.id, n.to))}>
+                {n.label}
+              </button>
+            ))}
+            <Confirm label="Delete" danger question="Delete this report and its screenshot? This cannot be undone." confirmLabel="Delete it" onConfirm={() => act("Report deleted", () => deleteFeedback(r.id))} />
+          </div>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 // ---- The page ---------------------------------------------------------------------------------------------------------
 
 function AdminContent() {
@@ -479,6 +547,7 @@ function AdminContent() {
   const [users, setUsers] = useState<AdminUser[] | null>(null);
   const [projects, setProjects] = useState<AdminProject[] | null>(null);
   const [events, setEvents] = useState<ActivityEvent[] | null>(null);
+  const [feedback, setFeedback] = useState<FeedbackReport[] | null>(null);
   const [health, setHealth] = useState<AdminHealth | null>(null);
   const [healthMissing, setHealthMissing] = useState(false);
   const [covers, setCovers] = useState<Record<string, string>>({});
@@ -496,6 +565,10 @@ function AdminContent() {
       setUsers(u);
       setProjects(p);
       setEvents(a);
+      // Feedback needs migration 0057; without it the rest of the dashboard still works.
+      fetchAdminFeedback()
+        .then(setFeedback)
+        .catch(() => setFeedback(null));
       // The Health row needs migration 0049; without it the rest of the dashboard still works.
       fetchAdminHealth()
         .then((h) => {
@@ -578,6 +651,15 @@ function AdminContent() {
       }),
     [projects, filter, q, personFilter]
   );
+  const shownFeedback = useMemo(
+    () =>
+      (feedback ?? []).filter((r) => {
+        if (filter !== "all" && r.status !== filter) return false;
+        return !q || `${r.userName ?? ""} ${r.email ?? ""} ${r.projectTitle ?? ""} ${r.message}`.toLowerCase().includes(q);
+      }),
+    [feedback, filter, q]
+  );
+  const newFeedback = (feedback ?? []).filter((r) => r.status === "new").length;
   const shownEvents = useMemo(
     () =>
       (events ?? []).filter((e) => {
@@ -609,6 +691,13 @@ function AdminContent() {
           { id: "new", label: "New this week" },
           { id: "blocked", label: `Blocked ${blocked}` },
         ]
+      : tab === "feedback"
+        ? [
+            { id: "all", label: "All" },
+            { id: "new", label: `New ${newFeedback}` },
+            { id: "seen", label: "Seen" },
+            { id: "done", label: "Done" },
+          ]
       : tab === "projects"
         ? [
             { id: "all", label: "All" },
@@ -674,6 +763,7 @@ function AdminContent() {
           {TABS.map((t) => (
             <button key={t.id} role="tab" aria-selected={tab === t.id} className={tab === t.id ? "active" : ""} onClick={() => setTab(t.id)}>
               {t.label}
+              {t.id === "feedback" && newFeedback > 0 ? ` ${newFeedback}` : ""}
             </button>
           ))}
         </div>
@@ -745,6 +835,13 @@ function AdminContent() {
               />
             ))}
           </ul>
+        ))}
+
+      {tab === "feedback" &&
+        (feedback === null ? (
+          <div className="empty-state">Loading feedback… If this stays empty, run migration 0057 in Supabase.</div>
+        ) : (
+          <FeedbackList reports={shownFeedback} act={act} />
         ))}
 
       {tab === "activity" && (events === null ? <div className="empty-state">Loading activity…</div> : <ActivityList events={shownEvents} />)}

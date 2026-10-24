@@ -9,7 +9,12 @@ import { defineConfig } from 'vite'
 const useHttps = process.env.HTTPS !== 'off'
 
 // https://vite.dev/config/
+// The build's short commit id (Netlify sets COMMIT_REF) is sent with every feedback report so the owner knows which version a
+// person was using. On a local run it reads "local".
+const appBuild = (process.env.COMMIT_REF ?? 'local').slice(0, 7)
+
 export default defineConfig({
+  define: { __APP_BUILD__: JSON.stringify(appBuild) },
   plugins: [react(), ...(useHttps ? [basicSsl()] : [])],
   server: {
     host: true,

@@ -60,7 +60,7 @@ export function ProjectCard({
         <ProjectCover id={project.id} imageUrl={imageUrl} />
         {roleLabel && <span className={`card-role${roleLabel === "Owner" ? " owner" : ""}`}>{roleLabel}</span>}
         {unread && <span className="card-new" aria-label="New">New</span>}
-        <ProjectCardActions project={project} isOwner={isOwner} onStatus={onStatus} onLeft={onLeft} />
+        <ProjectCardActions project={project} isOwner={isOwner} roleLabel={roleLabel} onStatus={onStatus} onLeft={onLeft} />
       </div>
       <div className={large && imageUrl ? "card-body card-body-image" : "card-body"}>
         {large && imageUrl && <img className="card-body-bg" src={imageUrl} alt="" loading="lazy" draggable={false} />}
