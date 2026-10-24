@@ -34,3 +34,8 @@ STATUS.md
 
 # Claude Code per-machine settings (launch.json is shared)
 .claude/settings.local.json
+
+# Private working notes: kept on this computer only (the repo is public).
+.project/
+docs/PLAN-*.md
+docs/RESEARCH-*.md
